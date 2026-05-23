@@ -13,11 +13,11 @@ A real, compiling, **fully test-backed** foundation across backend + web, demons
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`30/30`** (F00–F04, F17), web **Vitest `6/6`** + **Playwright `3/3`**.
+**Verified locally:** backend **`37/37`** (F00–F04, F15, F17), web **Vitest `8/8`** + **Playwright `4/4`**.
 
 ### Features implemented so far (tested)
-- **Backend:** **F00** foundation · **F01** identity · **F02** attribute-level RBAC · **F03** properties + nested location tree · **F04** asset registry core (categories tree, **JSONB attributes**, tracking modes, tags/collections) · **F17** expenses & approvals (per-jurisdiction threshold routing). **The M1 backend spine is complete.**
-- **Web:** StyleX shell + grouped-nav routing, and the **Inventory** UI feature (asset grid + category filter) — each with Vitest UI tests + Playwright browser e2e.
+- **Backend:** **F00** foundation · **F01** identity · **F02** attribute-level RBAC · **F03** properties + nested location tree · **F04** asset registry core (categories tree, **JSONB attributes**, tracking modes, tags/collections) · **F15** bills + ±15% variance · **F17** expenses & approvals (per-jurisdiction threshold routing). **The M1 backend spine is complete.**
+- **Web:** StyleX shell + grouped-nav routing, the **Inventory** feature (asset grid + category filter), and the **Finance** approvals queue (approve/reject) — each with Vitest UI tests + Playwright browser e2e.
 
 ## Run it
 ```bash

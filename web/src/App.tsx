@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { colors } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
+import { Finance } from "./pages/Finance";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
@@ -16,6 +17,7 @@ const NAV: { group: string | null; items: string[] }[] = [
 function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inventory") return "/inventory";
+  if (item === "Finance") return "/finance";
   return "/soon";
 }
 
@@ -52,6 +54,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/finance" element={<Finance />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
