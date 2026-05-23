@@ -9,3 +9,15 @@ Thumbs.db
 # Local env
 .env
 .env.local
+
+# Build artifacts
+**/target/
+**/.bsp/
+**/.bloop/
+**/.metals/
+**/project/project/
+**/project/target/
+node_modules/
+dist/
+build/
+*.log

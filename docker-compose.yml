@@ -1,0 +1,39 @@
+# Kanzen local dev stack (F00). Postgres + TigerBeetle + LocalStack.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kanzen
+      POSTGRES_PASSWORD: kanzen
+      POSTGRES_DB: kanzen
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanzen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3
+    ports:
+      - "4566:4566"
+
+  # TigerBeetle: ledger postings only (F18). Single-node dev cluster.
+  tigerbeetle:
+    image: ghcr.io/tigerbeetle/tigerbeetle:0.16.4
+    command: >
+      sh -c "tigerbeetle format --cluster=0 --replica=0 --replica-count=1 /data/0.tigerbeetle &&
+             tigerbeetle start --addresses=0.0.0.0:3033 /data/0.tigerbeetle"
+    ports:
+      - "3033:3033"
+    volumes:
+      - tbdata:/data
+
+volumes:
+  pgdata:
+  tbdata:
