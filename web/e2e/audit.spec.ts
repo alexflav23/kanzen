@@ -48,17 +48,17 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
   await shot("01-dashboard");
 
-  // 2. Inventory + category filter + reset
+  // 2. Inventory + filter rail + reset
   where.v = "inventory";
   await page.getByRole("link", { name: "Inventory" }).click();
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
-  await expect(page.getByTestId("asset-card")).toHaveCount(4);
+  await expect(page.getByTestId("asset-card")).toHaveCount(8);
   await shot("02-inventory-all");
-  await page.getByRole("button", { name: "Watches" }).click();
-  await expect(page.getByTestId("asset-card")).toHaveCount(1);
+  await page.getByRole("button", { name: /^Watches/ }).click();
+  await expect(page.getByTestId("asset-card")).toHaveCount(2);
   await shot("03-inventory-watches");
-  await page.getByRole("button", { name: "All" }).click();
-  await expect(page.getByTestId("asset-card")).toHaveCount(4);
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(page.getByTestId("asset-card")).toHaveCount(8);
 
   // 3. Finance + approve + reject
   where.v = "finance";

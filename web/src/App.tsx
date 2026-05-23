@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { colors } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
+import { AssetDetail } from "./pages/AssetDetail";
 import { Finance } from "./pages/Finance";
 import { Properties } from "./pages/Properties";
 import { People } from "./pages/People";
@@ -58,6 +59,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/finance" element={<Finance />} />
             <Route path="/properties" element={<Properties />} />
             <Route path="/people" element={<People />} />
