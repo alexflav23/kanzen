@@ -4,6 +4,7 @@ import { colors } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
 import { Finance } from "./pages/Finance";
+import { Properties } from "./pages/Properties";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
@@ -18,6 +19,7 @@ function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inventory") return "/inventory";
   if (item === "Finance") return "/finance";
+  if (item === "Properties") return "/properties";
   return "/soon";
 }
 
@@ -55,6 +57,7 @@ export function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/finance" element={<Finance />} />
+            <Route path="/properties" element={<Properties />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
