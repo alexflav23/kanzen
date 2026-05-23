@@ -19,6 +19,7 @@ Reconciliation outcomes against the prototype, recorded so nothing is silently l
 - **Folded in from the prototype:** the grouped navigation (§5); a **Pay queue** and **Payment methods** in Finance, with a `PaymentMethod` entity and a bill-payment lifecycle (§9.7); a concrete **4-level permission model** (none/read/write/admin) over an editable role×module matrix (§4); per-jurisdiction **approval thresholds** (£1,500 / S$2,500), the **±15% variance** rule, 4-hour sessions, 7-year audit retention, 5-day bill lead (§4, §9, §13); an **Art** vertical (App. C); a **⌘K command palette** (§13); and a full **design language** plus **per-screen specifications** (§16, App. E).
 - **Open decisions closed:** §19 #1 (EC2 autoscaling + NixOS; region Ireland), #3 (ledger hidden), #5 (first verticals), #6 (five mailboxes), #7 (financial categories locked to review), #9 (`kanzen.family`), #10 (parent/child category tree). Still open: open-banking provider, backup-binary packaging, wear/use counts, inference aggressiveness, payment-execution boundary.
 - **Stack aligned to Hypervolt (v6.1).** After reading `ghost-busters` / `athena` / `hyperstore`: the backend is **Scala 2.13 + cats-effect + http4s (ember) + Tapir + Doobie + Flyway** (not Scala 3); compute is **EC2 autoscaling + NixOS** (not ECS Fargate); CI is **GitLab CI on Nix**; secrets split **Secrets Manager + SSM Parameter Store**; the web data layer is **hand-written services + Zod** (not OpenAPI-generated). **Auth stays AWS Cognito** by deliberate choice (Hypervolt uses Keycloak). Full detail in `specs/F00-foundation.md`.
+- **Tasks owned natively (v6.2).** Reversing the original "tasks stay in Todoist" decision: tasks become a **first-class Kanzen domain** (no Todoist as system-of-record) — the tight coupling to maintenance, defects, lists and deliveries made one in-house source of truth simpler than syncing a SaaS. **Defects are first-class** too, and the location hierarchy is a **typed nested tree**. An optional one-way mirror/export to Todoist or Vikunja stays possible but non-authoritative. Calendar (Google vs native) is revisited at **F07**. Detail in `specs/F03-properties.md` and `F06`.
 
 ---
 
@@ -31,7 +32,7 @@ Reconciliation outcomes against the prototype, recorded so nothing is silently l
 They unify around shared bones: **properties** (assets live in them), **assets** (the boiler and the watch collection are both assets), **the email agent** (one agent turns inbound mail into both household tasks and registry records), **finance** (household bills sit above the rigorous ledger), **documents** (one evidence store), and **maintenance & reminders** (servicing the HVAC and servicing a watch are the same mechanism).
 
 ### Guiding principles
-- **Reuse over rebuild, where reuse is sound.** Tasks stay in Todoist; calendar stays in Google Calendar. Documents are owned in-house — see §3.2.
+- **Reuse over rebuild, where reuse is sound.** Calendar stays in Google Calendar (revisited at F07). **Tasks are owned natively** in Kanzen — once delegated to Todoist, the coupling to maintenance, defects, lists and deliveries made a single in-house source of truth simpler than syncing. Documents are owned in-house — see §3.2.
 - **Own the gap, and own the truth.** The platform owns the data no tool holds well, and owns the rigorous financial and asset record beneath the friendly UI.
 - **Source documents are sacred.** Original uploads are immutable and preserved forever unless explicitly purged. OCR and extraction are derived data, never source truth.
 - **Three distinct financial concepts.** External facts (bank transactions), commercial evidence (receipts, invoices), and ledger truth (immutable postings) are modelled separately and never conflated.
@@ -84,7 +85,7 @@ The judgement calls that turn two specs and a prototype into one system. Each is
 
 **3.8 Backup & restore is a first-class platform feature**, applied to the whole combined system.
 
-**3.9 The combined stack is the union** — adds TigerBeetle and Docker Compose; keeps StyleX, AWS (`eu-west-1`), Cognito, Bedrock and the Todoist/Google integrations.
+**3.9 The combined stack is the union** — adds TigerBeetle and Docker Compose; keeps StyleX, AWS (`eu-west-1`), Cognito, Bedrock and the Google integrations (Gmail, Calendar). **Tasks are native** (no Todoist system-of-record).
 
 **3.10 Household Lists are in-scope.** Recurring shopping/supply lists with a staff-propose → Principal-approve workflow, recurring items, budget-trigger approvals, vendor delivery and roll-forward on order day (§7.15). New domain (§6, App. A).
 
@@ -120,12 +121,12 @@ The web app is a persistent **grouped left navigation** + a top bar (⌘K comman
 ```
 Dashboard · Inbox
 INVENTORY         Inventory · Collections · Insights
-OPERATIONS        Properties · Tasks ↗ · Calendar ↗ · Lists · Maintenance
+OPERATIONS        Properties · Tasks · Calendar ↗ · Lists · Maintenance
 RECORDS           People · Vendors · Vehicles · Documents
 FINANCE & SYSTEM  Finance · Backup · Settings
 ```
 
-- **Tasks** and **Calendar** are integrated views onto Todoist and Google Calendar (↗ marks an externally-backed module).
+- **Tasks** is a **native** Kanzen module; **Calendar** is an integrated view onto Google Calendar (↗ marks an externally-backed module; revisited at F07).
 - **Inbox** is the unified review surface (four streams); its agent-proposals stream is titled **Triage**.
 - **Inventory** is the Assets module; **Vehicles** is a saved Inventory view filtered to the vehicle vertical.
 - **Maintenance** is the cross-cutting plan/reminder view (engine shared with Properties and Inventory, §3.7).
@@ -151,7 +152,7 @@ graph TD
     OPS["Household Ops: Bills, Pay queue, Budgets, Approvals, Lists"] --> FIN
     AGENT["Email Agent"] --> DOC
     AGENT --> FIN
-    AGENT --> TODO["Tasks — Todoist"]
+    AGENT --> TASK["Tasks — native"]
     AGENT --> CAL["Calendar — Google"]
     AGENT --> LST["Lists"]
     BACKUP["Backup & Restore"] -.exports.-> PROP
@@ -166,7 +167,7 @@ graph TD
 - **Documents & evidence** — `Document`, `DocumentVersion`, `DocumentLink`, `Receipt`, `Invoice`, `ReceiptParseRun`, `ReceiptLineItem`, `Attachment`. Originals immutable; extracted data versioned and correctable.
 - **Finance & ledger** — `FinancialConnection`, `FinancialInstitution`, `FinancialAccount`, `BankTransaction`, `BankTransactionRawPayload`, `Merchant`, `TransactionCategory`, `TransactionSplit`, `ReconciliationMatch`, `ReconciliationState`, `Bill`, `PaymentMethod`, `BillPayment` (the pay-queue lifecycle), `Budget`, `Approval`, `Expense`, `AssociatedCost`, `LedgerAccountMapping`, `LedgerPostingGroup`, `LedgerPostingReference`. Detail in §9.
 - **Lists** — `ShoppingList`, `ListItem` (with approval state and recurrence). Detail in §7.15.
-- **Household operations** — `Vendor`/`Contact`, `EmploymentRecord`, `MaintenancePlan`, `MaintenanceLog`, `Reminder`, `CalendarEventRef`, `TodoistTaskRef`, `AssociatedParty`.
+- **Household operations** — `Vendor`/`Contact`, `EmploymentRecord`, `MaintenancePlan`, `MaintenanceLog`, `Reminder`, `CalendarEventRef`, `Task` (native), `TaskComment`, `Defect`, `AssociatedParty`.
 - **Agent, rules & system** — `IncomingEmail`, `AgentAction`, `TrustSetting`, `SenderRule`, `Rule`, `Notification`, `AuditLogEntry`, `SavedView`, `ArchiveSnapshot`, `ExportJob`, `ExportManifest`, `RestoreJob`, `BackupArtifact`.
 
 ---
@@ -183,7 +184,7 @@ Four streams with live counts: **Agent proposals / Triage** (classified mail awa
 The **Triage** detail is a master/detail: email excerpt, **agent-extracted fields** (inline-editable), and **proposed actions** (each typed and editable). Footer: Reject · Edit & confirm · **Confirm · execute N** (⌘↵). A toast confirms; rejections feed sender learning. Tabs: Queue · History · **Trust settings** (per-category Review/Auto; **financial categories are locked to Review and cannot be auto-executed**).
 
 ### 7.3 Properties
-The digital Property Bible. List of property cards (jurisdiction, ownership, type; rooms/assets/bills/vendors counts). Bible tabs: **Overview** (particulars + **Linked systems**: Todoist project, Google Calendar, optional Drive folder, 1Password vault reference) · **Rooms & sub-locations** (expand to per-room asset tables) · **Assets** · **Utilities** (recurring bills) · **Maintenance** (plans) · **Defects** (linked to Todoist) · **Documents**. Seed with **Wardian, Apt 5206** and **Singapore**.
+The digital Property Bible. List of property cards (jurisdiction, ownership, type; rooms/assets/bills/vendors counts). Bible tabs: **Overview** (particulars + **Linked systems**: the property's native task project, Google Calendar, optional Drive folder, 1Password vault reference) · **Rooms & sub-locations** (typed nested location tree) · **Assets** · **Utilities** (recurring bills) · **Maintenance** (plans) · **Defects** (first-class; linked to tasks & vendors) · **Documents**. Seed with **Wardian, Apt 5206** and **Singapore**.
 
 ### 7.4 Inventory (the Asset registry)
 The unified registry (full treatment in §8). Header summary strip — **Assets shown · Estimated value · Insured value · Completeness** (with the count of expensive items missing proof). A sticky **filter rail**: Category tree (parent/child), Property, Status (Owned/Sold/Gifted/Lost/Stolen/Archived), Collection, Tag chips, plus a **Data-quality** nudge card. Main area: search toolbar with a **Grid / List / Timeline** segmented toggle and active-filter chips. Asset cards carry photo, maker, title, value, a tag, location, and mode badges (**×N** for grouped-quantity, **set** for structured). Asset detail is **timeline-centric** — see §8 and App. E.
@@ -202,11 +203,11 @@ Two layers (full treatment in §9), with **property** and **currency (Native / �
 ### 7.7 Documents
 The in-house evidence store (S3). Summary tiles (total documents, storage used incl. parse-run versions, parse runs/30d, line items/30d → pending-to-asset). Search + category filter (Receipt, Invoice, Warranty, Appraisal, Statement, Insurance, Service, Legal, HR). Table shows the **immutable-original** lock, parse-run/line-item counts, attachment target (polymorphic: asset/transaction/property/person), and source (agent vs manual). Originals immutable; extracted data versioned. Files in S3; metadata and links in Postgres.
 
-### 7.8 Tasks — Todoist integration
-Todoist is the task system of record. One project per property; labels for category and vendor. Maintenance plans and reminders create and maintain recurring Todoist tasks; completions sync back into the MaintenanceLog. Any user can raise an issue from the platform. The integrated view shows assignee, project, and a maintenance flag.
+### 7.8 Tasks — native
+Tasks are a **first-class Kanzen domain** (no external task manager as system-of-record). A project per property; labels for category and vendor; assignees are household users; recurring tasks; reminders via EventBridge + SES/push. Maintenance plans, defects, list approvals and agent-detected deliveries all create tasks directly, and completions are native events (feeding the MaintenanceLog). Any user can raise an issue/defect from the platform. An optional **one-way mirror/export** to Todoist or Vikunja remains possible but is never authoritative. Detail in `specs/F06`.
 
 ### 7.9 Calendar — Google Calendar integration
-A shared household Google Calendar, two-way sync, with **Week / Month / List** views and a category legend (Delivery, Maintenance, Booking, HR, Finance), colour-coded. Events from the agent (deliveries, bookings, appointments), maintenance plans, manual entry and staff leave; agent-created events carry the agent ribbon. A delivery yields both a calendar event and a Todoist task.
+A shared household Google Calendar, two-way sync, with **Week / Month / List** views and a category legend (Delivery, Maintenance, Booking, HR, Finance), colour-coded. Events from the agent (deliveries, bookings, appointments), maintenance plans, manual entry and staff leave; agent-created events carry the agent ribbon. A delivery yields both a calendar event and a native task. (Whether Calendar stays Google or also goes native is decided at F07.)
 
 ### 7.10 People
 Staff directory: role, jurisdiction, contract and key dates, leave, reviews, emergency contacts, documents. **Expiry reminders** on visas/work permits (e.g. Siti's permit) and reviews. Reference to the external payroll bureau.
@@ -218,7 +219,7 @@ Businesses and people relevant to the household and to assets: trade, contacts, 
 Aggregate and descriptive reporting: summary tiles (total inventory value, lifetime spend, assets tracked, completeness); **lifetime spend by category** (stacked), **top assets by value**, **lifetime cost = acquisition vs operating** per asset, and a **registry-health** breakdown (photographed, categorised, located, proof attached, insured value set, appraisal recency). Built on the structured query model so a natural-language layer can sit on top later (M10).
 
 ### 7.13 Settings & audit
-Tabs: **Integrations** (connection health for Gmail, Todoist, Calendar, optional Drive, Bedrock, SES, 1Password; plus a system summary), **Permissions** (the editable role×module matrix, §4), **Preferences** (financial thresholds, display currency, variance, bill lead; security: MFA, session, backup cadence, audit retention, email-content boundary), **Rules engine** (deterministic, inspectable, editable rules, §10.4), **Directory** (operational mailboxes & role addresses, §10.1), and the append-only **Audit log** (every user and agent action; Principal-only).
+Tabs: **Integrations** (connection health for Gmail, Calendar, optional Drive, Bedrock, SES, 1Password; plus a system summary), **Permissions** (the editable role×module matrix, §4), **Preferences** (financial thresholds, display currency, variance, bill lead; security: MFA, session, backup cadence, audit retention, email-content boundary), **Rules engine** (deterministic, inspectable, editable rules, §10.4), **Directory** (operational mailboxes & role addresses, §10.1), and the append-only **Audit log** (every user and agent action; Principal-only).
 
 ### 7.14 Backup
 Full treatment in §12 — run full export (with live progress), last-export status, **download archive / view manifest / restore dry-run**, **annual immutable snapshots** (read-only, integrity-verified), an inline manifest preview, and a guarded **restore** flow.
@@ -321,11 +322,11 @@ Ingestion is by polling the Gmail API on a short interval. Classification/extrac
 
 | Category | Actions |
 |---|---|
-| **Delivery** | Todoist task to receive it · calendar event for the window · notification |
+| **Delivery** | Task to receive it · calendar event for the window · notification |
 | **Receipt** | Store the original (S3) · OCR/parse run → line items · propose asset creation in the Inbox · reconcile to a transaction |
 | **Invoice / bill** | Store the original (S3) · reconcile to the recurring bill schedule (update amount/next due, flag ±15% variance) or propose a new Bill · optional Expense draft |
 | **Booking** | Calendar event · task if preparation is needed |
-| **Service / appointment** | Calendar event · Todoist task · link to vendor, asset and any maintenance plan |
+| **Service / appointment** | Calendar event · task · link to vendor, asset and any maintenance plan |
 | **Warranty / authenticity certificate** | Store the original (S3) · attach to the relevant asset · set warranty expiry reminder |
 | **Shipping confirmation** | Delivery task and event; link to the originating receipt/asset |
 | **Statement / official / renewal** | File the document (S3) · set or refresh an expiry reminder · notification |
@@ -344,7 +345,7 @@ Complements the agent with deterministic, inspectable, editable rules: merchant-
 | System | Use | Auth pattern |
 |---|---|---|
 | **Gmail** | The agent polls the five watched role inboxes | Google Cloud service account, domain-wide delegation, narrow scope |
-| **Todoist** | Task system of record | Household-workspace API token; webhook for completions |
+| **Todoist / Vikunja** *(optional)* | Optional one-way task mirror/export — never authoritative | Per-tool API token |
 | **Google Calendar** | Shared household calendar, two-way sync | Same service account |
 | **Open-banking provider** | Bank transaction ingestion (provider abstracted; first provider TBD — §19) | Per-provider OAuth |
 | **Amazon Bedrock (Claude)** | Agent classification/extraction; OCR assist | IAM role (`eu-west-1`) |
@@ -383,7 +384,7 @@ Optional **encrypted, password-protected** export (`age`) with integrity checksu
 - **Authentication** — AWS Cognito, enforced MFA, multiple login methods per user; the Scala backend validates the Cognito JWT on every request; **4-hour sessions**.
 - **Authorisation** — role + property scope + per-module level (none/read/write/admin), enforced server-side in shared middleware; agent actions use the same permission and audit paths as human actions.
 - **Auditability** — append-only audit log (**7-year retention**); immutable original uploads; versioned parse corrections; immutable ledger postings; soft delete where practical; audit data included in exports.
-- **Search** — a **⌘K command palette** (global search across properties, people, vendors, bills, expenses, assets, collections, documents, inbox items + Todoist tasks; plus quick actions and a theme toggle) and **faceted search** within Inventory/Documents. Aggregate queries; saved views and smart filters.
+- **Search** — a **⌘K command palette** (global search across properties, people, vendors, bills, expenses, assets, collections, documents, inbox items + tasks; plus quick actions and a theme toggle) and **faceted search** within Inventory/Documents. Aggregate queries; saved views and smart filters.
 - **Data quality** — completeness scoring per asset, duplicate detection, anomaly detection — surfaced in the Inbox and Insights.
 - **Currency** — multi-currency (GBP/SGD and beyond); **display is native by default, no conversion**; a per-view "£ only" toggle exists; cross-currency rollups are explicit, not silent.
 - **Backups** — automated daily RDS snapshots in addition to the application-level export of §12.
@@ -426,7 +427,7 @@ graph TD
     CRON["EventBridge Scheduler"] --> API
     API --> SES["AWS SES"]
     API --> BR["Claude on Amazon Bedrock"]
-    API --> TD["Todoist API"]
+    API --> PUSH["Push — FCM / APNs"]
     API --> GW["Google Workspace — Gmail, Calendar"]
     API --> BANK["Open-banking provider"]
 ```
@@ -485,7 +486,7 @@ A large system; each milestone is independently shippable, and the household bec
 
 - **M0 — Foundation.** Repo (monorepo: `/backend`, `/web`, `/mobile`, `/docs`, `/specs`), Docker Compose dev stack (Postgres 16, TigerBeetle, LocalStack), **Scala 2.13 + cats-effect + http4s + Tapir** skeleton with OpenAPI output, PostgreSQL + Flyway migrations, TigerBeetle integration skeleton, S3, **Cognito** with enforced MFA, **GitLab CI on Nix**, Terraform (EC2 + NixOS), the React + StyleX and Flutter shells, and the **design-token + component library** matching §16.
 - **M1 — Core spine.** Identity; the **permission matrix** (role + scope + level); Properties with rooms, sub-locations and custody; the unified Asset model (basic); categories (tree), tags, collections, asset groups; the in-house Document store with immutable originals. The grouped navigation shell.
-- **M2 — Household operations.** Tasks (Todoist), Calendar (Google), **Lists** (propose/approve/roll-forward), Vendors & Contacts, People/HR, maintenance plans and the reminder engine, the Maintenance view. The household is operable from here.
+- **M2 — Household operations.** Tasks (native), Calendar (Google), **Lists** (propose/approve/roll-forward), Vendors & Contacts, People/HR, maintenance plans and the reminder engine, the Maintenance view. The household is operable from here.
 - **M3 — Finance: transactions, evidence & operations.** Bank-transaction ingestion (provider abstraction + CSV fallback), raw payloads, merchants, receipts/invoices, the OCR/parse pipeline, line items, reconciliation, bills and the recurring schedule, **payment methods**, the **pay queue**, budgets, approvals (per-jurisdiction thresholds).
 - **M4 — Ledger.** TigerBeetle posting model, posting groups, reconciliation state machine, derived financial views, unmatched-expensive-transaction detection. (Ledger remains hidden in the UI.)
 - **M5 — Asset depth.** Lifecycle events, valuation snapshots, warranty/provenance/authenticity/insurance, typed verticals and category templates (incl. **Art**), line-item → asset creation, completeness scoring, legacy onboarding, merge/split/regroup.
@@ -549,7 +550,7 @@ The build is successful when the system can:
 - Keep PostgreSQL for domain data and TigerBeetle strictly for ledger postings. Never conflate bank transactions, receipts and ledger postings. The ledger stays hidden in the UI.
 - Keep original uploaded documents immutable in S3; the agent files to S3, never Drive; separate raw imported data from normalised domain data; OCR output is always derived, correctable, versioned.
 - Write permission checks once, as shared server-side middleware reading the role×module matrix + property scope; agent actions take the same path.
-- Treat each integration (Gmail, Todoist, Calendar, open-banking, Bedrock, Cognito, SES) as an isolated, individually testable adapter behind an internal interface.
+- Treat each integration (Gmail, Calendar, open-banking, Bedrock, Cognito, SES) as an isolated, individually testable adapter behind an internal interface; tasks are native, not an integration.
 - Design backup/restore as a formal API surface from the start; test catastrophic recovery deliberately.
 - Implement the hard edge cases on purpose: split receipts, split transactions, partial payments, refunds, grouped and structured assets, legacy assets with no receipt, associated costs on existing assets, post-hoc restructures, and the **list approve → roll-forward** cycle.
 - Hand-write the web (and Flutter) data layer as a service module with Zod validation at boundaries, matching Hyperstore; the OpenAPI contract documents the API, but clients are not auto-generated.
@@ -567,7 +568,7 @@ The build is successful when the system can:
 - **Finance:** `financial_connections`, `financial_institutions`, `financial_accounts`, `bank_transactions`, `bank_transaction_raw_payloads`, `merchants`, `transaction_categories`, `transaction_splits`, `reconciliation_matches`, `reconciliation_states`, `bills`, `payment_methods`, `bill_payments`, `budgets`, `approvals`, `expenses`, `associated_costs`.
 - **Ledger:** `ledger_account_mappings`, `ledger_posting_groups`, `ledger_posting_references`.
 - **Lists:** `shopping_lists`, `list_items`.
-- **Household operations:** `vendors`, `employment_records`, `maintenance_plans`, `maintenance_logs`, `reminders`, `associated_parties`, `calendar_event_refs`, `todoist_task_refs`.
+- **Household operations:** `vendors`, `employment_records`, `maintenance_plans`, `maintenance_logs`, `reminders`, `associated_parties`, `calendar_event_refs`, `tasks`, `task_labels`, `task_comments`, `defects`.
 - **Agent, rules & system:** `incoming_emails`, `agent_actions`, `trust_settings`, `sender_rules`, `rules`, `notifications`, `audit_log_entries`, `saved_views`, `archive_snapshots`.
 - **Backup:** `export_jobs`, `export_manifests`, `restore_jobs`, `backup_artifacts`.
 
@@ -662,7 +663,7 @@ Persistent grouped left nav (§5) with the 完 mark + "Kanzen"; nav items show a
 *Unified review.* Four tabbed streams with counts: Agent proposals (renders Triage), Reconciliation, Data quality, Reminders. **Triage**: master list (category pill, variance pill, relative time) + detail (email excerpt → **agent-extracted editable fields** → **proposed actions** with typed icons) → footer Reject / Edit & confirm / **Confirm · execute N** (⌘↵) + success toast. Tabs: Queue · History (auto/confirmed/rejected dots) · **Trust settings** (Review/Auto segmented; Bill/Invoice locked). **Reconciliation**: needs-attention list (suggested w/ confidence vs unmatched) + resolved-30d. **Data quality**: completeness header + severity-coded issue rows with a one-line fix + Resolve. **Reminders**: maintenance/warranty/appraisal/backup with due/lapsed and Snooze/Act.
 
 ### E.4 Properties & Bible (`properties.jsx`)
-*Property cards* (cover, jurisdiction/ownership pills, 4 counts) → **Bible** with cover + tabs Overview (Particulars · Linked systems w/ external links + 1Password reference · At-a-glance grid) · Rooms (expandable → per-room asset table) · Assets (table) · Utilities (bills table) · Maintenance (plans + Add plan) · Defects (count → Todoist) · Documents.
+*Property cards* (cover, jurisdiction/ownership pills, 4 counts) → **Bible** with cover + tabs Overview (Particulars · Linked systems w/ external links + 1Password reference · At-a-glance grid) · Rooms (expandable → per-room asset table) · Assets (table) · Utilities (bills table) · Maintenance (plans + Add plan) · Defects (first-class; count → defect list) · Documents.
 
 ### E.5 Inventory (`assets.jsx`)
 *The registry.* Summary strip (4 stats) · sticky **filter rail** (Category tree, Property, Status, Collection, Tag chips, + Data-quality nudge) · toolbar (search, **Grid/List/Timeline**, Sort) · active-filter chips · results. Grid = asset cards (photo, maker, title, value, tag, location, mode badge ×N/set/At-service). List = table. Timeline = month-grouped events with typed dots.
@@ -689,7 +690,7 @@ Persistent grouped left nav (§5) with the 完 mark + "Kanzen"; nav items show a
 *Two-way Google Calendar.* Week/Month/List + nav + New event; category legend + "N from agent". Week = day headers + all-day row + hours grid with positioned colour-coded events (agent dot). Month = 6×7 grid (today marker, ≤3 events/cell). List = 30-day rows with agent ribbon.
 
 ### E.13 People · Vendors · Vehicles · Tasks · Directory (`stubs.jsx`)
-People: team rows (avatar, role, **permit-expiry** warning). Vendors: table (trade, properties, **NDA/insurance expiry**, rating). Vehicles: **saved Inventory view** — cards with garage, reg, MOT/tax/insurance dates. Tasks: Todoist-backed rows (assignee, project, maintenance flag). Directory: operational mailboxes + role addresses.
+People: team rows (avatar, role, **permit-expiry** warning). Vendors: table (trade, properties, **NDA/insurance expiry**, rating). Vehicles: **saved Inventory view** — cards with garage, reg, MOT/tax/insurance dates. Tasks: native rows (assignee, project, maintenance flag). Directory: operational mailboxes + role addresses.
 
 ### E.14 Settings (`stubs.jsx → SettingsView`, `PermissionsMatrix`)
 Tabs Integrations (connection health + system summary) · **Permissions** (editable role×module matrix, click-to-cycle none/read/write/admin, grouped by module section, property-scope note, Save/Reset) · Preferences (financial + security) · **Rules engine** (to build) · **Directory** · Audit log (Principal-only, agent/user/staff-coded rows).
@@ -698,10 +699,10 @@ Tabs Integrations (connection health + system summary) · **Permissions** (edita
 Run full export (live progress) · Last-export status (`dl`) + Download/Manifest/Dry-run · **Annual immutable snapshots** (read-only, integrity, download) · inline **manifest.json** preview + entity counts · guarded **Restore** (upload / dry-run / restore-from-latest, danger styling).
 
 ### E.16 Command palette (`search.jsx`)
-⌘K overlay: input + esc; empty state = **Quick actions** (Add property, Add maintenance plan, Log expense, Open Triage, Toggle theme); typing = results grouped by type (Property/Person/Vendor/Bill/Expense/Asset/Document/Collection/Inbox) across the whole corpus incl. Todoist tasks; keyboard hints; "last sync" footer.
+⌘K overlay: input + esc; empty state = **Quick actions** (Add property, Add maintenance plan, Log expense, Open Triage, Toggle theme); typing = results grouped by type (Property/Person/Vendor/Bill/Expense/Asset/Document/Collection/Inbox) across the whole corpus incl. tasks; keyboard hints; "last sync" footer.
 
 ### E.17 Add-maintenance modal (`add-maintenance.jsx`)
-3-step modal (stepper): **1** Asset & vendor (vendors property-scoped) · **2** Schedule (frequency segmented, first due, lead days, expected cost + currency, **Create recurring Todoist task** toggle) · **3** Review (`kv-card` summary + reminder note → Create plan).
+3-step modal (stepper): **1** Asset & vendor (vendors property-scoped) · **2** Schedule (frequency segmented, first due, lead days, expected cost + currency, **Create recurring task** toggle) · **3** Review (`kv-card` summary + reminder note → Create plan).
 
 ### E.18 Mobile (`mobile.jsx`)
 iPhone parity: **Dashboard** (status, stacked attention cards w/ agent ribbon, Upcoming, blurred bottom tab bar Home/Triage/Bibles/Money/Search) and **Triage detail** (category + variance pills, agent-extracted `kv-card`, proposed actions, sticky **Reject/Confirm** bar). Capture-first; same tokens and vocabulary as web.
