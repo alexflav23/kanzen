@@ -13,10 +13,10 @@ A real, compiling, **fully test-backed** foundation across backend + web, demons
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`57/57`** (13 features), web **Vitest `12/12`** + **Playwright `6/6`** (5 UI features).
+**Verified locally:** backend **`67/67`** (16 features), web **Vitest `12/12`** + **Playwright `6/6`** (5 UI features).
 
 ### Features implemented so far (tested)
-- **Backend (13):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (categories tree, **JSONB attributes**, tracking modes) · F08 lists (propose→approve, buy URLs) · F09 vendors (insurance gating) · F10 people (permit expiry) · F15 bills (±15% variance) · F17 expenses & approvals (threshold routing) · F19 lifecycle events + lifetime cost · F20 valuation (latest-by-kind) · F35 products/stock (out→reorder).
+- **Backend (16):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (categories tree, **JSONB attributes**, tracking modes) · F08 lists (propose→approve, buy URLs) · F09 vendors (insurance gating) · F10 people (permit expiry) · F12 bank ingestion (idempotent) · F15 bills (±15% variance) · F16 payment methods + pay queue (mark-paid, never moves money) · F17 expenses & approvals (threshold routing) · F19 lifecycle events + lifetime cost · F20 valuation (latest-by-kind) · F22 category templates (attribute validation) · F35 products/stock (out→reorder).
 - **Web (5 UI features):** StyleX shell + routing · **Inventory** (grid+filter) · **Finance** (approvals) · **Properties** (cards) · **People** (permit warning) — each with Vitest UI tests + Playwright browser e2e.
 
 ## Run it
