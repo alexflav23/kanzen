@@ -19,6 +19,7 @@ Reconciliation outcomes against the prototype, recorded so nothing is silently l
 - **Folded in from the prototype:** the grouped navigation (§5); a **Pay queue** and **Payment methods** in Finance, with a `PaymentMethod` entity and a bill-payment lifecycle (§9.7); a concrete **4-level permission model** (none/read/write/admin) over an editable role×module matrix (§4); per-jurisdiction **approval thresholds** (£1,500 / S$2,500), the **±15% variance** rule, 4-hour sessions, 7-year audit retention, 5-day bill lead (§4, §9, §13); an **Art** vertical (App. C); a **⌘K command palette** (§13); and a full **design language** plus **per-screen specifications** (§16, App. E).
 - **Open decisions closed:** §19 #1 (EC2 autoscaling + NixOS; region Ireland), #3 (ledger hidden), #5 (first verticals), #6 (five mailboxes), #7 (financial categories locked to review), #9 (`kanzen.family`), #10 (parent/child category tree). Still open: open-banking provider, backup-binary packaging, wear/use counts, inference aggressiveness, payment-execution boundary.
 - **Stack aligned to Hypervolt (v6.1).** After reading `ghost-busters` / `athena` / `hyperstore`: the backend is **Scala 2.13 + cats-effect + http4s (ember) + Tapir + Doobie + Flyway** (not Scala 3); compute is **EC2 autoscaling + NixOS** (not ECS Fargate); CI is **GitLab CI on Nix**; secrets split **Secrets Manager + SSM Parameter Store**; the web data layer is **hand-written services + Zod** (not OpenAPI-generated). **Auth stays AWS Cognito** by deliberate choice (Hypervolt uses Keycloak). Full detail in `specs/F00-foundation.md`.
+- **OCR & learned categorisation (v6.3).** Receipt/invoice **OCR + line-item extraction** uses **Claude on Bedrock (multimodal)** → versioned, correctable parse runs (originals immutable). **Auto-categorisation/auto-tagging** is a layered engine that learns from confirmations: deterministic vendor rules → **pgvector** nearest-neighbour over the household's confirmed history → **Claude** for genuinely novel items, each with a confidence and human-in-the-loop feedback (online learning, no retraining). Adds **pgvector** + Bedrock embeddings to the stack. Detail in `specs/F13` (receipts/OCR) + `F27` (rules/learning).
 - **Tasks owned natively (v6.2).** Reversing the original "tasks stay in Todoist" decision: tasks become a **first-class Kanzen domain** (no Todoist as system-of-record) — the tight coupling to maintenance, defects, lists and deliveries made one in-house source of truth simpler than syncing a SaaS. **Defects are first-class** too, and the location hierarchy is a **typed nested tree**. An optional one-way mirror/export to Todoist or Vikunja stays possible but non-authoritative. Calendar (Google vs native) is revisited at **F07**. Detail in `specs/F03-properties.md` and `F06`.
 
 ---
@@ -336,7 +337,9 @@ Ingestion is by polling the Gmail API on a short interval. Classification/extrac
 Routing is by category plus confidence. **Financial records and asset creations are never auto-committed** — always proposed for confirmation; in Trust settings the financial categories are **locked to Review and cannot be promoted to Auto** (resolved, §19 #7). Categories start in `review`; trust is promoted per non-financial category in Settings once proven. Every proposal and decision is audited; every created record links back to its source email; rejections feed sender learning.
 
 ### 10.4 Rules engine
-Complements the agent with deterministic, inspectable, editable rules: merchant-based category defaults, line-item → asset category defaults, transaction/receipt match suggestions, service-vs-acquisition cost inference, reminder suggestions, duplicate-detection heuristics. Edited under **Settings → Rules engine**. Rules are auditable; suggestions remain overridable. *(Present in the spec; not yet drawn in the prototype — build to this section.)*
+Complements the agent with deterministic, inspectable, editable rules: merchant-based category defaults, line-item → asset category defaults, transaction/receipt match suggestions, service-vs-acquisition cost inference, reminder suggestions, duplicate-detection heuristics. Edited under **Settings → Rules engine**.
+
+Above the rules sits a **learned suggestion engine** — the auto-categorisation/auto-tagging the household builds up over time. Vendor + line-item text is embedded (Bedrock embeddings) into **pgvector**; a new item's nearest previously-**confirmed** neighbours suggest its category/tags with a **confidence**; **Claude** reasons over genuinely novel items given their closest historical examples. **Every human confirmation becomes a new labelled example**, so suggestions improve with use — online learning, no retraining. Rules and suggestions are auditable and overridable; high-confidence categorisation may auto-apply per the trust model (§10.3). Full pipeline in `specs/F13` (receipts/OCR) + `specs/F27` (rules/learning). *(Not yet drawn in the prototype — build to this section.)*
 
 ---
 
@@ -400,11 +403,11 @@ The stack matches existing Hypervolt projects.
 | **Backend** | **Scala 2.13**, **cats-effect 3** runtime, **http4s** (ember) server, **Tapir** typed endpoints + OpenAPI, **Circe** JSON — mirrors ghost-busters/athena |
 | **Web frontend** | **React + StyleX** |
 | **Mobile** | **Flutter**, consuming the same API |
-| **Domain database** | **PostgreSQL** on AWS RDS |
+| **Domain database** | **PostgreSQL 16** on AWS RDS, with **pgvector** for learned-categorisation embeddings |
 | **Ledger** | **TigerBeetle** — immutable double-entry postings only |
 | **Object storage** | **S3** — original documents, photos, attachments, previews, backup artefacts |
 | **Auth** | **AWS Cognito** |
-| **LLM** | **Claude on Amazon Bedrock** — the email agent and OCR assist |
+| **LLM & embeddings** | **Claude on Amazon Bedrock** — email agent, **multimodal receipt OCR/extraction**, novel-item categorisation; **Bedrock embeddings** (Titan/Cohere) for history retrieval |
 | **Email out** | **AWS SES** |
 | **Scheduled jobs** | **AWS EventBridge Scheduler** — mailbox poll, reminders, schedule roll-forward, list roll-forward |
 | **Secrets** | **AWS Secrets Manager** |

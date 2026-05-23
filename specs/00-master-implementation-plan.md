@@ -31,7 +31,7 @@ Applied in every spec, not repeated as features:
 | F02 | Authorization (resource/field RBAC + custom roles + scope) | M1 | Identity | F01 | ✅ spec complete | [F02](F02-authorization.md) |
 | F03 | Properties, locations & defects | M1 | Properties | F02 | ✅ spec complete | [F03](F03-properties.md) |
 | F04 | Asset registry core | M1 | Assets | F03 | ✅ spec complete | [F04](F04-asset-registry-core.md) |
-| F05 | Documents — S3 evidence store | M1 | Documents | F02 | 📋 | — |
+| F05 | Documents — S3 evidence store | M1 | Documents | F02 | ✅ spec complete | [F05](F05-documents.md) |
 | F06 | Tasks — **native** (was Todoist) | M2 | Operations | F03 | 📋 | — |
 | F07 | Calendar — Google Calendar | M2 | Operations | F03 | 📋 | — |
 | F08 | Lists | M2 | Operations | F03 | 📋 | — |
