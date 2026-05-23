@@ -19,7 +19,7 @@ Resource `vendor` (property-scoped approval, F02): **Principal/Manager** `write`
 
 ## 3. Data model
 `V__vendors.sql`:
-- **`vendors`** — `id, owner_id, name, type ('business'|'individual'), trade text, contacts jsonb (phones/emails/addresses), rate_notes text null, contract_terms text null, nda_status text, nda_until date null, insurance_status text, insurance_until date null, rating numeric null, notes text null, created_at, updated_at, deleted_at`.
+- **`vendors`** — `id, owner_id, name, type ('business'|'individual'), trade text, contacts jsonb (phones/emails/addresses), rate_notes text null, contract_terms text null, nda_status text, nda_until date null, insurance_status text, insurance_until date null, rating numeric null, notes text null, attributes jsonb default '{}' (freehand custom fields, F33), created_at, updated_at, deleted_at`. Vendors also support polymorphic **tags** and **user-defined taxonomies** (e.g. a custom "warranty portal URL" field or a "Trade" taxonomy) via F33.
 - **`vendor_property_link`** — `(vendor_id, property_id)` — approval scope.
 - **`asset_party_link`** — `(asset_id, vendor_id, role)` `role ∈ dealer/auctioneer/retailer/appraiser/restorer/luthier/gift_recipient/borrower` — provenance & service roles (populated from F19 events too).
 - Links to `maintenance_plans`/`maintenance_logs` (F11), `bills` (F15), `defects` (F03).

@@ -20,7 +20,9 @@ Resource `list` (+ `list_item`), property-scoped (F02): **Principal** `admin`; *
 ## 3. Data model
 `V__lists.sql`:
 - **`shopping_lists`** — `id, owner_id, property_id → properties, name, type ('grocery'|'supplies'), vendor_id uuid null → vendors, assignee_id uuid → users, cycle text (RRULE/preset), last_order date null, next_order date null, status ('active'|'archived'), created_at, deleted_at`.
-- **`list_items`** — `id, list_id → shopping_lists, name, category text, qty int default 1, unit text null, status ('needs_approval'|'added'|'declined'), recurring bool default false, est_price_minor bigint null, currency text null, note text null, checked bool default false, added_by uuid, approved_by uuid null, approved_at null, created_at`.
+- **`list_items`** — `id, list_id → shopping_lists, name, category text, qty int default 1, unit text null, status ('needs_approval'|'added'|'declined'), recurring bool default false, est_price_minor bigint null, currency text null, url text null (product/vendor link, e.g. an Amazon URL), note text null, checked bool default false, attributes jsonb default '{}' (freehand custom fields, F33), added_by uuid, approved_by uuid null, approved_at null, created_at`. Items support polymorphic **tags** + **taxonomies** (F33).
+
+> **"We're out of X" requests:** a staff member proposes an item with a **product/vendor URL** (e.g. an Amazon link to *Dove Shower Gel*) + a **note** ("we're out") → it lands in *needs-approval* → the Principal approves → it joins the next order (and the order becomes a task, F06). This is the canonical ad-hoc "please buy this" flow.
 
 ## 4. API
 `GET /api/lists` · `GET /:id` · `POST` · `PATCH` · `POST /:id/place-order` (roll forward + create native task) · `POST /:id/archive`.

@@ -6,6 +6,7 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 1. **Baseline** (F00) — extensions `pgcrypto`/`citext`/**`vector` (pgvector)**; `audit_log_entries`.
 2. **Identity** (F01) — `users`, `login_identities`, `user_preferences`, `sessions`.
 3. **AuthZ** (F02) — `roles`, `permission_rules`, `property_scopes`; alter `users.role_id`.
+3b. **Extensibility** (F33, cross-cutting) — `taxonomies`, `taxonomy_nodes`, `entity_taxonomy_links`, `tags`, `entity_tags`, `entity_templates`, `custom_field_definitions`. Each extensible entity also gets an **`attributes jsonb`** column (added by its own migration: assets F04, vendors F09, list_items F08, people F10, properties F03, documents F05).
 4. **Properties** (F03) — `properties`, `locations` (nested tree), `asset_location_history`*, `asset_custody_history`* (*asset FK added in F04), `defects`.
 5. **Assets** (F04) — `categories`, `assets` (+ `jsonb attributes`), `asset_groups(+members)`, `collections(+members)`, `tags`/`asset_tags`; add asset FKs to F03 history tables.
 6. **Documents** (F05) — `documents`, `document_versions`, `document_links` (polymorphic).
@@ -36,6 +37,7 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 - **Money**: `bank_transactions.account_id → financial_accounts → financial_connections`; `reconciliation match_members(member_type∈{transaction,receipt})`; `bills.{vendor_id,property_id,payment_method_id}`; `bill_payments.{bill_id,payment_method_id,bank_transaction_id}`; `expenses.{property_id,category_id,receipt_id,bank_transaction_id,payment_method_id}`; `associated_cost_asset_link.{associated_cost_id,asset_id}`; `ledger_posting_references.group_id`.
 - **Ops**: `tasks.{project_id,assignee_id,source_*}`; `reminders.{source_type,source_id}` (cross-domain); `maintenance_plans.{property_id,asset_id,vendor_id}`; `shopping_lists.{property_id,vendor_id,assignee_id}`; `defects.{property_id,location_id,assigned_vendor_id,linked_task_id}`.
 - **Learning**: `line_item_memory` (confirmed line items) + `search_index.embedding` use **pgvector**; `rules`/`trust_settings` drive the agent + categorisation.
+- **Extensibility (F33)**: polymorphic `entity_tags(tag_id, entity_type, entity_id)` + `entity_taxonomy_links(taxonomy_node_id, entity_type, entity_id)` (no entity FKs — works for any object); `taxonomy_nodes.parent_id` = infinite tree; `attributes jsonb` on every extensible entity (the asset `categories` tree is the built-in `is_system` taxonomy).
 
 ## Cross-feature watch-list (resolved by ordering/notes above)
 - `asset_location_history`/`asset_custody_history` are **defined in F03** but their **asset FK is added in F04** (assets exist later).

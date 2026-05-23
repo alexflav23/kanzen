@@ -2,7 +2,7 @@
 
 The bridge between the v6 platform spec (`../Kanzen-Platform-Spec.md`) and the build. The spec says *what* and *why*; this plan and the per-feature specs in this directory say *exactly how*, feature by feature, in dependency order.
 
-> **Planning status: ✅ COMPLETE.** All **33 feature specs (F00–F32)** are written, plus **`../CLAUDE.md`** (build conventions) and **`01-data-model.md`** (consolidated schema + migration order). The build can begin at **F00**; **`../SETUP.md`** lists exactly what the operator must provide. Each spec's status is tracked below; flip to 🚧/✔️ as implementation proceeds.
+> **Planning status: ✅ COMPLETE.** All **34 feature specs (F00–F33)** are written, plus **`../CLAUDE.md`** (build conventions) and **`01-data-model.md`** (consolidated schema + migration order). The build can begin at **F00**; **`../SETUP.md`** lists exactly what the operator must provide. Each spec's status is tracked below; flip to 🚧/✔️ as implementation proceeds.
 
 ## How this works
 - **Per-capability slicing.** ~32 features (below). Big modules are split into buildable units.
@@ -62,6 +62,7 @@ Applied in every spec, not repeated as features:
 | F30 | Backup / export / restore | M8 | Platform | all domains | ✅ spec complete | [F30](F30-backup-restore.md) |
 | F31 | Flutter companion | M9 | Mobile | F00, key reads | ✅ spec complete | [F31](F31-flutter-companion.md) |
 | F32 | Advanced: bulk onboarding, NL query, Drive export | M10 | Platform | F28, F30 | ✅ spec complete | [F32](F32-advanced.md) |
+| F33 | Custom fields, tags & user-defined taxonomies (extensibility) | M1.5 | Platform | F02, F04, F22 | ✅ spec complete | [F33](F33-custom-fields-tags-taxonomies.md) |
 
 ## Dependency graph
 
