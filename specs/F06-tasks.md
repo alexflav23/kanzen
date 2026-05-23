@@ -29,7 +29,9 @@ Resource `task` (+ `task_project`), property-scoped (F02):
 - **`task_projects`** — `id uuid pk`, `owner_id`, `name text`, `kind text` (`property`/`system`), `property_id uuid null → properties` (set for `property` kind; F03's `properties.task_project_id` points back), `created_at`, `deleted_at`. Auto-create one `property` project per property; seed system projects **Finance**, **HR**, **General**.
 - **`tasks`** — `id uuid pk`, `owner_id`, `project_id → task_projects`, `title text`, `description text null`, `assignee_id uuid null → users`, `status text` (`todo`/`in_progress`/`done`/`cancelled`), `priority text` (`none`/`low`/`medium`/`high`), `due_at timestamptz null`, `due_all_day bool`, `timezone text` (per property: Europe/London or Asia/Singapore), `completed_at null`, `completed_by null`, `source_type text` (`manual`/`agent`/`maintenance_plan`/`defect`/`list`/`delivery`/`reminder`), `source_id uuid null`, `recurrence_rrule text null`, `recurring_template_id uuid null → tasks`, `created_by`, `created_at`, `updated_at`, `deleted_at null`.
 - **`task_labels`** — `id, owner_id, name, kind ('category'|'vendor'|'custom'), color`; **`task_label_links`** — `(task_id, label_id)`.
-- **`task_comments`** — `id, task_id, author_id, body, created_at`.
+- **`task_comments`** — `id, task_id, author_id, body, mentions uuid[], created_at`. Posting emits `task.comment.added` (F34) → notifies watchers/@-mentions.
+- **`task_watchers`** — `(task_id, user_id)` — who gets notified on activity (auto: assignee + creator + commenters; the Principal can watch any).
+- **Events**: `task.created|assigned|completed|reopened|comment.added` are emitted via the **event backbone (F34)** outbox → notifications/push. (Confirmed: tasks are **native**, not Vikunja — F34 makes notify-on-activity trivial across all domains.)
 - **`notifications`** (shared infra, first defined here) — `id, owner_id, user_id, kind, title, body, link, channels_sent jsonb, read_at null, created_at`.
 
 ## 4. API (Tapir endpoints)
@@ -54,8 +56,9 @@ Per `TasksView` + App. E.13:
 - **Scope/assignment**: Staff only see their property + assigned tasks (F02).
 
 ## 7. Integrations / external systems
+- **Event backbone (F34)** — task create/assign/complete/comment emit domain events → notification fan-out (in-app + SES + **APNs/FCM push**, e.g. push a staff member when assigned, ping the Principal on completion/comment).
 - **EventBridge Scheduler** — reminder firing, recurrence materialisation.
-- **SES** — email reminders; **Push (FCM/APNs)** — mobile reminders (infra introduced here for the Flutter app, F31).
+- **Frontend libraries** for the complex *UI* (rich-text comment editor, @-mention picker) — the data + events stay ours; no backend task dependency.
 - **Optional mirror** (Todoist/Vikunja) — a later, non-authoritative one-way export adapter behind a `TaskMirror` interface; off by default.
 - No external task system is authoritative.
 
