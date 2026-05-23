@@ -36,6 +36,8 @@ The must-haves to boot locally and stand up the first deployed environment. (Loc
 | A8 | **AWS Cognito user pool** (TOTP MFA enforced) | Sign-in (F01) | Provisioned by Terraform; for local dev a dev-mode issuer is fine (F00 open Q) | 🔴 |
 | A9 | **AWS SES** — verify `kanzen.family` (DKIM/SPF/DMARC), request **production access**, verified from-address (`no-reply@kanzen.family`) | Invites, reminders | Add DNS records; request SES prod access | 🔴 (for invites) |
 | A10 | **TigerBeetle** instance (local via Docker Compose; deployed mirrors Hypervolt athena) | Ledger skeleton (F00), ledger (F18) | Confirm Kanzen gets a TB host (Terraform) | 🟡 (F18; skeleton local now) |
+| A11 | **Apache Pulsar** (event backbone) — local via Docker Compose; deployed mirrors Hypervolt (Consul `pulsar.service`) | Event queue / notifications (F34) | Confirm Kanzen gets a Pulsar cluster (Terraform/Consul) | 🟡 (F34; local now) |
+| B6+ | **APNs + FCM** keys now needed for **push notifications** (F34), earlier than just mobile | Notifications (F34) + mobile (F31) | Create Firebase (FCM) + Apple APNs auth key | 🟡 F34 |
 
 ---
 
