@@ -34,10 +34,10 @@ Applied in every spec, not repeated as features:
 | F05 | Documents — S3 evidence store | M1 | Documents | F02 | ✅ spec complete | [F05](F05-documents.md) |
 | F06 | Tasks — **native** (was Todoist) | M2 | Operations | F03 | ✅ spec complete | [F06](F06-tasks.md) |
 | F07 | Calendar — Google Calendar (two-way) | M2 | Operations | F03, F06 | ✅ spec complete | [F07](F07-calendar.md) |
-| F08 | Lists | M2 | Operations | F03 | 📋 | — |
-| F09 | Vendors & contacts | M2 | Operations | F03 | 📋 | — |
-| F10 | People / HR | M2 | Operations | F02 | 📋 | — |
-| F11 | Maintenance plans & reminder engine | M2 | Operations | F04, F06, F07 | 📋 | — |
+| F08 | Lists | M2 | Operations | F03 | ✅ spec complete | [F08](F08-lists.md) |
+| F09 | Vendors & contacts | M2 | Operations | F03 | ✅ spec complete | [F09](F09-vendors.md) |
+| F10 | People / HR | M2 | Operations | F02 | ✅ spec complete | [F10](F10-people-hr.md) |
+| F11 | Maintenance plans & reminder engine | M2 | Operations | F04, F06, F07 | ✅ spec complete | [F11](F11-maintenance-reminders.md) |
 | F12 | Bank ingestion & transactions (open banking AIS) | M3 | Finance | F02 | ✅ spec complete | [F12](F12-bank-ingestion.md) |
 | F13 | Receipts & OCR/parse pipeline | M3 | Finance | F05 | 📋 | — |
 | F14 | Reconciliation engine | M3 | Finance | F12, F13 | 📋 | — |
