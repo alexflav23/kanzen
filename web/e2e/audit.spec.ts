@@ -65,8 +65,9 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.getByRole("heading", { name: /Bills, expenses/ })).toBeVisible();
   await shot("04-finance");
-  await page.getByRole("button", { name: "Approve" }).first().click();
-  await page.getByRole("button", { name: "Reject" }).first().click();
+  await page.getByRole("button", { name: /Expenses/ }).click();
+  await page.getByRole("button", { name: /Approve/ }).first().click();
+  await page.getByRole("button", { name: /Reject/ }).first().click();
   await shot("05-finance-after-decisions");
 
   // 4. Properties

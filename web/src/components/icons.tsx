@@ -16,3 +16,4 @@ export const Shield = ({ size }: P) => (<svg {...s(size)}><path d="M12 3l8 3v6c0
 export const Layers = ({ size }: P) => (<svg {...s(size)}><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5" /></svg>);
 export const Alert = ({ size }: P) => (<svg {...s(size)}><path d="M12 9v4m0 4h.01M10.3 4l-8 14h19.4l-8-14a2 2 0 00-3.4 0z" /></svg>);
 export const Wrench = ({ size }: P) => (<svg {...s(size)}><path d="M14 7a4 4 0 01-5 5l-5 5 2 2 5-5a4 4 0 005-5l-2 2-2-2 2-2z" /></svg>);
+export const Check = ({ size }: P) => (<svg {...s(size)}><path d="M20 6L9 17l-5-5" /></svg>);
