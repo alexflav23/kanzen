@@ -1,0 +1,30 @@
+# Kanzen CI (GitLab, mirroring Hypervolt conventions). Runs the full test pyramid.
+stages: [test]
+
+backend-test:
+  stage: test
+  image: sbtscala/scala-sbt:eclipse-temurin-jammy-19.0.2_7_1.11.1_2.13.16
+  services:
+    - name: docker:25-dind        # Testcontainers (Postgres 16) needs Docker
+      alias: docker
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+    TESTCONTAINERS_RYUK_DISABLED: "true"
+  script:
+    - cd backend && sbt -batch scalafmtCheckAll test
+  cache:
+    key: sbt
+    paths: [".ivy2/", ".sbt/"]
+
+web-unit-test:
+  stage: test
+  image: node:23
+  script:
+    - cd web && npm ci --no-audit --no-fund && npm test
+
+web-e2e-test:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.49.1-noble
+  script:
+    - cd web && npm ci --no-audit --no-fund && npx playwright test
