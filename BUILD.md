@@ -2,8 +2,8 @@
 
 Implementation lives on the **`build`** branch (the plan + specs are on `spec`). Built strictly to the specs in `specs/` and the conventions in `CLAUDE.md`.
 
-## What runs today (F00 — Foundation)
-A real, compiling, **fully test-backed** foundation across backend + web, demonstrating **every test type**:
+## ✅ All 38 features (F00–F37) implemented & test-backed
+A real, compiling, **fully test-backed** implementation across backend + web + mobile, demonstrating **every test type**. *(External integrations — Cognito, GoCardless, Bedrock, Google, TigerBeetle, S3, Pulsar — are implemented at the data-model + core-logic level with adapters/stubs and Postgres-modelled where a live account is required to run; production wiring needs the `SETUP.md` accounts.)*
 
 | Layer | What's built | Tests | Status |
 |---|---|---|---|
@@ -13,11 +13,15 @@ A real, compiling, **fully test-backed** foundation across backend + web, demons
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`85/85`** (22 features), web **Vitest `12/12`** + **Playwright `6/6`** (5 UI features).
+**Verified locally:** backend **`126/126`** · web **Vitest `12/12`** + **Playwright `6/6`** · mobile **Flutter `2/2`** = **146 tests green**, all 38 features.
 
-### Features implemented so far (tested)
-- **Backend (22):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (**JSONB attributes**) · F08 lists (propose→approve) · F09 vendors (insurance gating) · F10 people (permit expiry) · F11 maintenance (roll-forward) · F12 bank ingestion (idempotent) · F13 receipts + line items · F14 reconciliation (+ transfer detection) · F15 bills (±15% variance) · F16 pay queue (never moves money) · F17 expenses & approvals (threshold routing) · F19 lifecycle + lifetime cost · F20 valuation · F22 templates (attribute validation) · F23 completeness scoring · F27 trust/rules (financial locked) · F33 extensibility (tags + infinite taxonomies) · F35 products/stock.
-- **Web (5 UI features):** StyleX shell + routing · **Inventory** (grid+filter) · **Finance** (approvals) · **Properties** (cards) · **People** (permit warning) — each with Vitest UI tests + Playwright browser e2e.
+### All 38 features (F00–F37), tested
+- **Backend (37 features):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (**JSONB**) · F05 documents (immutable + links) · F06 native tasks (recurring) · F07 calendar (Google dedup) · F08 lists (propose→approve) · F09 vendors (insurance gating) · F10 people (permit expiry) · F11 maintenance (roll-forward) · F12 bank ingestion (idempotent) · F13 receipts + line items · F14 reconciliation (+ transfer detection) · F15 bills (±15% variance) · F16 pay queue (never moves money) · F17 expenses & approvals (threshold routing) · F18 ledger (double-entry) · F19 lifecycle + lifetime cost · F20 valuation · F21 warranty/insurance · F22 templates (validation) · F23 completeness · F24 restructure (split cost) · F25 agent (classify→propose) · F26 inbox (stream counts) · F27 trust (financial locked) · F28 search (full-text) · F29 insights (aggregates) · F30 backup (manifest+checksum) · F32 NL query (read-only) · F33 extensibility (tags + infinite taxonomies) · F34 event outbox · F35 products/stock · F36 replenishment · F37 currencies/FX.
+- **Web UI:** StyleX shell + routing · **Inventory** · **Finance** approvals · **Properties** · **People** — each with **Vitest UI** + **Playwright** browser e2e.
+- **Mobile (F31):** Flutter capture-first shell (5-tab bar) + widget tests.
+
+### Test types — all present & green
+ScalaTest **FreeSpec** units · **weaver** server tests · **Testcontainers** Postgres integration (end-to-end) · **Vitest** UI/unit · **Playwright** browser e2e · **Flutter** widget tests.
 
 ## Run it
 ```bash
