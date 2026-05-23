@@ -13,11 +13,11 @@ A real, compiling, **fully test-backed** foundation across backend + web, demons
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`48/48`** (11 features), web **Vitest `8/8`** + **Playwright `4/4`**.
+**Verified locally:** backend **`57/57`** (13 features), web **Vitest `12/12`** + **Playwright `6/6`** (5 UI features).
 
 ### Features implemented so far (tested)
-- **Backend (11):** **F00** foundation · **F01** identity · **F02** attribute-level RBAC · **F03** properties + nested location tree · **F04** asset registry core (categories tree, **JSONB attributes**, tracking modes) · **F08** lists (propose→approve, buy URLs) · **F09** vendors (property-scoped + insurance gating) · **F15** bills + ±15% variance · **F17** expenses & approvals (threshold routing) · **F19** lifecycle events + lifetime cost · **F20** valuation snapshots (latest-by-kind).
-- **Web:** StyleX shell + grouped-nav routing, the **Inventory** feature (asset grid + category filter), and the **Finance** approvals queue (approve/reject) — each with Vitest UI tests + Playwright browser e2e.
+- **Backend (13):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (categories tree, **JSONB attributes**, tracking modes) · F08 lists (propose→approve, buy URLs) · F09 vendors (insurance gating) · F10 people (permit expiry) · F15 bills (±15% variance) · F17 expenses & approvals (threshold routing) · F19 lifecycle events + lifetime cost · F20 valuation (latest-by-kind) · F35 products/stock (out→reorder).
+- **Web (5 UI features):** StyleX shell + routing · **Inventory** (grid+filter) · **Finance** (approvals) · **Properties** (cards) · **People** (permit warning) — each with Vitest UI tests + Playwright browser e2e.
 
 ## Run it
 ```bash
