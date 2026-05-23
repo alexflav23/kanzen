@@ -55,11 +55,11 @@ Applied in every spec, not repeated as features:
 | F25 | Email agent pipeline | M6 | Agent | F05, F13, F15 | ✅ spec complete | [F25](F25-email-agent.md) |
 | F26 | Unified Inbox + Triage | M6 | Agent | F25, F14, F23 | ✅ spec complete | [F26](F26-inbox-triage.md) |
 | F27 | Trust model, rules & learned categorisation | M6 | Agent | F25, F13 | ✅ spec complete | [F27](F27-trust-rules-learning.md) |
-| F28 | Search + ⌘K command palette | M7 | Platform | F04, F12 | 📋 | — |
-| F29 | Insights & aggregate reporting | M7 | Platform | F18, F23 | 📋 | — |
-| F30 | Backup / export / restore | M8 | Platform | all domains | 📋 | — |
-| F31 | Flutter companion | M9 | Mobile | F00, key reads | 📋 | — |
-| F32 | Advanced: bulk onboarding, NL query, Drive export | M10 | Platform | F28, F30 | 📋 | — |
+| F28 | Search + ⌘K command palette (advanced + semantic) | M7 | Platform | F04, F12, F13 | ✅ spec complete | [F28](F28-search-command-palette.md) |
+| F29 | Dashboard, Insights & reporting | M7 | Platform | F18, F23 | ✅ spec complete | [F29](F29-dashboard-insights.md) |
+| F30 | Backup / export / restore | M8 | Platform | all domains | ✅ spec complete | [F30](F30-backup-restore.md) |
+| F31 | Flutter companion | M9 | Mobile | F00, key reads | ✅ spec complete | [F31](F31-flutter-companion.md) |
+| F32 | Advanced: bulk onboarding, NL query, Drive export | M10 | Platform | F28, F30 | ✅ spec complete | [F32](F32-advanced.md) |
 
 ## Dependency graph
 
