@@ -13,12 +13,12 @@ A real, compiling, **fully test-backed** implementation across backend + web + m
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`126/126`** · web **Vitest `12/12`** + **Playwright `6/6`** · mobile **Flutter `2/2`** = **146 tests green**, all 38 features.
+**Verified locally:** backend **`126/126`** · web **Vitest `12/12`** + **Playwright `12/12`** · mobile **Flutter `6/6`** = **156 tests green**, all 38 features.
 
 ### All 38 features (F00–F37), tested
 - **Backend (37 features):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (**JSONB**) · F05 documents (immutable + links) · F06 native tasks (recurring) · F07 calendar (Google dedup) · F08 lists (propose→approve) · F09 vendors (insurance gating) · F10 people (permit expiry) · F11 maintenance (roll-forward) · F12 bank ingestion (idempotent) · F13 receipts + line items · F14 reconciliation (+ transfer detection) · F15 bills (±15% variance) · F16 pay queue (never moves money) · F17 expenses & approvals (threshold routing) · F18 ledger (double-entry) · F19 lifecycle + lifetime cost · F20 valuation · F21 warranty/insurance · F22 templates (validation) · F23 completeness · F24 restructure (split cost) · F25 agent (classify→propose) · F26 inbox (stream counts) · F27 trust (financial locked) · F28 search (full-text) · F29 insights (aggregates) · F30 backup (manifest+checksum) · F32 NL query (read-only) · F33 extensibility (tags + infinite taxonomies) · F34 event outbox · F35 products/stock · F36 replenishment · F37 currencies/FX.
 - **Web UI:** StyleX shell + routing · **Inventory** · **Finance** approvals · **Properties** · **People** — each with **Vitest UI** + **Playwright** browser e2e.
-- **Mobile (F31):** Flutter capture-first shell (5-tab bar) + widget tests.
+- **Mobile (F31):** Flutter app at **feature parity with the web** — Dashboard · Inventory · Finance · Properties · People, sharing the **same seed data + warm-paper tokens**, in a 5-tab nav. Per-feature widget tests + a full-app **audit** (exception guard) = 6/6 green; visually verified via real Flutter-web screenshots.
 
 ### Test types — all present & green
 ScalaTest **FreeSpec** units · **weaver** server tests · **Testcontainers** Postgres integration (end-to-end) · **Vitest** UI/unit · **Playwright** browser e2e · **Flutter** widget tests.
