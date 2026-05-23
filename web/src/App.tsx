@@ -6,6 +6,7 @@ import { Inventory } from "./pages/Inventory";
 import { AssetDetail } from "./pages/AssetDetail";
 import { Finance } from "./pages/Finance";
 import { Properties } from "./pages/Properties";
+import { PropertyBible } from "./pages/PropertyBible";
 import { People } from "./pages/People";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
@@ -62,6 +63,7 @@ export function App() {
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/finance" element={<Finance />} />
             <Route path="/properties" element={<Properties />} />
+            <Route path="/properties/:id" element={<PropertyBible />} />
             <Route path="/people" element={<People />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
