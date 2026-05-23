@@ -98,6 +98,7 @@ The must-haves to boot locally and stand up the first deployed environment. (Loc
 | B4 | Bedrock model access (Claude + embeddings) | F13/F25 | AWS console/IAM | 🟡 ☐ |
 | B5a | GoCardless BAD credentials | F12 | Secrets Manager | 🟡 ☐ |
 | B5b | Singapore OB provider (decision) | F12 | — | 🟡 ☐ |
+| B5c | **FX rate provider** (decision: ECB reference [free] vs commercial) + daily fetch | F37 currencies | Secrets Manager (if keyed) | 🟡 ☐ |
 | B6 | FCM + APNs keys | F06/F31 | Secrets Manager | ⚪ ☐ |
 | B7 | 1Password vault names | finance/property | SSM/config | ⚪ ☐ |
 | B8 | Apple Developer / Google Play | F31 | — | ⚪ ☐ |

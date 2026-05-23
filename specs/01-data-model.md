@@ -15,6 +15,8 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 8. **Calendar** (F07) — `calendars`, `calendar_event_refs`.
 9. **Lists** (F08) — `shopping_lists`, `list_items`.
 9b. **Products & stock** (F35) — `products`, `product_vendors`, `product_stock_events` (out/low → Lists buy request via F34).
+9c. **Currencies & FX** (F37, with finance) — `currencies`, `fx_rates` (daily snapshots); financial rows carry `fx_rate_to_base`/`fx_as_of` (rate-at-time); native amounts stay truth.
+9d. **Predictive replenishment** (F36, analytics) — `product_purchases` (purchase↔product links), `product_consumption` (materialised cadence/forecast).
 10. **Vendors** (F09) — `vendors`, `vendor_property_link`, `asset_party_link`.
 11. **People** (F10) — `employment_records`, `leave`.
 12. **Maintenance/Reminders** (F11) — `maintenance_plans`, `maintenance_logs`, **`reminders`** (shared engine).

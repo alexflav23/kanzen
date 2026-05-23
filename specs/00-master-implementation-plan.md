@@ -2,7 +2,7 @@
 
 The bridge between the v6 platform spec (`../Kanzen-Platform-Spec.md`) and the build. The spec says *what* and *why*; this plan and the per-feature specs in this directory say *exactly how*, feature by feature, in dependency order.
 
-> **Planning status: ✅ COMPLETE** (one open decision: tasks native vs Vikunja-headless, F06/F34). All **36 feature specs (F00–F35)** are written, plus **`../CLAUDE.md`** (build conventions) and **`01-data-model.md`** (consolidated schema + migration order). The build can begin at **F00**; **`../SETUP.md`** lists exactly what the operator must provide. Each spec's status is tracked below; flip to 🚧/✔️ as implementation proceeds.
+> **Planning status: ✅ COMPLETE.** All **38 feature specs (F00–F37)** are written (tasks confirmed native), plus **`../CLAUDE.md`** (build conventions) and **`01-data-model.md`** (consolidated schema + migration order). The build can begin at **F00**; **`../SETUP.md`** lists exactly what the operator must provide. Each spec's status is tracked below; flip to 🚧/✔️ as implementation proceeds.
 
 ## How this works
 - **Per-capability slicing.** ~32 features (below). Big modules are split into buildable units.
@@ -65,6 +65,8 @@ Applied in every spec, not repeated as features:
 | F33 | Custom fields, tags & user-defined taxonomies (extensibility) | M1.5 | Platform | F02, F04, F22 | ✅ spec complete | [F33](F33-custom-fields-tags-taxonomies.md) |
 | F34 | Event backbone (domain events, queue, consumers, push) | M0.5 | Platform | F00 | ✅ spec complete | [F34](F34-event-backbone.md) |
 | F35 | Products & stock (consumables/supplies) | M2 | Operations | F08, F09, F33, F34 | ✅ spec complete | [F35](F35-products-stock.md) |
+| F36 | Predictive replenishment (consumption analytics) | M7 | Operations | F35, F12, F13 | ✅ spec complete | [F36](F36-predictive-replenishment.md) |
+| F37 | Currencies & FX | M3 | Finance | F12, F17, F20 | ✅ spec complete | [F37](F37-currencies-fx.md) |
 
 ## Dependency graph
 

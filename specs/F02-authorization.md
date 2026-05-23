@@ -57,7 +57,7 @@ Extends the prototype's `PermissionsMatrix` (Settings → Permissions):
 - **Default deny.** No matching rule → `none`.
 - **Most-specific wins.** Field rule overrides resource rule; resource rule overrides parent/module rule.
 - **Property scope is independent.** Effective access to an *instance* requires (a) the rule allows the action on the resource/field **and** (b) the instance's `property_id` ∈ the user's scope (or scope = `all`, or the resource is non-property-bound). Registry/finance instances additionally honour `owner_id` (Principal-private) unless a rule grants the role.
-- **Field-level read filtering.** Responses are passed through a permission-aware serializer that strips fields the principal cannot `read` (e.g. an Asset returned to a Manager omits `market_value`/`insured_value`/`valuation_snapshots`). Writes to denied fields are rejected.
+- **Field-level read filtering — to the attribute.** Responses pass through a permission-aware serializer that strips any field/attribute the principal cannot `read`; writes to denied fields are rejected. This extends **all the way down**: top-level columns, **JSONB `attributes` keys**, and **F33 custom fields** (which carry a `sensitive` flag). So a rule can grant `write` on `asset` + `asset_event` (do maintenance, log a service) while **denying `read` on `asset.acquisition_cost`/`market_value`/`insured_value`** — **a person services an item without ever seeing its price.** A dedicated **"Maintenance" role** (or a scoped vendor/guest) is exactly this: operational write, price/valuation attributes denied.
 - **`write` implies `read`; `admin` implies `write` + delete.**
 - **Agent principal.** The email agent runs as a `system` principal bound to an **Agent role** (seeded) and goes through the *same* `Authorizer`; financial auto-execute remains blocked at the agent layer (F27) regardless.
 - **Self-lockout guard** (see §2).
@@ -78,6 +78,7 @@ Extends the prototype's `PermissionsMatrix` (Settings → Permissions):
 
 ## 9. Acceptance criteria
 - **AC1** A Manager calling `GET /api/assets/:id` receives the asset **without** `market_value`, `insured_value`, or `valuation_snapshots`; a Principal receives them.
+- **AC1b** A "Maintenance" role can `write` an `asset_event` (log a service) on an item but its `GET /api/assets/:id` **omits `acquisition_cost`/price/valuation** — services without seeing cost; a `sensitive` JSONB custom field is likewise stripped.
 - **AC2** A Manager is denied (`403`) on `GET /api/ledger/*`, bank balances, and `settings.permissions`.
 - **AC3** The Principal creates a custom role "Singapore Lead", grants it Manager-like rules scoped to the Singapore property, assigns Siti's future replacement; that user sees only Singapore data.
 - **AC4** A Staff user (Marcia) can create a Wardian list item and a task, but `GET /api/inventory` returns `403`.
