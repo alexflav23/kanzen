@@ -27,7 +27,7 @@ Applied in every spec, not repeated as features:
 | ID | Feature | M | Domain | Depends on | Status | Spec |
 |---|---|---|---|---|---|---|
 | F00 | Foundation: infra, repo, design system | M0 | Platform | — | ✅ spec complete | [F00](F00-foundation.md) |
-| F01 | Identity, auth & session | M1 | Identity | F00 | 📋 | — |
+| F01 | Identity, auth & session | M1 | Identity | F00 | ✅ spec complete | [F01](F01-identity-auth.md) |
 | F02 | Authorization (permission matrix + scope) | M1 | Identity | F01 | 📋 | — |
 | F03 | Properties, rooms, sub-locations, custody | M1 | Properties | F02 | 📋 | — |
 | F04 | Asset registry core | M1 | Assets | F03 | 📋 | — |
