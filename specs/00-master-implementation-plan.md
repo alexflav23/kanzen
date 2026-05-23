@@ -2,6 +2,8 @@
 
 The bridge between the v6 platform spec (`../Kanzen-Platform-Spec.md`) and the build. The spec says *what* and *why*; this plan and the per-feature specs in this directory say *exactly how*, feature by feature, in dependency order.
 
+> **Planning status: ✅ COMPLETE.** All **33 feature specs (F00–F32)** are written, plus **`../CLAUDE.md`** (build conventions) and **`01-data-model.md`** (consolidated schema + migration order). The build can begin at **F00**; **`../SETUP.md`** lists exactly what the operator must provide. Each spec's status is tracked below; flip to 🚧/✔️ as implementation proceeds.
+
 ## How this works
 - **Per-capability slicing.** ~32 features (below). Big modules are split into buildable units.
 - **One at a time, question-first.** For each feature we resolve its open questions, then write an **implementation-ready** spec (`F__-<name>.md`) using `_template.md`.

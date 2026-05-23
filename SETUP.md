@@ -113,4 +113,4 @@ These don't block the build but I'll need them before the named feature ships:
 
 ---
 
-*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. Last updated: through F17 (M3 finance — F13 confirms Bedrock B4 needs both Claude **and** an embeddings model for learned categorisation; pgvector on RDS per A5).*
+*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. **Last updated: through F32 — planning complete; all integrations captured.** Net-new since F17: nothing fundamental — F25/F27 use the Gmail SA (B3) + Bedrock (B4) already listed; F28 adds pgvector/embeddings (already in A5/B4); F30 needs `age` encryption key management (operator-held); F31 needs FCM/APNs (B6) + Apple Developer/Play (B8).*
