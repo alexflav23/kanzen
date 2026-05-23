@@ -7,6 +7,7 @@ The bridge between the v6 platform spec (`../Kanzen-Platform-Spec.md`) and the b
 - **One at a time, question-first.** For each feature we resolve its open questions, then write an **implementation-ready** spec (`F__-<name>.md`) using `_template.md`.
 - **Committed as we go**, on the `spec` branch. The status table below is the live tracker.
 - **Foundation-first, dependency order.** Start at F00 and walk the graph.
+- **External inputs tracked centrally.** Every operator-provided input (AWS resources, tokens, DNS, third-party accounts, model access) is logged in [`../SETUP.md`](../SETUP.md) as the feature that needs it is specced — so we always know exactly what's required to boot and run the app.
 
 ### Status legend
 📋 planned · ❓ questions open · ✍️ drafting · ✅ spec complete · 🚧 implementing · ✔️ shipped
