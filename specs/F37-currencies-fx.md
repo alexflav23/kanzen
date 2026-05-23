@@ -3,13 +3,15 @@
 | | |
 |---|---|
 | **Feature ID** | F37 |
-| **Milestone** | M3 (with finance) |
+| **Milestone** | M3 — **foundational**, lands **with F12** (bank ingestion) |
 | **Domain** | Finance |
 | **Status** | ✅ spec complete |
 | **Depends on** | F12 (transactions), F17 (expenses/budgets), F20 (valuation), F29 (rollups); resolves SPEC §19 #8 |
 | **Spec references** | SPEC §13 (currency), §19 #8 (cross-currency rollups); user request (this turn) |
 
-> **Decisions (revisitable):** **native amounts stay the truth** (minor units + ISO currency, never mutated); FX is an **overlay** for cross-currency *reporting/rollups* and an optional display currency. Capture the **rate-at-transaction-time** for historical accuracy; conversions are **explicit + labelled** ("≈ £X at 22 May rate") with a per-currency breakdown always available; **pluggable FX rate source** with daily snapshots. Approval **thresholds stay per-jurisdiction native** (£1,500 / S$2,500 — not converted). This **resolves §19 #8**.
+> **Decisions (revisitable):** a **foundational** capability. **Native amounts stay the truth** (minor units + ISO currency, never mutated); a single **reporting/base currency** (default **GBP**, configurable) lets everything roll up coherently. The core requirement: **every transaction converts at the daily FX rate on its own transaction date** — so unified-currency reporting is **historically accurate**, not re-stated at today's rate. The **rate-at-date is captured at ingestion** (with F12) and stored permanently. Daily-granularity rates; weekends/holidays → nearest-prior. Conversions are **explicit + labelled** ("≈ £X at 22 May rate") with a per-currency breakdown always available. **Pluggable provider** (default **ECB daily reference rates** — free; triangulate non-EUR pairs via EUR). Approval **thresholds stay per-jurisdiction native** (£1,500 / S$2,500 — not converted). This **resolves §19 #8**.
+
+> **Foundational timing:** the base currency, the FX-rate source, the daily-snapshot job, and rate-at-date capture stand up **with F12** (bank ingestion) — not bolted on later — and the snapshot job **backfills history** so older transactions can be converted accurately too.
 
 ## 1. Purpose & user value
 You buy from anywhere — a watch in CHF, a guitar in USD, groceries in SGD, bills in GBP. Currencies become first-class: every amount keeps its true native value, but you can see a coherent household total / net-worth in your chosen currency, with honest, dated conversions and no silent FX fudging.
@@ -35,7 +37,7 @@ Resource `currency`/`fx` — system-fetched rates; **Principal** sets the **disp
 
 ## 6. Business rules & validation
 - **Native is truth**: amounts never mutated; conversions are computed, never stored as the value.
-- **Rate selection**: historical figures convert at the **rate-at-time** (transaction date); current/aggregate views may use latest or as-of, **always labelled**.
+- **Rate selection**: historical figures convert at the **rate on the transaction's own date** (the captured `fx_rate_to_base` / the `fx_rates` snapshot for `booked_at`); current/aggregate views may use latest or as-of, **always labelled**. **GoCardless supplies the transaction's native amount, currency and date — not a rate to our base**; the FX layer supplies that from stored daily snapshots, captured at ingestion so it's never lost or re-stated.
 - **Rollups**: cross-currency totals require a target currency + a stated rate basis; per-currency breakdowns remain primary (no silent blending).
 - **Thresholds/budgets stay native per jurisdiction** (approval £1,500 / S$2,500; budgets per property currency) — not FX-converted.
 - **Rounding** on conversion is display-only; never feeds back into native/ledger.
