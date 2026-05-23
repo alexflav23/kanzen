@@ -45,13 +45,13 @@ Applied in every spec, not repeated as features:
 | F15 | Bills & recurring schedule | M3 | Finance | F03, F09 | ✅ spec complete | [F15](F15-bills.md) |
 | F16 | Payment methods & Pay queue | M3 | Finance | F15 | ✅ spec complete | [F16](F16-payments-pay-queue.md) |
 | F17 | Budgets, expenses & approvals | M3 | Finance | F15 | ✅ spec complete | [F17](F17-budgets-expenses-approvals.md) |
-| F18 | TigerBeetle ledger | M4 | Finance | F14 | 📋 | — |
-| F19 | Lifecycle events & timeline | M5 | Assets | F04 | 📋 | — |
-| F20 | Valuation snapshots | M5 | Assets | F04 | 📋 | — |
-| F21 | Warranty / provenance / authenticity / insurance | M5 | Assets | F04 | 📋 | — |
-| F22 | Verticals & category templates (incl. Art) | M5 | Assets | F04 | 📋 | — |
-| F23 | Completeness scoring & data quality | M5 | Assets | F04, F19–F22 | 📋 | — |
-| F24 | Legacy onboarding & restructure | M5 | Assets | F04, F19, F20 | 📋 | — |
+| F18 | TigerBeetle ledger | M4 | Finance | F14 | ✅ spec complete | [F18](F18-tigerbeetle-ledger.md) |
+| F19 | Lifecycle events & timeline | M5 | Assets | F04 | ✅ spec complete | [F19](F19-lifecycle-events.md) |
+| F20 | Valuation snapshots | M5 | Assets | F04 | ✅ spec complete | [F20](F20-valuation.md) |
+| F21 | Warranty / provenance / authenticity / insurance | M5 | Assets | F04 | ✅ spec complete | [F21](F21-provenance-insurance.md) |
+| F22 | Verticals & category templates (incl. Art) | M5 | Assets | F04 | ✅ spec complete | [F22](F22-verticals-templates.md) |
+| F23 | Completeness scoring & data quality | M5 | Assets | F04, F19–F22 | ✅ spec complete | [F23](F23-completeness-data-quality.md) |
+| F24 | Legacy onboarding & restructure | M5 | Assets | F04, F19, F20 | ✅ spec complete | [F24](F24-legacy-onboarding-restructure.md) |
 | F25 | Email agent pipeline | M6 | Agent | F05, F13, F15 | 📋 | — |
 | F26 | Unified Inbox + Triage | M6 | Agent | F25, F14, F23 | 📋 | — |
 | F27 | Trust model & rules engine | M6 | Agent | F25 | 📋 | — |
