@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Browser e2e (Playwright): the shell renders in a real browser with StyleX applied.
 test("app shell renders the brand, grouped nav and greeting", async ({ page }) => {

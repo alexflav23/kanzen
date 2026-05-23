@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Browser e2e (Playwright): the People directory with the permit warning.
 test("people page lists the team and flags the expiring permit", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Browser e2e (Playwright): the Properties page.
 test("properties page shows the seed property cards", async ({ page }) => {
