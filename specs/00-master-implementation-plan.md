@@ -52,9 +52,9 @@ Applied in every spec, not repeated as features:
 | F22 | Verticals & category templates (incl. Art) | M5 | Assets | F04 | ✅ spec complete | [F22](F22-verticals-templates.md) |
 | F23 | Completeness scoring & data quality | M5 | Assets | F04, F19–F22 | ✅ spec complete | [F23](F23-completeness-data-quality.md) |
 | F24 | Legacy onboarding & restructure | M5 | Assets | F04, F19, F20 | ✅ spec complete | [F24](F24-legacy-onboarding-restructure.md) |
-| F25 | Email agent pipeline | M6 | Agent | F05, F13, F15 | 📋 | — |
-| F26 | Unified Inbox + Triage | M6 | Agent | F25, F14, F23 | 📋 | — |
-| F27 | Trust model & rules engine | M6 | Agent | F25 | 📋 | — |
+| F25 | Email agent pipeline | M6 | Agent | F05, F13, F15 | ✅ spec complete | [F25](F25-email-agent.md) |
+| F26 | Unified Inbox + Triage | M6 | Agent | F25, F14, F23 | ✅ spec complete | [F26](F26-inbox-triage.md) |
+| F27 | Trust model, rules & learned categorisation | M6 | Agent | F25, F13 | ✅ spec complete | [F27](F27-trust-rules-learning.md) |
 | F28 | Search + ⌘K command palette | M7 | Platform | F04, F12 | 📋 | — |
 | F29 | Insights & aggregate reporting | M7 | Platform | F18, F23 | 📋 | — |
 | F30 | Backup / export / restore | M8 | Platform | all domains | 📋 | — |
