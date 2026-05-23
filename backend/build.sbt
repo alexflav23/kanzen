@@ -10,6 +10,10 @@ lazy val V = new {
   val log4cats   = "2.6.0"
   val logback    = "1.4.14"
   val config     = "1.4.3"
+  val doobie     = "1.0.0-RC5"
+  val flyway     = "9.22.3"
+  val postgres   = "42.7.4"
+  val tc         = "0.41.4"
   val weaver     = "0.8.4"
   val scalatest  = "3.2.18"
 }
@@ -30,9 +34,15 @@ lazy val root = (project in file("."))
       "org.typelevel"                 %% "log4cats-slf4j"            % V.log4cats,
       "ch.qos.logback"                %  "logback-classic"           % V.logback % Runtime,
       "com.typesafe"                  %  "config"                    % V.config,
-      // tests: weaver (effectful/server) + ScalaTest FreeSpec (pure units)
+      "org.tpolecat"                  %% "doobie-core"               % V.doobie,
+      "org.tpolecat"                  %% "doobie-hikari"             % V.doobie,
+      "org.tpolecat"                  %% "doobie-postgres"           % V.doobie,
+      "org.flywaydb"                  %  "flyway-core"               % V.flyway,
+      "org.postgresql"                %  "postgresql"                % V.postgres,
+      // tests: weaver (effectful/server/integration) + ScalaTest FreeSpec (pure units)
       "com.disneystreaming"           %% "weaver-cats"               % V.weaver    % Test,
-      "org.scalatest"                 %% "scalatest"                 % V.scalatest % Test
+      "org.scalatest"                 %% "scalatest"                 % V.scalatest % Test,
+      "com.dimafeng"                  %% "testcontainers-scala-postgresql" % V.tc  % Test
     ),
     testFrameworks += new TestFramework("weaver.framework.CatsEffect"),
     Compile / mainClass := Some("com.kanzen.Main")
