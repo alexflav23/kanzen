@@ -10,7 +10,7 @@ void main() {
     expect(find.text('2 pending your approval.'), findsOneWidget);
     // Multi-currency renders (each amount appears in both the queue and ledger).
     expect(find.text('£1,840'), findsWidgets);
-    expect(find.text('SGD 2,640'), findsWidgets);
+    expect(find.text('S\$2,640'), findsWidgets);
 
     await tester.tap(find.text('Approve').first);
     await tester.pumpAndSettle();

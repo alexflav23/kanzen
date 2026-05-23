@@ -33,7 +33,9 @@ String _group(int n) =>
 /// GBP renders with the £ symbol, other currencies with the ISO code prefix.
 String money(int minor, String currency) {
   final whole = (minor / 100).round();
-  return currency == 'GBP' ? '£${_group(whole)}' : '$currency ${_group(whole)}';
+  if (currency == 'GBP') return '£${_group(whole)}';
+  if (currency == 'SGD') return 'S\$${_group(whole)}'; // design style, matches web
+  return '$currency ${_group(whole)}';
 }
 
 /// Whole-pound value (asset valuations are already in pounds).
