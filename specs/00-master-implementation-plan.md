@@ -40,11 +40,11 @@ Applied in every spec, not repeated as features:
 | F10 | People / HR | M2 | Operations | F02 | ✅ spec complete | [F10](F10-people-hr.md) |
 | F11 | Maintenance plans & reminder engine | M2 | Operations | F04, F06, F07 | ✅ spec complete | [F11](F11-maintenance-reminders.md) |
 | F12 | Bank ingestion & transactions (open banking AIS) | M3 | Finance | F02 | ✅ spec complete | [F12](F12-bank-ingestion.md) |
-| F13 | Receipts & OCR/parse pipeline | M3 | Finance | F05 | 📋 | — |
-| F14 | Reconciliation engine | M3 | Finance | F12, F13 | 📋 | — |
-| F15 | Bills & recurring schedule | M3 | Finance | F03, F09 | 📋 | — |
-| F16 | Payment methods & Pay queue | M3 | Finance | F15 | 📋 | — |
-| F17 | Budgets & approvals | M3 | Finance | F15 | 📋 | — |
+| F13 | Receipts & OCR/parse + learned categorisation | M3 | Finance | F05 | ✅ spec complete | [F13](F13-receipts-ocr.md) |
+| F14 | Reconciliation engine | M3 | Finance | F12, F13 | ✅ spec complete | [F14](F14-reconciliation.md) |
+| F15 | Bills & recurring schedule | M3 | Finance | F03, F09 | ✅ spec complete | [F15](F15-bills.md) |
+| F16 | Payment methods & Pay queue | M3 | Finance | F15 | ✅ spec complete | [F16](F16-payments-pay-queue.md) |
+| F17 | Budgets, expenses & approvals | M3 | Finance | F15 | ✅ spec complete | [F17](F17-budgets-expenses-approvals.md) |
 | F18 | TigerBeetle ledger | M4 | Finance | F14 | 📋 | — |
 | F19 | Lifecycle events & timeline | M5 | Assets | F04 | 📋 | — |
 | F20 | Valuation snapshots | M5 | Assets | F04 | 📋 | — |

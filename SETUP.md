@@ -113,4 +113,4 @@ These don't block the build but I'll need them before the named feature ships:
 
 ---
 
-*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. Last updated: through F12.*
+*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. Last updated: through F17 (M3 finance — F13 confirms Bedrock B4 needs both Claude **and** an embeddings model for learned categorisation; pgvector on RDS per A5).*
