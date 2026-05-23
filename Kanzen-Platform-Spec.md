@@ -3,7 +3,7 @@
 
 A private, in-house platform that does two things as one system: **runs the household** as a small family office, and keeps a **rigorous registry of the household's assets and finances**. It is an operating system for the household and everything in it.
 
-This version (**v6**) refines the v5 combined spec against the **Kanzen design prototype** — a high-fidelity React build of the product (16 screens in `input/views/`, with rendered previews in `input/previews/`). The prototype is the **canonical visual reference**; this document is the **canonical written reference**, and the two are now reconciled. Where the prototype showed features or detail the written spec lacked, they have been folded in; where the two conflicted, the conflicts were resolved (see §3 and the change log at the end of §0). Stack: Scala 3, Tapir, React + StyleX web, Flutter mobile, PostgreSQL, TigerBeetle, AWS (**eu-west-1, Ireland**). This document is the build input for Claude Code.
+This version (**v6**) refines the v5 combined spec against the **Kanzen design prototype** — a high-fidelity React build of the product (16 screens in `input/views/`, with rendered previews in `input/previews/`). The prototype is the **canonical visual reference**; this document is the **canonical written reference**, and the two are now reconciled. Where the prototype showed features or detail the written spec lacked, they have been folded in; where the two conflicted, the conflicts were resolved (see §3 and the change log at the end of §0). Stack: Scala 2.13, cats-effect + http4s + Tapir, React + StyleX web, Flutter mobile, PostgreSQL, TigerBeetle, AWS (**eu-west-1, Ireland**). This document is the build input for Claude Code.
 
 ---
 
@@ -17,7 +17,8 @@ Reconciliation outcomes against the prototype, recorded so nothing is silently l
 - **Vehicles = vertical + saved view.** Vehicles remain part of the **one unified Asset registry** as a typed vertical (App. C), surfaced as a saved Inventory view with vehicle-specific columns (MOT / road-tax / insurance). No separate vehicle domain.
 - **"Inventory" is the UI label** for the Assets module; `Asset` remains the entity name.
 - **Folded in from the prototype:** the grouped navigation (§5); a **Pay queue** and **Payment methods** in Finance, with a `PaymentMethod` entity and a bill-payment lifecycle (§9.7); a concrete **4-level permission model** (none/read/write/admin) over an editable role×module matrix (§4); per-jurisdiction **approval thresholds** (£1,500 / S$2,500), the **±15% variance** rule, 4-hour sessions, 7-year audit retention, 5-day bill lead (§4, §9, §13); an **Art** vertical (App. C); a **⌘K command palette** (§13); and a full **design language** plus **per-screen specifications** (§16, App. E).
-- **Open decisions closed:** §19 #1 (ECS Fargate; region Ireland), #3 (ledger hidden), #5 (first verticals), #6 (five mailboxes), #7 (financial categories locked to review), #9 (`kanzen.family`), #10 (parent/child category tree). Still open: open-banking provider, backup-binary packaging, wear/use counts, inference aggressiveness, payment-execution boundary.
+- **Open decisions closed:** §19 #1 (EC2 autoscaling + NixOS; region Ireland), #3 (ledger hidden), #5 (first verticals), #6 (five mailboxes), #7 (financial categories locked to review), #9 (`kanzen.family`), #10 (parent/child category tree). Still open: open-banking provider, backup-binary packaging, wear/use counts, inference aggressiveness, payment-execution boundary.
+- **Stack aligned to Hypervolt (v6.1).** After reading `ghost-busters` / `athena` / `hyperstore`: the backend is **Scala 2.13 + cats-effect + http4s (ember) + Tapir + Doobie + Flyway** (not Scala 3); compute is **EC2 autoscaling + NixOS** (not ECS Fargate); CI is **GitLab CI on Nix**; secrets split **Secrets Manager + SSM Parameter Store**; the web data layer is **hand-written services + Zod** (not OpenAPI-generated). **Auth stays AWS Cognito** by deliberate choice (Hypervolt uses Keycloak). Full detail in `specs/F00-foundation.md`.
 
 ---
 
@@ -395,7 +396,7 @@ The stack matches existing Hypervolt projects.
 
 | Layer | Choice |
 |---|---|
-| **Backend** | **Scala 3**, **Tapir** for typed endpoints + OpenAPI generation, ZIO HTTP or http4s runtime |
+| **Backend** | **Scala 2.13**, **cats-effect 3** runtime, **http4s** (ember) server, **Tapir** typed endpoints + OpenAPI, **Circe** JSON — mirrors ghost-busters/athena |
 | **Web frontend** | **React + StyleX** |
 | **Mobile** | **Flutter**, consuming the same API |
 | **Domain database** | **PostgreSQL** on AWS RDS |
@@ -407,16 +408,16 @@ The stack matches existing Hypervolt projects.
 | **Scheduled jobs** | **AWS EventBridge Scheduler** — mailbox poll, reminders, schedule roll-forward, list roll-forward |
 | **Secrets** | **AWS Secrets Manager** |
 | **Local development** | **Docker Compose** — deterministic full stack incl. Postgres and TigerBeetle |
-| **Hosting & region** | **AWS, region `eu-west-1` (Ireland)** — settled; a dedicated AWS profile exists. Compute on **ECS Fargate** (resolved, §19 #1); web app on S3 + CloudFront |
+| **Hosting & region** | **AWS, region `eu-west-1` (Ireland)** — settled; a dedicated AWS profile exists. Compute on **EC2 autoscaling + NixOS** (reusing Hypervolt's `nixos-bootstrap` + `ec2-autoscaling-group` Terraform modules + shared ALB); the backend ships as a `Universal` `.txz` pulled from the `pkgs` S3 bucket. Web app on **S3 + CloudFront**. CI: **GitLab CI** on Nix |
 
 ### One API, two clients
-The React web app and Flutter mobile app are separate codebases sharing one backend API. Define the API once with Tapir, publish the OpenAPI contract, generate a typed client for each. Web is the full management surface; mobile is the capture-and-on-the-go surface — receipt and asset-photo capture, quick events, lookups, Inbox confirmations, approvals. The API surface is sketched in **Appendix B**.
+The React web app and Flutter mobile app are separate codebases sharing one backend API. Define the API once with Tapir and publish the OpenAPI contract as documentation; the **web client is a hand-written service layer with Zod validation at boundaries** (matching Hyperstore) and the Flutter client likewise — clients are not auto-generated. Web is the full management surface; mobile is the capture-and-on-the-go surface — receipt and asset-photo capture, quick events, lookups, Inbox confirmations, approvals. The API surface is sketched in **Appendix B**.
 
 ```mermaid
 graph TD
     W["React + StyleX web app"] --> API
     M["Flutter mobile app"] --> API
-    API["Scala 3 + Tapir backend"] --> DB["PostgreSQL — RDS"]
+    API["Scala 2.13 + Tapir backend"] --> DB["PostgreSQL — RDS"]
     API --> TB["TigerBeetle — ledger"]
     API --> S3["S3 — documents & media"]
     AUTH["AWS Cognito"] -.tokens.-> W
@@ -482,7 +483,7 @@ Capture-first parity in the same language: an iPhone frame, a blurred **bottom t
 
 A large system; each milestone is independently shippable, and the household becomes usable well before the registry depth is complete. The prototype in `input/` is the visual target throughout; **M0/M1 stand up the StyleX design-token set and component library first.**
 
-- **M0 — Foundation.** Repo (monorepo: `/backend`, `/web`, `/mobile`, `/docs`), Docker Compose stack, Scala 3 + Tapir skeleton with OpenAPI output, PostgreSQL + migrations, TigerBeetle integration skeleton, S3, Cognito with enforced MFA, CI, the React + StyleX and Flutter shells, and the **design-token + component library** matching §16.
+- **M0 — Foundation.** Repo (monorepo: `/backend`, `/web`, `/mobile`, `/docs`, `/specs`), Docker Compose dev stack (Postgres 16, TigerBeetle, LocalStack), **Scala 2.13 + cats-effect + http4s + Tapir** skeleton with OpenAPI output, PostgreSQL + Flyway migrations, TigerBeetle integration skeleton, S3, **Cognito** with enforced MFA, **GitLab CI on Nix**, Terraform (EC2 + NixOS), the React + StyleX and Flutter shells, and the **design-token + component library** matching §16.
 - **M1 — Core spine.** Identity; the **permission matrix** (role + scope + level); Properties with rooms, sub-locations and custody; the unified Asset model (basic); categories (tree), tags, collections, asset groups; the in-house Document store with immutable originals. The grouped navigation shell.
 - **M2 — Household operations.** Tasks (Todoist), Calendar (Google), **Lists** (propose/approve/roll-forward), Vendors & Contacts, People/HR, maintenance plans and the reminder engine, the Maintenance view. The household is operable from here.
 - **M3 — Finance: transactions, evidence & operations.** Bank-transaction ingestion (provider abstraction + CSV fallback), raw payloads, merchants, receipts/invoices, the OCR/parse pipeline, line items, reconciliation, bills and the recurring schedule, **payment methods**, the **pay queue**, budgets, approvals (per-jurisdiction thresholds).
@@ -517,7 +518,7 @@ The build is successful when the system can:
 ## 19. Open decisions
 
 **Resolved in v6:**
-- **Compute & region** — **ECS Fargate**, region **`eu-west-1` (Ireland)** — settled.
+- **Compute & region** — **EC2 autoscaling + NixOS** (matching Hypervolt), region **`eu-west-1` (Ireland)** — settled. Backend on **Scala 2.13** (cats-effect + http4s + Tapir + Doobie + Flyway).
 - **Ledger visibility** — **fully hidden** behind the friendly UI; internal truth only.
 - **First-priority verticals** — watches, art, guitars, furniture, clothing, porcelain, glassware, vehicles.
 - **Watched mailboxes** — `deliveries@`, `accounts@`, `house@`, `vendors@`, `concierge@` (`@kanzen.family`).
@@ -541,7 +542,7 @@ The build is successful when the system can:
 
 ## 20. Notes for building with Claude Code
 
-- Keep this file as `SPEC.md` in the repo root; add a `CLAUDE.md` with Hypervolt's Scala 3 / Tapir / React / StyleX / Flutter conventions, commands and house style. **Treat `input/` as the canonical visual reference** (16 React views + previews).
+- Keep this file as `SPEC.md` in the repo root; add a `CLAUDE.md` with Hypervolt's **Scala 2.13** / cats-effect / http4s / Tapir / Doobie / React + StyleX / Flutter conventions, commands and house style. **Treat `input/` as the canonical visual reference** (16 React views + previews).
 - Stand up the **StyleX design-token set and component library (§16) first** — palette, type, pills, cards, tabs, filter rail, timeline, meta-grid, agent ribbon — so every module composes from it.
 - Build **milestone by milestone**. Get M0 deployed and authenticating on both clients before any feature work; build the M1 spine before going wide.
 - Define the database schema and the OpenAPI contract early — the domain model in §6 and Appendix A are the spine.
@@ -551,7 +552,7 @@ The build is successful when the system can:
 - Treat each integration (Gmail, Todoist, Calendar, open-banking, Bedrock, Cognito, SES) as an isolated, individually testable adapter behind an internal interface.
 - Design backup/restore as a formal API surface from the start; test catastrophic recovery deliberately.
 - Implement the hard edge cases on purpose: split receipts, split transactions, partial payments, refunds, grouped and structured assets, legacy assets with no receipt, associated costs on existing assets, post-hoc restructures, and the **list approve → roll-forward** cycle.
-- Generate the web and Flutter API clients from the OpenAPI contract.
+- Hand-write the web (and Flutter) data layer as a service module with Zod validation at boundaries, matching Hyperstore; the OpenAPI contract documents the API, but clients are not auto-generated.
 - Seed the database with the two real properties (**Wardian, Apt 5206**; **Singapore**) and the real users (**Toby**, **Lorna**, **Marcia**, **Siti**).
 
 ---

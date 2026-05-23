@@ -26,7 +26,7 @@ Applied in every spec, not repeated as features:
 
 | ID | Feature | M | Domain | Depends on | Status | Spec |
 |---|---|---|---|---|---|---|
-| F00 | Foundation: infra, repo, design system | M0 | Platform | — | ❓ questions open | — |
+| F00 | Foundation: infra, repo, design system | M0 | Platform | — | ✅ spec complete | [F00](F00-foundation.md) |
 | F01 | Identity, auth & session | M1 | Identity | F00 | 📋 | — |
 | F02 | Authorization (permission matrix + scope) | M1 | Identity | F01 | 📋 | — |
 | F03 | Properties, rooms, sub-locations, custody | M1 | Properties | F02 | 📋 | — |
@@ -85,4 +85,6 @@ graph TD
 - **M0** F00 · **M1** F01–F05 · **M2** F06–F11 · **M3** F12–F17 · **M4** F18 · **M5** F19–F24 · **M6** F25–F27 · **M7** F28–F29 · **M8** F30 · **M9** F31 · **M10** F32.
 
 ## Global open decisions (SPEC §19 — still open)
-Open-banking provider · backup-binary packaging · repo layout (resolving in F00) · canonical category tree (resolving in F22) · wear/use counts · inference aggressiveness · payment-execution boundary (assumed: Kanzen never moves money) · cross-currency rollups. Each is pinned to the feature that resolves it.
+Open-banking provider · backup-binary packaging · ~~repo layout~~ (resolved F00: monorepo) · canonical category tree (resolving in F22) · wear/use counts · inference aggressiveness · payment-execution boundary (assumed: Kanzen never moves money) · cross-currency rollups. Each is pinned to the feature that resolves it.
+
+**Stack (locked in F00, mirrors Hypervolt):** Scala 2.13 · cats-effect 3 · http4s ember · Tapir + OpenAPI · Circe · Doobie · Flyway · PostgreSQL 16 · TigerBeetle · S3 · **AWS Cognito** (not Keycloak) · React 19 + Vite + StyleX (hand-written services + Zod, TanStack Query, dinero.js) · Flutter · GitLab CI on Nix · Terraform (EC2 autoscaling + NixOS) · eu-west-1 · Secrets Manager + SSM.
