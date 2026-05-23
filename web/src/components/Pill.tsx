@@ -16,15 +16,21 @@ const styles = stylex.create({
   },
   accent: { backgroundColor: colors.accentSoft, color: colors.accent },
   warn: { backgroundColor: colors.warnSoft, color: colors.warn },
+  danger: { backgroundColor: "#fdecec", color: colors.danger },
 });
 
-export type PillTone = "default" | "accent" | "warn";
+export type PillTone = "default" | "accent" | "warn" | "danger";
 
 /** F00 design-system component — token-driven pill (SPEC §16 / App. E). */
 export function Pill({ tone = "default", children }: { tone?: PillTone; children: ReactNode }) {
   return (
     <span
-      {...stylex.props(styles.base, tone === "accent" && styles.accent, tone === "warn" && styles.warn)}
+      {...stylex.props(
+        styles.base,
+        tone === "accent" && styles.accent,
+        tone === "warn" && styles.warn,
+        tone === "danger" && styles.danger,
+      )}
     >
       {children}
     </span>

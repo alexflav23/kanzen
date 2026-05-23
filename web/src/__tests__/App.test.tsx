@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../App";
 
@@ -11,8 +11,9 @@ describe("App shell", () => {
 
   it("renders the grouped navigation items", () => {
     render(<App />);
-    expect(screen.getByText("Inventory")).toBeInTheDocument();
-    expect(screen.getByText("Finance")).toBeInTheDocument();
-    expect(screen.getByText("INVENTORY")).toBeInTheDocument();
+    const nav = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(nav.getByText("Inventory")).toBeInTheDocument();
+    expect(nav.getByText("Finance")).toBeInTheDocument();
+    expect(nav.getByText("INVENTORY")).toBeInTheDocument();
   });
 });

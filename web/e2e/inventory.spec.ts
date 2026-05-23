@@ -32,7 +32,7 @@ test("the active category chip reflects the selection", async ({ page }) => {
 
 test("nav links route from Dashboard to Inventory", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
   await page.getByRole("link", { name: "Inventory" }).click();
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
 });

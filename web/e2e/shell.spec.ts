@@ -8,5 +8,5 @@ test("app shell renders the brand, grouped nav and greeting", async ({ page }) =
   await expect(page.getByText("INVENTORY", { exact: true })).toBeVisible();
   await expect(nav.getByText("Inventory", { exact: true })).toBeVisible();
   await expect(nav.getByText("Finance", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Good morning." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
 });

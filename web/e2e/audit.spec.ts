@@ -45,7 +45,7 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   // 1. Dashboard
   where.v = "dashboard";
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
   await shot("01-dashboard");
 
   // 2. Inventory + category filter + reset
