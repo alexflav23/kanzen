@@ -275,7 +275,7 @@ Each asset has a **completeness score** (0–100%) shown on the detail hero with
 - **Management layer (operations).** The recurring **bill schedule**, the **pay queue**, **payment methods**, **budgets** and **spend approvals**.
 
 ### 9.2 Transactions & evidence
-Bank transactions are imported (open-banking provider, abstracted; CSV fallback) or manually entered, with raw payloads preserved. One receipt has many line items; a line item may become zero, one or many assets; a receipt may link to many transactions and a transaction to many receipts.
+Bank transactions are imported via **read-only open banking (AIS)** — **GoCardless Bank Account Data** for UK accounts and cards (current accounts, **Amex** credit cards, **Revolut** multi-currency, Coutts, …), with a separate connector for Singapore (SGFinDex / Finverse), all behind one internal `BankFeed` abstraction — plus a **CSV fallback** and manual entry. Raw payloads are preserved. **No payment initiation (PIS): Kanzen never moves money.** UK consent is re-confirmed roughly every **90 days** (EU 180); the platform tracks consent expiry and nudges renewal (Inbox + Settings → Connections). One receipt has many line items; a line item may become zero, one or many assets; a receipt may link to many transactions and a transaction to many receipts.
 
 ### 9.3 Reconciliation
 Supports one-to-one, one-to-many and many-to-many transaction/receipt matches, partial payments, split transactions, refunds and reversals, transfer detection, an unmatched-transaction inbox and manual overrides. Reconciliation is surfaced in the **Inbox → Reconciliation** stream (suggested matches carry a confidence %; resolved items show their final state). Corrections are events; history is never mutated. **Reconciliation states:** unmatched, suggested, matched, partially matched, split, ignored, transfer, refund, superseded.
@@ -347,7 +347,7 @@ Complements the agent with deterministic, inspectable, editable rules: merchant-
 | **Gmail** | The agent polls the five watched role inboxes | Google Cloud service account, domain-wide delegation, narrow scope |
 | **Todoist / Vikunja** *(optional)* | Optional one-way task mirror/export — never authoritative | Per-tool API token |
 | **Google Calendar** | Shared household calendar, two-way sync | Same service account |
-| **Open-banking provider** | Bank transaction ingestion (provider abstracted; first provider TBD — §19) | Per-provider OAuth |
+| **Open banking (AIS, read-only)** | Bank/card ingestion — **GoCardless Bank Account Data** (UK), SGFinDex/Finverse (SG), behind one `BankFeed` abstraction; no PIS | Per-provider OAuth; ~90-day consent renewal |
 | **Amazon Bedrock (Claude)** | Agent classification/extraction; OCR assist | IAM role (`eu-west-1`) |
 | **AWS Cognito** | Authentication, enforced MFA | User pool; hosted UI; JWT validated by the backend |
 | **AWS SES** | Notification email | IAM role |
@@ -429,7 +429,7 @@ graph TD
     API --> BR["Claude on Amazon Bedrock"]
     API --> PUSH["Push — FCM / APNs"]
     API --> GW["Google Workspace — Gmail, Calendar"]
-    API --> BANK["Open-banking provider"]
+    API --> BANK["Open banking AIS — GoCardless / SGFinDex"]
 ```
 
 ---
@@ -530,7 +530,7 @@ The build is successful when the system can:
 - **Lists & Vehicles** — Lists in-scope; Vehicles a vertical + saved view.
 
 **Still open:**
-1. **Open-banking** — the provider abstraction and the first provider.
+1. **Open-banking provider — UK resolved.** **GoCardless Bank Account Data** (AIS-only) for UK accounts/cards (Amex, Revolut, Coutts, …); **Singapore** still open (SGFinDex vs Finverse vs Brankas) behind the same `BankFeed` abstraction. See `specs/F12`.
 2. **Backup binaries** — original files inline in the archive vs sidecar files within it.
 3. **Repo layout** — confirm monorepo (assumed in §17/§20) vs three repos against Hypervolt convention.
 4. **Canonical category tree** — the initial seed taxonomy (top level + children) to ship.

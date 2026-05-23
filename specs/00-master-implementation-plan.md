@@ -38,7 +38,7 @@ Applied in every spec, not repeated as features:
 | F09 | Vendors & contacts | M2 | Operations | F03 | 📋 | — |
 | F10 | People / HR | M2 | Operations | F02 | 📋 | — |
 | F11 | Maintenance plans & reminder engine | M2 | Operations | F04, F06, F07 | 📋 | — |
-| F12 | Bank ingestion & transactions | M3 | Finance | F02 | 📋 | — |
+| F12 | Bank ingestion & transactions (open banking AIS) | M3 | Finance | F02 | ✅ spec complete | [F12](F12-bank-ingestion.md) |
 | F13 | Receipts & OCR/parse pipeline | M3 | Finance | F05 | 📋 | — |
 | F14 | Reconciliation engine | M3 | Finance | F12, F13 | 📋 | — |
 | F15 | Bills & recurring schedule | M3 | Finance | F03, F09 | 📋 | — |
