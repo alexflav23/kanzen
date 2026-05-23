@@ -31,10 +31,11 @@ Internal only: `postGroup(kind, source, entries)` (idempotent); `deriveBalance(a
 
 ## 6. Business rules & validation
 - **Double-entry**: every group balances (debits = credits) per currency.
-- **Postings generated from**: reconciled expense/transaction (F14/F17), asset **acquisition** (F19), **associated costs** (F17/§9.6), **refunds** (reversing), **transfers** (own-account, no income/expense), **adjustments**.
+- **What's in TB vs Postgres** (the deliberate line — "TB for all the transaction stuff" = the *postings*, not the records): **TigerBeetle holds the immutable double-entry postings + balances** (the money-movement truth); **Postgres holds the domain records** — bank transactions from GoCardless, receipts, reconciliation, merchants, descriptions, categories — which **reference** TB transfer IDs. TB is a specialised accounting engine, not a metadata store.
+- **Postings generated from**: reconciled expense/transaction (F14/F17), asset **acquisition** (F19), **associated costs** (F17/§9.6), **refunds** (reversing), **transfers** (own-account, no income/expense), real **currency exchanges**, and **adjustments**.
 - **Idempotency**: `(source_type, source_id, kind)` → at-most-once posting; re-sync never double-posts (TB transfer IDs deterministic).
 - **Corrections**: a wrong posting is **reversed** (a balancing posting), never edited — full history preserved.
-- **Multi-currency**: one TB ledger per currency (GBP, SGD); cross-currency handled as explicit transfers, no silent FX.
+- **Multi-currency**: **one TB ledger per currency** (GBP, SGD, USD, …); postings stay in their **native** currency. Two distinct cases: **(a) a real currency exchange** (e.g. Revolut converting GBP→USD) is a genuine **inter-ledger transfer** in TB at the **actual** rate; **(b) unified-currency *reporting*** (viewing everything in GBP) is **not** a posting — it's F37's display overlay converting at each posting's transaction-date rate. So TB = native truth; F37 = the reporting lens on top.
 
 ## 7. Integrations / external systems
 - **TigerBeetle** — mirror athena's client + `docker-compose` service + Terraform host (SETUP A10). 
@@ -58,4 +59,4 @@ Backend (weaver + **TigerBeetle test container**): balanced double-entry, idempo
 Audit: posting-group creation/reversal. Metrics: postings/day by kind, posting lag, TB health, balance-derivation latency, unposted-queue depth.
 
 ## 12. Open questions
-1. **Chart of accounts** design (granularity per category/property/currency). 2. Multi-currency TB ledger strategy (per-currency ledgers — confirm vs athena's pattern). 3. Whether acquisition postings are per-asset or per-receipt. 4. Mirror athena exactly vs Kanzen-specific account model.
+1. **Chart of accounts** design (granularity per category/property/currency). 2. ~~Multi-currency TB ledger strategy~~ **resolved**: per-currency ledgers; real FX = inter-ledger transfer at the actual rate; reporting conversion via F37 (not a posting). 3. Whether acquisition postings are per-asset or per-receipt. 4. Mirror athena exactly vs Kanzen-specific account model.
