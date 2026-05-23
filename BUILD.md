@@ -13,10 +13,10 @@ A real, compiling, **fully test-backed** foundation across backend + web, demons
 | **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
 | **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
 
-**Verified locally:** backend **`20/20`** (F00–F03), web Vitest `4/4`, Playwright `1/1`.
+**Verified locally:** backend **`22/22`** (F00–F04), web Vitest `4/4`, Playwright `1/1`.
 
 ### Features implemented so far (backend, tested)
-- **F00** foundation · **F01** identity (users/login_identities + repo) · **F02** attribute-level RBAC (Authorizer + DB rules) · **F03** properties + nested location tree + defects.
+- **F00** foundation · **F01** identity · **F02** attribute-level RBAC · **F03** properties + nested location tree · **F04** asset registry core (categories tree, **JSONB attributes**, tracking modes, tags/collections). **The M1 backend spine is complete.**
 
 ## Run it
 ```bash

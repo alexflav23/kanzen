@@ -37,6 +37,7 @@ lazy val root = (project in file("."))
       "org.tpolecat"                  %% "doobie-core"               % V.doobie,
       "org.tpolecat"                  %% "doobie-hikari"             % V.doobie,
       "org.tpolecat"                  %% "doobie-postgres"           % V.doobie,
+      "org.tpolecat"                  %% "doobie-postgres-circe"     % V.doobie,
       "org.flywaydb"                  %  "flyway-core"               % V.flyway,
       "org.postgresql"                %  "postgresql"                % V.postgres,
       // tests: weaver (effectful/server/integration) + ScalaTest FreeSpec (pure units)
