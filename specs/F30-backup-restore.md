@@ -37,7 +37,7 @@ Per `backup.jsx` (App. E.15): **Run full export** (live progress: snapshot table
 - **Self-descriptive**: understandable without the codebase (documented manifest + schema).
 
 ## 7. Integrations
-All domains (export/import), F05/S3 (originals), F18/TigerBeetle (ledger replay), `age` (encryption), EventBridge (scheduled exports/snapshots), daily RDS snapshots (infra).
+All domains (export/import), F05/S3 (originals), F18/the general ledger (ledger replay), `age` (encryption), EventBridge (scheduled exports/snapshots), daily RDS snapshots (infra).
 
 ## 8. Edge cases
 Huge archives (binaries inline vs sidecar — §19 open #2); partial/interrupted export (resumable); checksum mismatch on restore (abort); schema-version drift (compat notes + migration); restore into non-empty DB (guard); encryption key loss; ledger replay idempotency; S3 object restore conflicts.
@@ -70,7 +70,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **And** the restore is audited with a summary of counts per entity type.
 
 **AC5 — Ledger restores consistently and balances match**  ‹maps: `LedgerRestoreIT`›  *(invariant: backup/restore must round-trip faithfully)*
-- **Given** the exported archive includes the full replayable TigerBeetle posting history
+- **Given** the exported archive includes the full replayable the general ledger posting history
 - **When** the ledger is replayed/imported during restore
 - **Then** all account balances match the original snapshot; the ledger is self-consistent (debits = credits)
 - **And** a mismatch aborts the restore and reports the discrepancy.
@@ -88,7 +88,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **And** each denied attempt is audited; Toby sees it in the audit log.
 
 ## 10. Test plan
-Backend (weaver+PG+S3+TB): full export→restore **round-trip into a fresh DB** (the headline catastrophic-recovery test); checksum + schema-compat validation; dry-run plan; ledger replay equivalence; encryption round-trip; annual snapshot immutability. This feature gets **extra test rigor** (NFR §15).
+Backend (weaver+PG+S3): full export→restore **round-trip into a fresh DB** (the headline catastrophic-recovery test); checksum + schema-compat validation; dry-run plan; ledger replay equivalence; encryption round-trip; annual snapshot immutability. This feature gets **extra test rigor** (NFR §15).
 
 ## 11. Observability & audit
 Audit: export, snapshot, validate, restore (dry-run + full). Metrics: export size/duration, checksum failures, restore success, snapshot cadence, last-successful-export age (alert if stale).

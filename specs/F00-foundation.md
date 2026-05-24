@@ -9,7 +9,7 @@
 | **Depends on** | — |
 | **Spec references** | SPEC §14, §16, §17 (M0), Appendix E; mirrors `~/projects/hypervolt/{ghost-busters,athena,hyperstore}` |
 
-> **Stack is locked here and inherited by every later feature.** Backend **Scala 2.13 + cats-effect 3 + http4s (ember) + Tapir + Circe + Doobie + Flyway**; **PostgreSQL 16**; **TigerBeetle** (skeleton); **S3**; **AWS Cognito** (deliberate divergence from Hypervolt's Keycloak); web **React 19 + Vite + StyleX**; mobile **Flutter**; **GitLab CI on Nix**; **Terraform** (EC2 autoscaling + NixOS) in **eu-west-1**; secrets in **Secrets Manager** + config in **SSM Parameter Store**; money via **dinero.js**. All choices mirror the existing Hypervolt repos except Cognito.
+> **Stack is locked here and inherited by every later feature.** Backend **Scala 2.13 + cats-effect 3 + http4s (ember) + Tapir + Circe + Doobie + Flyway**; **PostgreSQL 16** (double-entry general ledger — ADR-001); **S3**; **AWS Cognito** (deliberate divergence from Hypervolt's Keycloak); web **React 19 + Vite + StyleX**; mobile **Flutter**; **GitLab CI on Nix**; **Terraform** (EC2 autoscaling + NixOS) in **eu-west-1**; secrets in **Secrets Manager** + config in **SSM Parameter Store**; money via **dinero.js**. All choices mirror the existing Hypervolt repos except Cognito.
 
 ---
 
@@ -57,14 +57,14 @@ F00 delivers the **design system** and the **shells**, not features. The prototy
 - App skeleton with the **bottom tab bar** (Home · Triage · Bibles · Money · Search — App. E.18), theme parity (light/dark tokens mirrored), Cognito auth flow, an `ApiService` skeleton. Screens are placeholders.
 
 ## 6. Business rules & validation
-- **Config** (`typesafe-config` + the Hypervolt `Stringy`/`Hardcoded[A]`/`Global[A]` wrappers + `ValidatedNel` accumulation): all env/config loaded at boot, **all missing keys reported at once** then fail fast (mirrors `athena/.../EnvironmentConfig.scala`). Keys: `PORT`, `ADMIN_PORT`, `METRICS_PORT`, `ENV`, `DATABASE_URL` (read + read-only), `S3_*`, `COGNITO_*` (pool id, region, jwks host, audience), `TIGERBEETLE_*`, `AWS_REGION=eu-west-1`.
+- **Config** (`typesafe-config` + the Hypervolt `Stringy`/`Hardcoded[A]`/`Global[A]` wrappers + `ValidatedNel` accumulation): all env/config loaded at boot, **all missing keys reported at once** then fail fast (mirrors `athena/.../EnvironmentConfig.scala`). Keys: `PORT`, `ADMIN_PORT`, `METRICS_PORT`, `ENV`, `DATABASE_URL` (read + read-only), `S3_*`, `COGNITO_*` (pool id, region, jwks host, audience), `AWS_REGION=eu-west-1`.
 - **Env detection**: `ENV ∈ {local, staging, prod}`; `Hardcoded` values resolve per env.
-- **Boot order**: load+validate config → Flyway migrate → build Doobie `HikariTransactor` (Resource) → http client → TigerBeetle client (skeleton) → S3 client → start admin server (`:9990`) → start metrics (`:9464`) → start primary server (`:8080`) → `IO.never`.
+- **Boot order**: load+validate config → Flyway migrate → build Doobie `HikariTransactor` (Resource) → http client → S3 client → start admin server (`:9990`) → start metrics (`:9464`) → start primary server (`:8080`) → `IO.never`.
 - **Money**: integer minor units + currency code end-to-end; no float arithmetic (web uses dinero.js).
 
 ## 7. Integrations / external systems (skeleton adapters, each behind an interface)
 - **PostgreSQL 16** — Doobie + Hikari; local via docker-compose.
-- **TigerBeetle** — client connection + health probe only; docker-compose service (Hypervolt already runs TB in compose). No postings (F18).
+- **General ledger** — Postgres double-entry (ADR-001); F18 builds the engine. *(TigerBeetle dropped — not an exchange.)*
 - **S3** — `ObjectStore` interface (put/get/presign); local via **LocalStack**; bucket naming `kanzen.{env}.eu-west-1.hypervolt` (app) and `kanzen-docs.{env}.eu-west-1.hypervolt` (documents).
 - **AWS Cognito** — user pool (Terraform) with **enforced MFA**; JWKS validation middleware. **Local dev**: a dev-mode token issuer/verifier (configurable) so local doesn't depend on a real pool — see Open Questions.
 - **AWS SES**, **Bedrock** — interface stubs only (wired in F25/notifications).
@@ -72,17 +72,17 @@ F00 delivers the **design system** and the **shells**, not features. The prototy
 
 ### Repo, dev env, CI/CD, IaC
 - **Monorepo** `/backend` (sbt: start single module, ready to split into `domain`/`api`/`consumer`), `/web`, `/mobile`, `/docs`, `/specs`, `/terraform`, plus `docker-compose.yml`, `Dockerfile` (local), `.gitlab-ci.yml`, `shell.nix` + `npins/`, `.envrc`.
-- **Dev env**: **Nix + npins + direnv** pinning Temurin JDK 17, sbt, Node 20, Terraform, awscli, Flutter. `docker-compose up` → Postgres 16 + TigerBeetle + LocalStack.
+- **Dev env**: **Nix + npins + direnv** pinning Temurin JDK 17, sbt, Node 20, Terraform, awscli, Flutter. `docker-compose up` → Postgres 16 + LocalStack.
 - **Build/package**: sbt with `sbt-assembly`, `sbt-native-packager` (`Universal/packageXzTarball` → `.txz`), `sbt-scalafmt`, `flyway-sbt`, `sbt-git`. `scalafmt` enforced.
 - **CI** (`.gitlab-ci.yml` on `nixos/nix` images): `terraform-lint` (fmt) · `compile-backend` (`sbt compile`) · `test-backend` (`sbt test`) · `package-backend` (`Universal/packageXzTarball`, main only) · `publish` (`./scripts/publish $CI_COMMIT_SHORT_SHA` → `pkgs` S3) · `web-build`/`web-test` (Vitest) · `deploy-frontend` (S3 sync + CloudFront invalidate; staging auto, prod manual gate).
-- **IaC** (`/terraform/kanzen/`): S3 state (`eu-west-1.tf.hypervolt`, key `kanzen/terraform.tfstate`), workspaces `staging`/`prod`, AWS provider **eu-west-1** (+ us-east-1 alias for ACM). Resources: `ec2-autoscaling-group` + `nixos-bootstrap` modules (target group `:8080`, health `:9990`), shared `infrastructure-lb`, **RDS Postgres 16** (`terraform-aws-modules/rds`, multi-AZ prod), **S3** buckets, **Cognito user pool** (MFA required), **TigerBeetle** host (reuse Hypervolt's TB pattern), Secrets Manager + SSM, IAM roles, Route53 private zone + ACM + **CloudFront/S3** for the web app, Prometheus `:9464`.
+- **IaC** (`/terraform/kanzen/`): S3 state (`eu-west-1.tf.hypervolt`, key `kanzen/terraform.tfstate`), workspaces `staging`/`prod`, AWS provider **eu-west-1** (+ us-east-1 alias for ACM). Resources: `ec2-autoscaling-group` + `nixos-bootstrap` modules (target group `:8080`, health `:9990`), shared `infrastructure-lb`, **RDS Postgres 16** (`terraform-aws-modules/rds`, multi-AZ prod), **S3** buckets, **Cognito user pool** (MFA required), Secrets Manager + SSM, IAM roles, Route53 private zone + ACM + **CloudFront/S3** for the web app, Prometheus `:9464`.
 
 ## 8. Edge cases
 - Missing/invalid config → fail boot with the **full list** of missing keys (not the first).
 - Flyway migration failure → abort boot, non-zero exit, logged with version.
 - DB unavailable at boot → bounded retry then fail (ALB keeps instance out via `:9990`).
 - JWKS endpoint down → auth middleware serves cached keys; on cold cache, 503 on authed routes, health stays green.
-- TigerBeetle/S3 down at boot → log + degrade (don't crash the API for skeleton phase); surface in `/health` detail.
+- S3 down at boot → log + degrade (don't crash the API for skeleton phase); surface in `/health` detail.
 - Dark/light flash on first paint → theme resolved from `localStorage` before first render.
 
 ## 9. Acceptance scenarios (UAT)
@@ -136,13 +136,13 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 ## 11. Observability & audit
 - **Logging**: log4cats + logback, structured, request/response via http4s `Logger` middleware.
 - **Metrics**: Prometheus on `:9464` (`hv-telemetry` scrape source); OpenTelemetry initialised at startup.
-- **Health**: `:9990/health` (ALB) + `/api/health` (detail incl. DB/TB/S3 reachability).
+- **Health**: `:9990/health` (ALB) + `/api/health` (detail incl. DB/S3 reachability).
 - **Audit**: `audit_log_entries` table created; an `AuditWriter` service exists so every later feature writes through one path. F00 logs `system` boot/migration events.
 - **Web**: Sentry + a `loggerService` skeleton (mirrors Hyperstore).
 
 ## 12. Open questions / decisions
 1. **Cognito local dev** — LocalStack Cognito (limited) vs a shared real `dev` user pool vs a dev-mode JWT issuer behind a flag. *(Lean: dev-mode issuer locally; real pool in staging/prod.)*
-2. **TigerBeetle provisioning** — confirm we reuse Hypervolt's exact TB Terraform/host pattern (referenced in their compose + terraform) vs a single-node TB for now.
+2. ~~TigerBeetle provisioning~~ — **resolved (ADR-001): dropped; the general ledger is Postgres double-entry.**
 3. **Backend module split timing** — single sbt module to start vs split `domain`/`api`/`consumer` at M0. *(Lean: single now, split when the agent/consumer arrives at M6.)*
 4. **i18n** — Hyperstore uses i18next/28 locales; Kanzen is a single private household. Skip i18n (English-only) for v1? *(Lean: yes, skip.)*
 5. **Flutter CI** — same GitLab pipeline vs a separate mobile pipeline; codemagic vs GitLab runners for iOS builds.

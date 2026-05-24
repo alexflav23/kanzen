@@ -9,7 +9,7 @@
 | **Depends on** | F39 (accounting core / chart of accounts + splits), F40 (investments + securities), F41 (liabilities + net worth), F42 (entities, structures + accounting periods); F37 (FX / display currency); ties to F17 (budgets → Budget vs Actual), F38 (tax year framing + deductibility), F29 (informal insights — superseded here for wealth reporting), F30 (export / PDF / CSV) |
 | **Spec references** | GnuCash report suite (`gnucash/report/`), the implementation plan |
 
-> **Decisions:** financial statements are **generated directly from the double-entry ledger** (F39 splits + F42 accounting periods) — not re-derived from the transactional domain tables. They are **read-only** (no statement mutates the books). Every statement is **entity-scoped** (F42 entity or consolidated group) and **period-scoped** (F42 accounting period, e.g. 2025 calendar year, 2025/26 UK tax year). **Multi-currency translation uses period-end rates** for balance-sheet items and **average-period rates** for income-statement items (the temporal method), with full labelling (see §6). **Principal-private**: no Manager or Staff access except a documented carve-out for Budget vs Actual (open question, §12). The Agent has no write path here; it is read-only reporting. **Drill-down from a statement line → chart-of-accounts register → splits** (F39) but **never to raw TigerBeetle IDs** — the ledger is always hidden in the UI (CLAUDE.md invariant).
+> **Decisions:** financial statements are **generated directly from the double-entry ledger** (F39 splits + F42 accounting periods) — not re-derived from the transactional domain tables. They are **read-only** (no statement mutates the books). Every statement is **entity-scoped** (F42 entity or consolidated group) and **period-scoped** (F42 accounting period, e.g. 2025 calendar year, 2025/26 UK tax year). **Multi-currency translation uses period-end rates** for balance-sheet items and **average-period rates** for income-statement items (the temporal method), with full labelling (see §6). **Principal-private**: no Manager or Staff access except a documented carve-out for Budget vs Actual (open question, §12). The Agent has no write path here; it is read-only reporting. **Drill-down from a statement line → chart-of-accounts register → splits** (F39) but **never to raw the general ledger IDs** — the ledger is always hidden in the UI (CLAUDE.md invariant).
 
 ---
 
@@ -120,7 +120,7 @@ All endpoints are **Principal-only** (Tapir security partial → `Principal`; `A
 All return a typed `StatementResult` (rows + metadata: entity, period, currency, fx_basis_label, as-of timestamp, `is_draft` flag for an unclosed period).
 
 ### Drill-down
-- `GET  /api/reports/account-detail?accountId=&periodId=` → account register (splits from F39, within the period) — **shows account names and amounts only; never exposes TigerBeetle internal IDs**.
+- `GET  /api/reports/account-detail?accountId=&periodId=` → account register (splits from F39, within the period) — **shows account names and amounts only; never exposes the general ledger internal IDs**.
 
 ## 5. UI / screens & states
 
@@ -188,7 +188,7 @@ All return a typed `StatementResult` (rows + metadata: entity, period, currency,
 - Native (per-currency) statements always available; translated statements are clearly labelled as estimates.
 
 ### Trial Balance
-- The trial balance **must balance** (total debits = total credits). If it does not, generation fails with an explicit error identifying the unbalanced account — this is a data integrity signal (F39 invariant: every transaction is balanced before posting to TigerBeetle).
+- The trial balance **must balance** (total debits = total credits). If it does not, generation fails with an explicit error identifying the unbalanced account — this is a data integrity signal (F39 invariant: every transaction is balanced before posting to the general ledger).
 
 ### Budget vs Actual
 - Budget figures sourced from F17 `budgets` (per property + category + period year). Actual figures sourced from F39 splits for matching accounts/categories in the period. Variance = Budget − Actual; sign convention consistent (favourable positive for income, favourable negative for expense overspend).
@@ -202,7 +202,7 @@ All return a typed `StatementResult` (rows + metadata: entity, period, currency,
 ### Permission / scope enforcement
 - Every query is scoped by `owner_id` first, then `entity_id` (or `group_id` for consolidated).
 - **No leak via totals or consolidation**: a consolidated result must not expose individual-entity figures to which the viewer lacks access. Since the Principal has admin over all their own entities this is trivially satisfied, but the logic must be written defensively so a future multi-principal scenario cannot leak. Backend tests assert on the consolidated result schema.
-- Drill-down to the account register **shows account names and period-split amounts only** — never raw TigerBeetle account/batch IDs (CLAUDE.md invariant: ledger hidden in the UI).
+- Drill-down to the account register **shows account names and period-split amounts only** — never raw the general ledger account/batch IDs (CLAUDE.md invariant: ledger hidden in the UI).
 
 ### Rounding
 - All arithmetic on minor-unit integers; rounding only at the final display conversion. If a multi-line statement does not balance by ±1 unit (rounding artefact), the discrepancy is noted in the result with the affected subtotal. It is never silently hidden.
@@ -279,11 +279,11 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Then** the chart renders 12 data points; each point = (illiquid valuations + liquid accounts + investments − liabilities) FX-translated at that month-end's rate (F37)
 - **And** the series is monotonically plausible (individual months may vary); the first and last points correspond to confirmed opening/closing balances.
 
-**AC7 — Drill-down from a statement line reaches account register; TigerBeetle IDs never exposed**  ‹maps: `StatementDrillDownIT` (weaver+PG), web `account-register.spec`›  *(invariant: ledger hidden in the UI; drill shows account names + amounts only)*
+**AC7 — Drill-down from a statement line reaches account register; the general ledger IDs never exposed**  ‹maps: `StatementDrillDownIT` (weaver+PG), web `account-register.spec`›  *(invariant: ledger hidden in the UI; drill shows account names + amounts only)*
 - **Given** a Balance Sheet with a "Cash at bank" line totalling £25,000
 - **When** Toby clicks the line to drill into the account register for the period
 - **Then** the register shows the individual splits (date, description, debit/credit, running balance) for that account within the period
-- **And** no TigerBeetle account ID, batch ID, or internal posting reference is visible anywhere in the register or in the API response — only human-readable account names and amounts.
+- **And** no the general ledger account ID, batch ID, or internal posting reference is visible anywhere in the register or in the API response — only human-readable account names and amounts.
 
 **AC8 — Statements are Principal-private; non-Principal receives 403 with no data (negative / permission)**  ‹maps: `ReportAuthzIT` (weaver+PG), web `reports.spec` forbidden›  *(invariant: Principal-private; no leak via totals)*
 - **Given** Lorna (Manager) and Marcia (Staff)
@@ -309,13 +309,13 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - `AssetAllocationSpec` — bucket percentages sum to 100% (rounding distribution rule).
 - `ReportAuthzIT` (weaver + Testcontainers) — all endpoints deny Lorna (Manager), Marcia, Siti; confirm Toby (Principal) gets data; response body structurally empty for denied callers.
 - `DraftPeriodIT` — `is_draft` flag set for open period; absent after close.
-- `DrillDownIT` — account register returns splits with names/amounts; TigerBeetle ID fields absent from response schema.
+- `DrillDownIT` — account register returns splits with names/amounts; the general ledger ID fields absent from response schema.
 - `ConcentrationWarningSpec` — warning emitted when a single asset exceeds the threshold percentage.
 
 **Web (Vitest + Playwright)**
 - Vitest: statement-row component (account tree, collapsible, drill link); FX-basis label rendering; draft banner; Budget vs Actual variance sign; net-worth chart series; forbidden-state full-screen 403.
 - Playwright `financial-statements.spec.ts`:
-  - Balance Sheet renders, collapses/expands, drill-down opens account register (no TB IDs in DOM).
+  - Balance Sheet renders, collapses/expands, drill-down opens account register (no raw posting ids in DOM).
   - Income Statement comparative period: two columns correctly labelled.
   - Cash Flow renders activity sections.
   - Budget vs Actual overspend shown with negative variance and visual indicator.

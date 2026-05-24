@@ -30,7 +30,7 @@ Screens and their states (loading / empty / error / populated), key components (
 The rules that must hold — invariants, computed values, state machines, thresholds, server-side validation.
 
 ## 7. Integrations / external systems
-Any external system touched (Gmail, Calendar, open-banking, Bedrock, Cognito, SES, S3, TigerBeetle, 1Password, push). Adapter boundary, auth, failure handling. **Flag every operator-provided input (credentials, accounts, DNS, model access, secrets) and add it to `SETUP.md`.**
+Any external system touched (Gmail, Calendar, open-banking, Bedrock, Cognito, SES, S3, the general ledger, 1Password, push). Adapter boundary, auth, failure handling. **Flag every operator-provided input (credentials, accounts, DNS, model access, secrets) and add it to `SETUP.md`.**
 
 ## 8. Edge cases
 The hard cases to implement on purpose (concurrency, partial data, restructures, refunds, lapsed states, multi-currency, etc.).

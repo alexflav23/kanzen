@@ -11,12 +11,12 @@ Guidance for Claude Code (and humans) building **Kanzen**, the household operati
 - **`input/`** — the React/StyleX design prototype = the **canonical visual reference**.
 
 ## Stack (locked)
-- **Backend**: Scala **2.13** · **cats-effect 3** (`IOApp.Simple`, `Resource`) · **http4s** ember · **Tapir** (+ Swagger/OpenAPI) · **Circe** · **Doobie** (HikariTransactor) · **Flyway** · **PostgreSQL 16 + pgvector** · **TigerBeetle** (ledger only) · typesafe-config (`Stringy`/`Hardcoded`/`Global` + `ValidatedNel`) · log4cats+logback · OpenTelemetry/Prometheus.
+- **Backend**: Scala **2.13** · **cats-effect 3** (`IOApp.Simple`, `Resource`) · **http4s** ember · **Tapir** (+ Swagger/OpenAPI) · **Circe** · **Doobie** (HikariTransactor) · **Flyway** · **PostgreSQL 16 + pgvector** (double-entry general ledger — `specs/02-accounting-ledger-architecture.md`, ADR-001) · typesafe-config (`Stringy`/`Hardcoded`/`Global` + `ValidatedNel`) · log4cats+logback · OpenTelemetry/Prometheus.
 - **Auth**: **AWS Cognito** (JWKS validation middleware) — *not* Keycloak.
 - **Web**: React 19 · **Vite** · **StyleX** (`defineVars` tokens + `createTheme` themes + `ThemeContext`) · TanStack Query · **hand-written services + Zod** (no generated client) · dinero.js (money) · Vitest + Playwright.
 - **Mobile**: Flutter (capture-first companion).
 - **Infra**: AWS **eu-west-1** · **Terraform** (EC2 autoscaling + **NixOS**, shared ALB, RDS, S3, Cognito, CloudFront) · **GitLab CI on Nix** · packaged as `Universal/packageXzTarball` → S3 `pkgs` → NixOS pull · Secrets Manager (secrets) + SSM (config).
-- **Dev**: Nix + npins + direnv · `docker-compose` (Postgres 16, TigerBeetle, LocalStack).
+- **Dev**: Nix + npins + direnv · `docker-compose` (Postgres 16, LocalStack).
 
 ## Repo layout (monorepo)
 ```
@@ -30,7 +30,7 @@ SPEC.md  CLAUDE.md  SETUP.md  docker-compose.yml  shell.nix  .gitlab-ci.yml  .en
 ```
 
 ## Backend conventions
-- **Boot order** (mirror athena): load+validate config (report *all* missing keys) → Flyway migrate → Doobie transactor (Resource) → http client → TigerBeetle client → S3 → admin server `:9990 /health` → metrics `:9464` → primary `:8080` (`/api`) → `IO.never`.
+- **Boot order** (mirror athena): load+validate config (report *all* missing keys) → Flyway migrate → Doobie transactor (Resource) → http client → S3 → admin server `:9990 /health` → metrics `:9464` → primary `:8080` (`/api`) → `IO.never`.
 - **Endpoints**: define with Tapir, group by domain, serve OpenAPI at `/docs`. **Auth** = Tapir security partial validating the Cognito JWT (cached JWKS) → `Principal`.
 - **AuthZ once, centrally**: a shared `Authorizer` (resource/field level none/read/write/admin + property scope, F02); **agent actions take the same path**; **default deny**; **field-level response filtering** (e.g. strip valuations for Manager).
 - **DB**: PKs `uuid default gen_random_uuid()`; timestamps `timestamptz`; **money = integer minor units + ISO currency** (never float); **`owner_id` on every domain row**; **soft delete** `deleted_at`; Doobie `sql"…"` + `Meta` instances in a shared `db` module.
@@ -38,7 +38,7 @@ SPEC.md  CLAUDE.md  SETUP.md  docker-compose.yml  shell.nix  .gitlab-ci.yml  .en
 - **Audit**: every meaningful write → `audit_log_entries` via one `AuditWriter`; corrections are events, never mutations; immutable originals + ledger postings.
 - **Config/secrets**: typed wrappers + `ValidatedNel`; secrets from Secrets Manager, config from SSM; nothing secret in git.
 - **Testing**: **weaver-cats + testcontainers-postgresql** (athena pattern); extra rigor for **reconciliation** and **backup/restore**.
-- **Integrations** (Gmail, Calendar, GoCardless, Bedrock, Cognito, SES, S3, TigerBeetle) = isolated adapters behind internal interfaces; **tasks are native, not an integration**.
+- **Integrations** (Gmail, Calendar, GoCardless, Bedrock, Cognito, SES, S3) = isolated adapters behind internal interfaces; **tasks are native, not an integration**.
 
 ## Frontend conventions (mirror hyperstore)
 - Vite + StyleX: Babel transform (dev) before the React plugin; `@stylexjs/rollup-plugin` (build). Path aliases (`@components`, `@styles`, …).
@@ -53,7 +53,7 @@ Warm-paper light + dark (⌘D), single indigo accent, 完 mark, tabular money, g
 ## House rules (invariants — never violate)
 - **Kanzen never moves money** (AIS read-only; "Mark paid" records reality; no PIS).
 - **Financial & asset creation never auto-commit** — always proposed (agent trust, F27).
-- **The TigerBeetle ledger is hidden in the UI** — postings only; Postgres holds domain data; the two are never conflated.
+- **The general ledger is hidden in the UI** — statements/registers only; raw postings never shown. The books are Postgres double-entry (ADR-001).
 - **Source documents are sacred** — immutable originals in S3; OCR is derived/versioned; the agent files to S3, never Drive.
 - **Everything is permission- and scope-filtered server-side** — including search, aggregates and NL queries (no leak via totals).
 - **Registry/finance is Principal-private** with the documented Manager operational carve-out.
@@ -66,7 +66,7 @@ Warm-paper light + dark (⌘D), single indigo accent, 完 mark, tabular money, g
 
 ## Common commands (fill in exact targets during F00)
 ```
-direnv allow && docker-compose up          # local stack (PG16, TigerBeetle, LocalStack)
+direnv allow && docker-compose up          # local stack (PG16, LocalStack)
 cd backend && sbt run                       # backend (:8080 api, :9990 health, :9464 metrics)
 cd backend && sbt scalafmtAll test          # format + test (weaver + testcontainers)
 cd web && npm run dev | build | test        # Vite + StyleX web

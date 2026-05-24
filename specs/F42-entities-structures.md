@@ -6,10 +6,10 @@
 | **Milestone** | Wave G (Private Wealth) |
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
-| **Depends on** | F02 (RBAC — entity scope dimension), F18 (TigerBeetle ledger), F37 (FX + base currency per entity) |
+| **Depends on** | F02 (RBAC — entity scope dimension), F18 (general ledger), F37 (FX + base currency per entity) |
 | **Spec references** | GnuCash multi-book model (`libgnucash/engine`); the implementation plan (multi-entity/multi-book locked decisions) |
 
-> **Decisions:** `entity` is a **first-class scoping dimension** across the entire accounting core — every downstream account, transaction/split, and TigerBeetle posting carries an `entity_id`. Each entity (personal / trust / company / SPV / partnership) keeps its own **book/ledger**, with a **base currency** and independent **accounting periods**; year-end close seals a period and blocks further postings into it. F02 RBAC gains an **entity scope** dimension (alongside property scope): Principal-private by default; no Manager carve-out for wealth/entity data. **Consolidation** rolls child entities up to a group net worth with intercompany elimination; the elimination is a computed view, never a ledger mutation. **Circular ownership is rejected at write time.** The TigerBeetle ledger remains hidden in the UI (F18 invariant holds per entity). **Financial and entity creation are always proposed, never auto-committed (F27).** This feature is **foundational**: F39, F40, F41, and F43 all extend it — land F42 first in Wave G.
+> **Decisions:** `entity` is a **first-class scoping dimension** across the entire accounting core — every downstream account, transaction/split, and the general ledger posting carries an `entity_id`. Each entity (personal / trust / company / SPV / partnership) keeps its own **book/ledger**, with a **base currency** and independent **accounting periods**; year-end close seals a period and blocks further postings into it. F02 RBAC gains an **entity scope** dimension (alongside property scope): Principal-private by default; no Manager carve-out for wealth/entity data. **Consolidation** rolls child entities up to a group net worth with intercompany elimination; the elimination is a computed view, never a ledger mutation. **Circular ownership is rejected at write time.** The general ledger remains hidden in the UI (F18 invariant holds per entity). **Financial and entity creation are always proposed, never auto-committed (F27).** This feature is **foundational**: F39, F40, F41, and F43 all extend it — land F42 first in Wave G.
 
 ---
 
@@ -17,7 +17,7 @@
 
 A UHNWI individual does not hold wealth as one undifferentiated mass. Assets sit in trusts, companies, SPVs, partnerships and personal names across multiple jurisdictions. Today those "books" are separate spreadsheets, accountant files or GnuCash databases with no bridge between them.
 
-F42 gives the Principal a single, coherent model of every legal vehicle they control — with each entity keeping its own rigorous double-entry books (posted to TigerBeetle), its own base currency and accounting periods, and with ownership/holding relationships captured in a graph so the full consolidated picture (net worth, balance sheet, P&L) can be computed in F41/F43. It is the spine on which the rest of the Private Wealth module hangs.
+F42 gives the Principal a single, coherent model of every legal vehicle they control — with each entity keeping its own rigorous double-entry books (posted to the general ledger), its own base currency and accounting periods, and with ownership/holding relationships captured in a graph so the full consolidated picture (net worth, balance sheet, P&L) can be computed in F41/F43. It is the spine on which the rest of the Private Wealth module hangs.
 
 Practical outcomes: see every entity you control, understand the ownership chain, know which period is open for each book, close a year-end cleanly and block stale postings, and roll a consolidated view across the whole structure.
 
@@ -303,7 +303,7 @@ The Agent (F25/F27) may propose entity creation or ownership edge addition. Thes
 
 ## 7. Integrations / external systems
 
-- **F18 (TigerBeetle):** each entity maps to a distinct TB account namespace (or a label prefix per entity in a shared cluster). Postings are entity-scoped; the period-closed check gates TB writes. The TB ledger remains hidden in the UI.
+- **F18 (the general ledger):** each entity is an `entity_id` partition of the chart of accounts (F39). Postings are entity-scoped; the period-closed check gates GL writes. The general ledger remains hidden in the UI.
 - **F37 (FX):** each entity's `base_currency` is used as the per-entity reporting currency for period P&L and balance sheets; consolidation normalizes to the group `base_currency` using stored transaction-date rates.
 - **F02 (RBAC):** the entity scope dimension extends F02's `Authorizer`. `entity_scopes` is provisioned here; the `Authorizer` code is extended in this feature.
 - **F39 (Chart of Accounts):** F39 introduces typed account hierarchies per entity; each account carries `entity_id`. F42 provides the entity model F39 depends on — F42 lands first.
@@ -373,12 +373,12 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Given** an entity "Wardian Holdings Ltd" with a period "FY2025" (`starts_on=2025-01-01`, `ends_on=2025-12-31`, `status=open`)
 - **When** Toby closes it via `POST /api/entities/:id/periods/:pid/close` with a note
 - **Then** the period transitions to `closed`; `closed_at` and `closed_by` are set
-- **And** a subsequent downstream write (e.g. a F39 account posting) dated within FY2025 returns **422 PERIOD_CLOSED** — no domain or TB write succeeds.
+- **And** a subsequent downstream write (e.g. a F39 account posting) dated within FY2025 returns **422 PERIOD_CLOSED** — no domain or ledger write succeeds.
 
 **AC5 — Consolidation: child rolled up with intercompany elimination**  ‹maps: `ConsolidationGroupIT`, `IntercompanyEliminationIT`›  *(invariant: consolidation is a computed view — never a ledger mutation)*
 - **Given** a consolidation group "Toby Group" containing "Toby (personal)" and "Wardian Holdings Ltd", both with F39 balances; entity A has an intercompany receivable from entity B and B has a matching payable to A
 - **When** Toby calls `GET /api/consolidation-groups/:id/net-worth`
-- **Then** the consolidated net worth figure **eliminates** the offsetting intercompany receivable/payable; no new TigerBeetle postings are created by the consolidation query
+- **Then** the consolidated net worth figure **eliminates** the offsetting intercompany receivable/payable; no new general-ledger postings are created by the consolidation query
 - **And** a per-entity breakdown is included; the FX conversion to the group's base currency is labelled with the as-of rate (F37).
 
 **AC6 — Per-entity base currency FX consolidation**  ‹maps: `ConsolidationFxIT`›  *(invariant: FX conversion uses stored transaction-date rates — F37)*
@@ -422,7 +422,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
   - `AccountingPeriodClosedIT` — open → close sequence; downstream write blocked after close; rollback `closing → open`.
   - `DuplicateOpenPeriodIT` — second open period rejected.
   - `ConsolidationGroupIT` — group CRUD; member add/remove; net-worth compute.
-  - `IntercompanyEliminationIT` — elimination on consolidation; no TB mutation.
+  - `IntercompanyEliminationIT` — elimination on consolidation; no ledger mutation.
   - `ConsolidationFxIT` — per-entity base-currency FX normalization using stored rates; missing-rate fallback.
   - `EntityAuthzIT` — Principal-only enforcement; 403 for Manager / Staff on all entity endpoints; entity scope grant + revoke.
   - `AgentEntityProposeIT` — Agent proposal path through Triage; no direct entity write.
@@ -468,7 +468,7 @@ Every write is audited:
 
 ## 12. Open questions / decisions
 
-1. **TigerBeetle per-entity account namespace strategy** — does each entity get a distinct TB account ID prefix / user-data partition, or do we use a shared cluster with entity-scoped account codes (F39 decision, but F42 must not foreclose it)? Lean: per-entity account code namespace in F39; F42 provides the entity ID, F39 maps it to TB account IDs.
+1. ~~Per-entity ledger namespace~~ — **resolved (ADR-001):** every account/transaction/split carries `entity_id`; one Postgres GL, entity-partitioned. F42 provides the entity id; F39's chart of accounts is entity-scoped.
 
 2. **Entity scope grant granularity** — current design grants a non-Principal user access to a whole entity. Should it be per-resource within an entity (e.g. operational access to an entity's bills but not its balance sheet)? Lean: whole-entity scope for now; resource-level carve-out deferred to a later F02 extension if needed.
 

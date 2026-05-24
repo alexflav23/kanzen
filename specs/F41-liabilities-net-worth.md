@@ -6,10 +6,10 @@
 | **Milestone** | Wave G (Private Wealth) |
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
-| **Depends on** | F39 (accounting core — chart of accounts, double-entry splits), F42 (entities & structures — entity model, multi-book, consolidation); reads F04/F20 (illiquid assets at valuation), F12 (liquid cash/bank), F40 (investments at market), F37 (FX/display currency), F18 (TigerBeetle ledger) |
+| **Depends on** | F39 (accounting core — chart of accounts, double-entry splits), F42 (entities & structures — entity model, multi-book, consolidation); reads F04/F20 (illiquid assets at valuation), F12 (liquid cash/bank), F40 (investments at market), F37 (FX/display currency), F18 (general ledger) |
 | **Spec references** | GnuCash liability accounts (`libgnucash/engine/Account`); the implementation plan; SPEC §8.6 (valuation), §9 (finance) |
 
-> **Decisions:** liability accounts are **F39 chart-of-accounts entries** of type `LIABILITY` (subkinds: `mortgage` / `loan` / `credit_line` / `margin`), posting repayments to the TigerBeetle ledger (F18, hidden in the UI) through the F39 split engine. The **consolidated net worth** view is a **computed, not stored, snapshot** of: liquid cash (F12 balances) + investments at market (F40 prices) + illiquid assets at latest valuation (F04/F20) − total outstanding liabilities — expressed in any **display currency (F37)**, per entity (F42) or consolidated across the full structure. Snapshots are persisted for time-series. **Net worth is Principal-private** — Manager and Staff receive a hard 403 (no leak via totals, aggregates, or partial data). The agent may **propose** new liability records, never auto-commits them (F27, invariant).
+> **Decisions:** liability accounts are **F39 chart-of-accounts entries** of type `LIABILITY` (subkinds: `mortgage` / `loan` / `credit_line` / `margin`), posting repayments to the general ledger (F18, hidden in the UI) through the F39 split engine. The **consolidated net worth** view is a **computed, not stored, snapshot** of: liquid cash (F12 balances) + investments at market (F40 prices) + illiquid assets at latest valuation (F04/F20) − total outstanding liabilities — expressed in any **display currency (F37)**, per entity (F42) or consolidated across the full structure. Snapshots are persisted for time-series. **Net worth is Principal-private** — Manager and Staff receive a hard 403 (no leak via totals, aggregates, or partial data). The agent may **propose** new liability records, never auto-commits them (F27, invariant).
 
 ---
 
@@ -118,7 +118,7 @@ Structured as a list of upcoming scheduled transactions (mirrors F15 recurring b
 }
 ```
 
-The schedule drives **scheduled transactions** (F15 mechanism): on `next_due`, a proposed repayment transaction surfaces in the Pay queue (F16), which Toby confirms — then posts through F39 splits to TigerBeetle, reducing `outstanding_minor`. Kanzen never initiates payment (invariant).
+The schedule drives **scheduled transactions** (F15 mechanism): on `next_due`, a proposed repayment transaction surfaces in the Pay queue (F16), which Toby confirms — then posts through F39 splits to the general ledger, reducing `outstanding_minor`. Kanzen never initiates payment (invariant).
 
 ### 3.4 Breakdown JSONB (`net_worth_snapshots.breakdown`)
 
@@ -258,7 +258,7 @@ On the **F04 asset detail** page (§5 of F04), when an asset has a `collateral_a
 4. **Intercompany elimination (F42).** When consolidating across entities in the same structure (e.g. a personal entity loaned cash to a subsidiary), the consolidated net-worth computation calls the F42 `IntercompanyEliminator`: loans from one entity to another in the same group are excluded from both assets and liabilities to avoid double-counting. The eliminated amount is stored in `intercompany_eliminated_minor` and shown in the entity table.
 5. **Collateral link integrity.** If a `collateral_asset_id` is set: the asset must exist, be owned by the same `owner_id`, and not be soft-deleted. Soft-deleting a collateral asset does **not** cascade-delete the liability — the link is marked stale and flagged in the UI.
 6. **Illiquid valuation staleness.** When computing net worth, each registry asset (F04) contributing to `total_illiquid_minor` is checked against its latest F20 valuation snapshot. Any asset with no valuation more recent than `stale_threshold_days` (default 365, configurable) contributes to the staleness report. The total is **not suppressed** — the best-available (stale) valuation is used, but the staleness flag is set.
-7. **Repayment is a proposal, not an auto-commit.** `POST /api/liabilities/:id/repayment` creates an F27 proposal surfaced in Triage (F26). Only after Principal confirmation is the F39 split transaction created, the TigerBeetle posting made, and `outstanding_minor` decremented. Kanzen never initiates payment.
+7. **Repayment is a proposal, not an auto-commit.** `POST /api/liabilities/:id/repayment` creates an F27 proposal surfaced in Triage (F26). Only after Principal confirmation is the F39 split transaction created, the the general ledger posting made, and `outstanding_minor` decremented. Kanzen never initiates payment.
 8. **Snapshot immutability.** Persisted `net_worth_snapshots` rows are never mutated after creation (corrections create a new snapshot). The previous row is retained for audit/history.
 9. **Default deny.** Any F41 resource returned to a Manager or Staff caller is a hard `403` from the Authorizer (F02). No aggregate totals, no counts, no partial fields.
 10. **Negative net worth** is valid and must render correctly (e.g. during a renovation financed by a loan before asset values recover). The net worth figure is signed; the UI shows it in red with a "−" prefix.
@@ -267,14 +267,14 @@ On the **F04 asset detail** page (§5 of F04), when an asset has a `collateral_a
 
 | System | Role |
 |---|---|
-| **F39 Accounting core** | Liability accounts live in the chart of accounts (`kind = LIABILITY`); all repayment postings route through F39 balanced splits → TigerBeetle |
+| **F39 Accounting core** | Liability accounts live in the chart of accounts (`kind = LIABILITY`); all repayment postings route through F39 balanced splits → the general ledger |
 | **F42 Entities & structures** | Every liability is entity-scoped; consolidation (including intercompany elimination) uses the F42 entity graph |
 | **F04 Asset registry** | Collateral link to assets; illiquid asset set for net-worth computation |
 | **F20 Valuation** | Latest valuation snapshot per illiquid asset is the illiquid component; staleness check against `valued_at` |
 | **F12 Bank ingestion** | Cash/bank balances (F12 `financial_accounts.balance_minor`) are the liquid component |
 | **F40 Investments** | Holdings at current market price are the investment component |
 | **F37 FX** | All cross-currency consolidation uses `fx_rates` daily snapshots |
-| **F18 TigerBeetle** | Repayment postings (via F39 splits) are recorded in TigerBeetle; the ledger is never exposed in the net-worth UI |
+| **F18 the general ledger** | Repayment postings (via F39 splits) are recorded in the general ledger; the ledger is never exposed in the net-worth UI |
 | **F15 Bills / F16 Pay queue** | Liability repayment schedule generates scheduled transactions (same mechanism as F15); surfaces in F16 Pay queue |
 | **F26/F27 Triage / Trust** | Agent-proposed liabilities and repayment confirmations route through Triage |
 | **F34 Events** | `liability.created`, `liability.repayment_confirmed`, `net_worth.snapshot_taken` events emitted |
@@ -320,8 +320,8 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 *(invariant: agent proposes, never auto-commits; Kanzen never moves money)*
 - **Given** the Wardian mortgage is active
 - **When** Toby (or the agent, F25) submits `POST /api/liabilities/:id/repayment` with the monthly amount
-- **Then** a Triage proposal is created (F26) — `outstanding_minor` is **not** yet reduced, no TigerBeetle posting is made
-- **And** only after Toby confirms in Triage does `outstanding_minor` decrease and the F39 split post to TigerBeetle; the ledger remains hidden in the UI.
+- **Then** a Triage proposal is created (F26) — `outstanding_minor` is **not** yet reduced, no the general ledger posting is made
+- **And** only after Toby confirms in Triage does `outstanding_minor` decrease and the F39 split post to the general ledger; the ledger remains hidden in the UI.
 
 **AC3 — Consolidated net worth across entities in display currency**  
 ‹maps: `NetWorthConsolidationIT`, web `net-worth.spec` consolidation›
@@ -378,7 +378,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 
 - **Backend (weaver + Testcontainers + FreeSpec):**
   - `LiabilityCreateIT` — round-trip create/read/soft-delete with entity + collateral FK validation.
-  - `LiabilityRepaymentProposeIT` — repayment creates a Triage proposal, outstanding unchanged; confirmation path reduces outstanding and posts to F39/TigerBeetle (mocked).
+  - `LiabilityRepaymentProposeIT` — repayment creates a Triage proposal, outstanding unchanged; confirmation path reduces outstanding and posts to F39/the general ledger (mocked).
   - `NetWorthConsolidationIT` — multi-entity, multi-currency consolidation with FX snapshots; verify native amounts preserved and display total matches manual calculation.
   - `IntercompanyEliminationIT` — two-entity IC loan is eliminated at consolidation; per-entity views unaffected.
   - `ValuationStalenessIT` — staleness detection at threshold boundary (364 days = clean, 366 days = stale); `stale_count` and `stale_value_minor` correct.
@@ -401,7 +401,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - `liability.created` — `owner_id`, `entity_id`, `kind`, `principal_minor`, `currency`.
 - `liability.updated` — changed fields (diff).
 - `liability.repayment.proposed` — proposed amount, date.
-- `liability.repayment.confirmed` — amount, TB posting reference.
+- `liability.repayment.confirmed` — amount, GL posting reference.
 - `liability.settled` — final outstanding, settlement date.
 - `net_worth.snapshot.taken` — `as_of`, `net_worth_minor`, `display_currency`, `kind`.
 

@@ -9,7 +9,7 @@
 | **Depends on** | F39 (accounting core), F42 (entities), F37 (FX); feeds F41/F43, F38 |
 | **Spec references** | GnuCash `gnc-commodity` / `gnc-pricedb` / `gnc-lot`; the implementation plan |
 
-> **Decisions:** full investment accounting — securities/commodities including illiquid/private holdings; a time-series price database (live + manual); holdings managed as typed **security accounts** in the F39 chart of accounts, entity-scoped (F42); cost-basis lot accounting (buy creates a lot; sell closes lots via FIFO or specific-identification → realised capital gains; unrealised gain from current price); dividends/distributions; corporate actions (stock splits, mergers, spin-offs) adjusting lots and holdings. Portfolio view: holdings table, allocation (by asset class / sector / currency / entity), performance (TWR/IRR), gains. **Invariant: Kanzen records investments, never executes trades** (no brokerage order, no PIS); the TigerBeetle ledger (F18) is hidden in the UI; investments are **Principal-private**. Money always integer minor units + ISO currency; quantity of shares as `numeric` (fractional shares); FX at transaction-date rate via F37.
+> **Decisions:** full investment accounting — securities/commodities including illiquid/private holdings; a time-series price database (live + manual); holdings managed as typed **security accounts** in the F39 chart of accounts, entity-scoped (F42); cost-basis lot accounting (buy creates a lot; sell closes lots via FIFO or specific-identification → realised capital gains; unrealised gain from current price); dividends/distributions; corporate actions (stock splits, mergers, spin-offs) adjusting lots and holdings. Portfolio view: holdings table, allocation (by asset class / sector / currency / entity), performance (TWR/IRR), gains. **Invariant: Kanzen records investments, never executes trades** (no brokerage order, no PIS); the general ledger (F18) is hidden in the UI; investments are **Principal-private**. Money always integer minor units + ISO currency; quantity of shares as `numeric` (fractional shares); FX at transaction-date rate via F37.
 
 ---
 
@@ -17,7 +17,7 @@
 
 A UHNWI household holds far more than property and cash: a brokerage account of equities and ETFs, a bond ladder, some private equity stakes, crypto, and a watch collection investment fund — all in multiple currencies, spread across personal and trust accounts. Today those live in a spreadsheet (at best).
 
-F40 brings them inside Kanzen: every security is registered with identifiers and a live or manual price, every buy and sell lands as a lot with a cost basis, every dividend is recorded, and the portfolio screen answers "what do I own, what did it cost, what is it worth, and what has it returned?" — broken down by asset class, entity, and currency, with correct realised and unrealised capital gains for F38 tax reporting. The TigerBeetle ledger (F18) gets the matching accounting entries; all of it feeds the consolidated net-worth picture in F41 and the financial statements in F43.
+F40 brings them inside Kanzen: every security is registered with identifiers and a live or manual price, every buy and sell lands as a lot with a cost basis, every dividend is recorded, and the portfolio screen answers "what do I own, what did it cost, what is it worth, and what has it returned?" — broken down by asset class, entity, and currency, with correct realised and unrealised capital gains for F38 tax reporting. The general ledger (F18) gets the matching accounting entries; all of it feeds the consolidated net-worth picture in F41 and the financial statements in F43.
 
 ## 2. Roles & permissions
 
@@ -165,13 +165,13 @@ corporate_actions (
 
 ### 3.7 Ledger integration (F18)
 
-Corporate-action lot adjustments, buy/sell lot opens/closures, and confirmed distributions each produce a `ledger_posting_group` (F18) with balanced TB splits:
+Corporate-action lot adjustments, buy/sell lot opens/closures, and confirmed distributions each produce a `ledger_posting_group` (F18) with balanced general-ledger splits:
 - **Buy**: debit security account (asset), credit cash account (asset).
 - **Sell**: debit cash account (asset), credit security account (asset); realised-gain split to income or loss account.
 - **Dividend**: debit cash account, credit dividend-income account.
 - **DRIP**: debit security account, credit dividend-income account.
-- **Corporate action (split)**: quantity adjustment; cost basis per unit recalculated; no TB posting needed (no value moves).
-- **Corporate action (merger/spinoff)**: old lot closed at cost → new lot opened at carryover cost basis; TB posts the transfer.
+- **Corporate action (split)**: quantity adjustment; cost basis per unit recalculated; no GL posting needed (no value moves).
+- **Corporate action (merger/spinoff)**: old lot closed at cost → new lot opened at carryover cost basis; the general ledger posts the transfer.
 
 All amounts integer minor units; postings stay in **native** currency; F37 supplies the base-currency rate; the ledger is hidden in the UI.
 
@@ -298,21 +298,21 @@ There is **no trade-execution endpoint** — `POST /api/investments/lots` record
 
 ### Corporate actions
 
-- **Stock split** (`ratio_num:ratio_denom`): multiply all open-lot `qty` for the security by `ratio_num/ratio_denom`; set `cost_basis_per_unit_minor = cost_basis_minor / new_qty`. No TB posting (qty adjustment only — no value transfer).
-- **Merger / spin-off**: old lots are closed at their original cost basis (`gain_minor = 0`, note `kind=merger`); new lots are opened on the successor security carrying the carryover cost basis. TB posts the inter-account transfer.
+- **Stock split** (`ratio_num:ratio_denom`): multiply all open-lot `qty` for the security by `ratio_num/ratio_denom`; set `cost_basis_per_unit_minor = cost_basis_minor / new_qty`. No GL posting (qty adjustment only — no value transfer).
+- **Merger / spin-off**: old lots are closed at their original cost basis (`gain_minor = 0`, note `kind=merger`); new lots are opened on the successor security carrying the carryover cost basis. The general ledger posts the inter-account transfer.
 - **Name / ticker change**: security metadata update only; lots unchanged.
 
 ### DRIP (dividend reinvestment)
 
 - Record the distribution with `kind='drip'`, `qty_reinvested`, and `amount_minor` (the notional cash value).
 - Simultaneously open a new lot for the reinvested shares (`source_type='drip'`).
-- TB: debit security account, credit dividend-income account.
+- GL: debit security account, credit dividend-income account.
 
 ### Financial / agent invariants
 
 - **No trade execution**: there is no order, instruction, or brokerage-integration resource. `POST /api/investments/lots` records a past buy; it is not a trade instruction.
 - **Financial creation proposed, not committed**: lots, closures, distributions and corporate-action applications proposed by the Agent go to Triage (F26/F27) before any DB write is committed.
-- **Ledger hidden**: no TB account IDs, transfer IDs, or raw postings appear in any portfolio API response or screen.
+- **Ledger hidden**: no raw postings or account ids appear in any portfolio API response or screen.
 - **Principal-private**: no portfolio total, allocation percentage, or gain figure is returned to any non-Principal actor — server-side, not just UI-hidden.
 
 ## 7. Integrations / external systems
@@ -335,9 +335,9 @@ The scheduled fetch job runs daily (configurable via config, not hard-coded); ru
 
 `fx_rate_to_base` captured at lot open/close/distribution date from `fx_rates` snapshots. Portfolio rollups delegate to F37's `POST /api/fx/convert` or direct DB lookup. Nearest-prior fallback applies.
 
-### TigerBeetle (F18)
+### the general ledger (F18)
 
-Buy, sell, dividend, DRIP, and merger/spinoff events produce `ledger_posting_groups` via the shared posting pipeline. Lot closures and distributions are only fully committed once the TB posting succeeds (or is queued); the domain row status stays `proposed` until the posting group is confirmed. Idempotency key: `(source_type, source_id='lot_closure.id'|'distribution.id', kind)`.
+Buy, sell, dividend, DRIP, and merger/spinoff events produce `ledger_posting_groups` via the shared posting pipeline. Lot closures and distributions are only fully committed once the GL posting succeeds (or is queued); the domain row status stays `proposed` until the posting group is confirmed. Idempotency key: `(source_type, source_id='lot_closure.id'|'distribution.id', kind)`.
 
 ### Bedrock (F25 — optional)
 
@@ -365,7 +365,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Given** Toby has a personal entity and a GBP equity security (ISIN GB0031348658, "Rolls-Royce")
 - **When** Toby records a buy of 500 shares at £2.80 each (total £1,400)
 - **Then** `investment_lots` gains a row: `qty=500`, `cost_basis_minor=140000` (pence), `cost_basis_per_unit_minor=280`, `currency='GBP'`, `status='open'`
-- **And** a `ledger_posting_group` (kind=`investment_buy`) is created with balanced TB splits: debit security account, credit cash account; `fx_rate_to_base` is captured from F37 at `open_date`.
+- **And** a `ledger_posting_group` (kind=`investment_buy`) is created with balanced general-ledger splits: debit security account, credit cash account; `fx_rate_to_base` is captured from F37 at `open_date`.
 
 **AC2 — Partial FIFO sell computes realised gain and updates lot status**  ‹maps: `LotClosureFifoIT`, `RealisedGainSpec`, web `portfolio.spec` sell-flow›
 - **Given** the lot from AC1 is open (500 shares at 280p cost)
@@ -377,13 +377,13 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Given** the partial lot from AC2 (300 shares remaining, cost basis 280p each)
 - **When** Toby applies a 2-for-1 stock split for the security
 - **Then** the open lot is updated: `qty=600`, `cost_basis_per_unit_minor=140` (280 / 2); `cost_basis_minor` is unchanged (total cost is preserved)
-- **And** the existing `lot_closures` row from AC2 is **not** mutated; no TB posting is created for the split (qty-only adjustment).
+- **And** the existing `lot_closures` row from AC2 is **not** mutated; no GL posting is created for the split (qty-only adjustment).
 
 **AC4 — Dividend recorded and fed to F38 as capital income**  ‹maps: `DistributionRecordIT`, `DividendF38FeedIT`, web `portfolio.spec` distribution›
 - **Given** the open lot from AC3 (600 shares)
 - **When** Toby confirms a dividend of £0.10 per share (£60 total, GBP)
 - **Then** `distributions` gains a confirmed row: `kind='dividend'`, `amount_minor=6000`; `fx_rate_to_base` captured at `distribution_date`
-- **And** `GET /api/investments/portfolio/gains?year=2026` includes £60 dividend income; the F38 deductible/gains feed picks it up; a balanced TB posting is written (debit cash, credit dividend-income account).
+- **And** `GET /api/investments/portfolio/gains?year=2026` includes £60 dividend income; the F38 deductible/gains feed picks it up; a balanced GL posting is written (debit cash, credit dividend-income account).
 
 **AC5 — DRIP: dividend reinvestment opens a new lot in the same transaction**  ‹maps: `DripAtomicIT`›  *(invariant: DRIP = distribution + lot-open atomic)*
 - **Given** a DRIP dividend of £60 resulting in 15 new shares at £4.00
@@ -421,7 +421,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 
 - **FreeSpec (pure domain rules)**: cost-basis calculation (FIFO, specific-id, partial); realised gain/loss formula; gain term (short vs long); stock-split lot-qty adjustment; DRIP atomicity invariant; no-price / nearest-prior fallback; staleness threshold logic.
 - **Weaver + Testcontainers Postgres**: lot CRUD round-trips; lot-closure FIFO ordering; corporate-action application (split, merger); distribution confirm/void; portfolio aggregation (holdings, allocation, gains) against seeded lots; FX-normalised rollup with labelled estimate; authz (Principal-only) on every endpoint; no-trade-execution assertion (no matching endpoint in routing table).
-- **TigerBeetle test container**: buy/sell balanced postings; dividend posting; merger inter-account transfer; idempotency (duplicate lot-open attempt); queue-on-TB-down for lot confirmations.
+- **general-ledger tests (Testcontainers-PG)**: buy/sell balanced postings; dividend posting; merger inter-account transfer; idempotency (duplicate lot-open attempt).
 - **Quote-source mock**: live-quote fetch job (upserts prices); provider-down fallback; staleness computation.
 
 ### Web
@@ -433,9 +433,9 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 
 **Audit** (via `audit_log_entries`): every lot open/close, distribution create/confirm/void, corporate-action apply, manual price entry, security create/edit/delete. Corrections are new audit events, not mutations.
 
-**Metrics**: holdings count by asset class; live-quote fetch success/failure rate + latency; price staleness histogram; lot-open/close events per day; unrealised and realised gain totals (Principal-scoped aggregates); TB posting lag for investment events; proposed-pending count in Triage.
+**Metrics**: holdings count by asset class; live-quote fetch success/failure rate + latency; price staleness histogram; lot-open/close events per day; unrealised and realised gain totals (Principal-scoped aggregates); GL posting lag for investment events; proposed-pending count in Triage.
 
-**Alerts**: quote-source consecutive failures → alert; all holdings with no price for > 30 days (liquid) or > 365 days (illiquid) → staleness dashboard flag; TB posting queue depth > 0 for > 5 minutes → alert.
+**Alerts**: quote-source consecutive failures → alert; all holdings with no price for > 30 days (liquid) or > 365 days (illiquid) → staleness dashboard flag; GL posting queue depth > 0 for > 5 minutes → alert.
 
 ## 12. Open questions / decisions
 

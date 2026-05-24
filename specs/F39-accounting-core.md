@@ -6,16 +6,16 @@
 | **Milestone** | Wave G |
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
-| **Depends on** | F42 (entities/books), F18 (TigerBeetle ledger), F37 (currencies/FX), F14 (reconciliation) |
-| **Spec references** | GnuCash `Account`/`Transaction`/`Split` model; `00-master-implementation-plan.md`; SPEC §9 (finance); F18 (TB posting engine) |
+| **Depends on** | F42 (entities/books), F18 (general ledger), F37 (currencies/FX), F14 (reconciliation) |
+| **Spec references** | GnuCash `Account`/`Transaction`/`Split` model; `00-master-implementation-plan.md`; SPEC §9 (finance); F18 (GL posting engine) |
 
-> **Decisions:** a GnuCash-style chart of accounts + double-entry transaction/split engine, modernised on top of TigerBeetle. Postgres holds all domain data (accounts, GL transactions, splits); **TigerBeetle holds the immutable postings** — consistent with the F18 principle that TB and Postgres are never conflated and TB is fully **hidden from the UI**. Splits sum to zero (balanced or rejected). Multi-currency transactions use **trading accounts** (one per currency pair), following GnuCash's model. Corrections are **reversing entries**, never edits. The chart of accounts is **entity-scoped** (F42) so each legal/family entity has its own books. Financial-statement placement (balance sheet vs P&L) is driven by account type. The Agent may **propose** entries but never auto-commits financial/asset creation. **Kanzen never moves money.**
+> **Decisions:** a GnuCash-style chart of accounts + double-entry transaction/split engine, modernised in Postgres (ADR-001). The `gl_splits` **are** the ledger — balances derive from them in the **same ACID transaction**; there is no separate ledger store. The general ledger is **hidden from the UI** (statements/registers only). Splits sum to zero (balanced or rejected). Multi-currency transactions use **trading accounts** (one per currency pair), following GnuCash's model. Corrections are **reversing entries**, never edits. The chart of accounts is **entity-scoped** (F42) so each legal/family entity has its own books. Financial-statement placement (balance sheet vs P&L) is driven by account type. The Agent may **propose** entries but never auto-commits financial/asset creation. **Kanzen never moves money.**
 
 ---
 
 ## 1. Purpose & user value
 
-Give the Principal a proper set of books for the household — a hierarchical chart of accounts, a general ledger of balanced transactions, and the ability to view an accurate balance sheet and P&L per entity. Every financial input that flows through Kanzen (bank transactions from F12/F14, receipts from F13, asset acquisitions at cost from F04/F20, liabilities from F41, investments from F40, expenses from F17) feeds the general ledger as a balanced split transaction. The result: a single, internally consistent financial picture per entity, backed by immutable double-entry postings in TigerBeetle, that the Principal (and their accountant) can interrogate without resorting to spreadsheets.
+Give the Principal a proper set of books for the household — a hierarchical chart of accounts, a general ledger of balanced transactions, and the ability to view an accurate balance sheet and P&L per entity. Every financial input that flows through Kanzen (bank transactions from F12/F14, receipts from F13, asset acquisitions at cost from F04/F20, liabilities from F41, investments from F40, expenses from F17) feeds the general ledger as a balanced split transaction. The result: a single, internally consistent financial picture per entity, backed by immutable double-entry postings in the general ledger, that the Principal (and their accountant) can interrogate without resorting to spreadsheets.
 
 ---
 
@@ -77,7 +77,7 @@ voided_by_txn_id    uuid        null      → gl_transactions  -- the reversing 
 created_by          uuid        not null → users
 created_at          timestamptz not null default now()
 updated_at          timestamptz not null default now()
-deleted_at          timestamptz null      -- soft delete (UI; immutable in TB)
+deleted_at          timestamptz null      -- soft delete (posted entries immutable; correct via reversal)
 ```
 Constraint: a transaction may not be voided and also have splits added; voiding creates a new reversing transaction.
 
@@ -92,10 +92,10 @@ memo                text        null
 reconcile_state     text        not null default 'unreconciled'
                                           -- 'unreconciled'|'cleared'|'reconciled'
 lot_id              uuid        null      -- → lots (F40); for investment cost-basis tracking
-tb_transfer_id      text        null      -- TigerBeetle transfer ID; set after posting
+gl_posting_id      text        null      -- the general ledger transfer ID; set after posting
 created_at          timestamptz not null default now()
 ```
-Constraint: for a given `transaction_id`, `SUM(amount_minor)` **per currency** must equal zero — enforced at the application layer before any TB transfer is created; a split set that does not balance is **rejected** (HTTP 422). Multi-currency transactions achieve balance via **trading account splits** (one debit in the source currency + one credit in the target currency per the actual exchange rate; a corresponding pair in the trading account).
+Constraint: for a given `transaction_id`, `SUM(amount_minor)` **per currency** must equal zero — enforced at the application layer before any GL posting is created; a split set that does not balance is **rejected** (HTTP 422). Multi-currency transactions achieve balance via **trading account splits** (one debit in the source currency + one credit in the target currency per the actual exchange rate; a corresponding pair in the trading account).
 
 **`account_balances`** (materialised view or cache) — running balances derived from `gl_splits`; refreshed on each committed transaction. Serves the register and balance-sheet endpoints without a full scan.
 
@@ -117,7 +117,7 @@ All routes under `/api/accounting`. Auth = Cognito JWT → `Principal` (F01). `A
 **General ledger transactions**
 - `GET  /api/accounting/entities/:eid/transactions` — paginated register. Query: `?account=`, `?period=`, `?from=`, `?to=`, `?source_type=`.
 - `GET  /api/accounting/entities/:eid/transactions/:id` — single transaction + splits.
-- `POST /api/accounting/entities/:eid/transactions` — create a balanced transaction (splits validated to sum zero; TB posting triggered post-commit). Body: `{txnDate, description, splits: [{accountId, amountMinor, currency, memo}], sourceType?, sourceId?}`.
+- `POST /api/accounting/entities/:eid/transactions` — create a balanced transaction (splits validated to sum zero; GL posting triggered post-commit). Body: `{txnDate, description, splits: [{accountId, amountMinor, currency, memo}], sourceType?, sourceId?}`.
 - `POST /api/accounting/entities/:eid/transactions/:id/reverse` — create a reversing entry (Principal only). Body: `{txnDate, description}`. Sets `voided_at` on the original and returns the new reversing transaction.
 
 **Financial statements**
@@ -159,7 +159,7 @@ The accounting UI surfaces under **Finance → Books** (or a dedicated **Account
 - P&L (date range): Income section / Expenses section → Net income. Manager sees this view filtered to income/expense types.
 - Export to CSV/PDF via F30.
 
-**TigerBeetle is never shown.** No `tb_transfer_id`, no TB account ID, no raw posting appears anywhere in the UI. Accounts, transactions, splits and balances are the user-visible model.
+**the general ledger is never shown.** No raw posting or account id appears anywhere in the UI. Accounts, transactions, splits and balances are the user-visible model.
 
 All screens: light + dark (StyleX tokens/themes); loading / empty / error / forbidden states per F00 component library.
 
@@ -169,7 +169,7 @@ All screens: light + dark (StyleX tokens/themes); loading / empty / error / forb
 
 **Balanced double-entry (hardest invariant)**
 - A transaction is only committed if its splits sum to zero per currency. An attempt to save an unbalanced transaction returns HTTP 422 with a per-currency imbalance breakdown. No partial writes.
-- The TB posting is triggered only after the Postgres transaction commits. If TB is unavailable, the domain write succeeds and the posting is queued (F18 resilience pattern).
+- Splits and the balance update commit **atomically in one Postgres transaction** — there is no separate ledger to fail, no queue, no eventual consistency.
 
 **Multi-currency transactions via trading accounts**
 - When a transaction spans two currencies (e.g. converting GBP to SGD), two trading-account splits are added automatically: one in the source currency and one in the target currency. The trading account absorbs the FX gain/loss, following GnuCash's model. F37 supplies the actual rate; the trading account balance represents net FX gain/loss per currency pair.
@@ -185,7 +185,7 @@ All screens: light + dark (StyleX tokens/themes); loading / empty / error / forb
 - A transaction cannot post into a **closed period** (F42 `accounting_periods`). Attempting to do so returns HTTP 409. A transaction with `period_id=null` posts to the open/current period.
 
 **Immutable postings — corrections by reversal**
-- Once committed, a GL transaction is never edited. To correct it, the caller invokes `POST /:id/reverse`, which creates an equal-and-opposite reversing transaction and sets `voided_at` on the original. Both remain queryable. TB transfer IDs in `gl_splits.tb_transfer_id` are never re-used or overwritten.
+- Once committed, a GL transaction is never edited. To correct it, the caller invokes `POST /:id/reverse`, which creates an equal-and-opposite reversing transaction and sets `voided_at` on the original. Both remain queryable. GL posting IDs in `gl_splits.gl_posting_id` are never re-used or overwritten.
 
 **Source traceability**
 - `source_type` / `source_id` on `gl_transactions` links every posting back to its originating domain object (bank transaction, receipt, asset acquisition, etc.). This enables reconciliation (F14) to verify that every confirmed match has a corresponding GL posting.
@@ -208,13 +208,13 @@ All screens: light + dark (StyleX tokens/themes); loading / empty / error / forb
 | Dependency | Role |
 |---|---|
 | **F42 — Entities/books** | Provides `entity_id` scope; accounting periods (closed-period guard); entity CRUD is the prerequisite for chart-of-accounts setup |
-| **F18 — TigerBeetle** | The immutable posting engine. Every committed GL transaction maps splits to TB transfers via `ledger_posting_groups` / `ledger_posting_references`. F39 calls F18's `postGroup` after each Postgres commit. TB is read for derived balances used in `account_balances` |
+| **F18 — the general ledger engine** | The Postgres double-entry store (accounts/transactions/`gl_splits`/balances). F39's chart of accounts + transaction entry sit on it; balances derive from `gl_splits` in the same transaction (ADR-001) |
 | **F37 — Currencies/FX** | Supplies daily FX rate at transaction date for multi-currency splits and trading-account amounts. Rate is captured at posting time and stored with the split |
 | **F14 — Reconciliation** | Confirmed reconciliation matches trigger GL postings via `source_type='bank_transaction'`; F39 exposes a `source_id` lookup so F14 can verify every match has a corresponding posted transaction |
 | **F04 / F20** | Asset acquisitions at cost and valuation snapshots → asset account debits. F39 listens for confirmed acquisition/valuation events and generates the corresponding GL entries |
 | **F12 / F13 / F17** | Bank transactions, receipts and approved expenses → income/expense account splits |
 | **F40 / F41** | Investments and liabilities → security/liability account entries (F39 provides the account types and split model; F40/F41 provide the domain events) |
-| **F30 — Backup/restore** | Financial statements and GL transaction history included in the backup manifest; full replay of GL from TB transfer history |
+| **F30 — Backup/restore** | Financial statements and GL transaction history included in the backup manifest; full replay of GL from GL posting history |
 | **F26 / F27** | Agent proposes transactions via Triage; F27 trust rules govern which proposals are surfaced |
 
 No external third-party systems. Rates from F37, postings to F18, entity context from F42.
@@ -223,17 +223,17 @@ No external third-party systems. Rates from F37, postings to F18, entity context
 
 ## 8. Edge cases
 
-- **Unbalanced transaction attempt** — splits do not sum to zero: HTTP 422 with per-currency imbalance detail; no Postgres row written, no TB transfer created.
+- **Unbalanced transaction attempt** — splits do not sum to zero: HTTP 422 with per-currency imbalance detail; no Postgres row written, no GL posting created.
 - **Multi-currency split via trading accounts** — a GBP→SGD exchange: debit bank:GBP / credit bank:SGD / debit trading:GBP / credit trading:SGD at the actual rate (F37); the transaction balances per currency via the trading account pair.
 - **Posting into a closed period (F42)** — `txn_date` falls inside a closed `accounting_period`: HTTP 409 ("Period closed; use a later date or open the period"); no partial write.
 - **Placeholder account receives a split** — HTTP 422 ("Account is a placeholder; it cannot hold postings; use a child account").
 - **Type change after splits exist** — PATCH to change `type` blocked with 409 ("Account type is immutable after transactions exist").
 - **Reversing correction preserves history** — original transaction is marked `voided_at`; both original and reversal queryable; GL register shows both with the voided one clearly marked; net balance effect is zero.
-- **TB unavailable at posting time** — domain write succeeds (Postgres transaction committed); the split row exists with `tb_transfer_id=null`; posting is queued in F18's resilience buffer; when TB recovers the queue is flushed and `tb_transfer_id` is back-filled; unposted depth metric exposed.
+- **Crash mid-transaction** — splits + balance update are one atomic Postgres transaction; either all commit or none. No partial post, no queue.
 - **Soft-deleted account referenced by existing splits** — soft-delete blocked (409) if any non-voided `gl_splits` reference the account.
 - **Hierarchical account deletion** — parent account with active children cannot be deleted; children must be moved or deleted first.
 - **FX gain/loss in trading account** — multiple currency conversions accumulate in the trading account; the balance represents unrealised FX gain/loss, visible to the Principal only in the balance sheet.
-- **Agent-proposed transaction not confirmed** — the proposed entry sits in Triage (F26) indefinitely; no GL row or TB transfer is ever created until Toby explicitly confirms.
+- **Agent-proposed transaction not confirmed** — the proposed entry sits in Triage (F26) indefinitely; no GL row or GL posting is ever created until Toby explicitly confirms.
 
 ---
 
@@ -247,20 +247,20 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Then** `GET /api/accounting/entities/:eid/accounts` returns the three accounts in a tree; `Assets` has two children; the placeholder flag is set on the parent
 - **And** both child accounts are returned with a zero balance and are not themselves placeholder.
 
-**AC2 — Balanced transaction commits and posts to TigerBeetle**  ‹maps: `BalancedTransactionIT`, `TbPostingAfterCommitIT`›  *(invariant: balanced double-entry; TB ledger hidden in UI)*
+**AC2 — Balanced transaction commits atomically**  ‹maps: `BalancedTransactionIT`›  *(invariant: balanced double-entry; general ledger hidden in UI)*
 - **Given** Toby has `Coutts Current` (bank, GBP) and `Groceries` (expense, GBP) accounts
 - **When** he posts a transaction `{txnDate: "2026-01-15", description: "Waitrose shop", splits: [{account: Coutts, amountMinor: -4500}, {account: Groceries, amountMinor: 4500}]}`
 - **Then** the transaction is committed; both `gl_splits` rows exist; `SUM(amount_minor)` for the transaction is 0
-- **And** a TB transfer is created via F18 (`tb_transfer_id` is populated in `gl_splits`); the raw TB transfer ID is **never** returned in any API response or rendered in any UI screen.
+- **And** a GL posting is created via F18 (`gl_posting_id` is populated in `gl_splits`); the raw GL posting ID is **never** returned in any API response or rendered in any UI screen.
 
 **AC3 — Unbalanced transaction is rejected**  ‹maps: `UnbalancedTransactionRejectedSpec`, `UnbalancedTransactionRejectedIT`›  *(invariant: imbalance rejected — no partial write)*
 - **Given** Toby has `Coutts Current` and `Groceries` accounts
 - **When** he attempts to post a transaction whose splits sum to £10 (not zero)
 - **Then** the API returns **HTTP 422** with a body indicating the per-currency imbalance (e.g. `{currency: "GBP", imbalanceMinor: 1000}`)
-- **And** no `gl_transactions` or `gl_splits` row is written; no TB transfer is created.
+- **And** no `gl_transactions` or `gl_splits` row is written; no GL posting is created.
 
 **AC4 — Reversal correction preserves history and net-zeros the ledger**  ‹maps: `ReversalCorrectionIT`, web `accounting.spec` register-reversal›  *(invariant: immutable postings — reverse, never edit)*
-- **Given** a committed GL transaction (Waitrose £45) exists with TB transfer IDs populated
+- **Given** a committed GL transaction (Waitrose £45) exists with GL posting IDs populated
 - **When** Toby calls `POST /api/accounting/entities/:eid/transactions/:id/reverse` with a correction date
 - **Then** a new reversing transaction is created with equal-and-opposite splits; the original transaction's `voided_at` is set; neither transaction is deleted or mutated
 - **And** the account register shows **both** the original (marked voided) and the reversal; the account balance reflects the net-zero effect; an audit entry is created for the reversal.
@@ -269,7 +269,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Given** the 2025 accounting period for the entity is closed (F42)
 - **When** Toby (or an automated source) attempts to post a transaction with `txnDate` in 2025
 - **Then** the API returns **HTTP 409** ("Period closed")
-- **And** no GL row is written; no TB transfer is created; the open period is suggested in the error body.
+- **And** no GL row is written; no GL posting is created; the open period is suggested in the error body.
 
 **AC6 — Placeholder account cannot hold splits**  ‹maps: `PlaceholderAccountRejectedIT`, web `accounting.spec` placeholder-guard›  *(invariant: placeholder accounts hold no postings)*
 - **Given** `Assets` is a placeholder account
@@ -281,7 +281,7 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **Given** Toby has `Coutts GBP` (bank, GBP), `Revolut SGD` (bank, SGD), and a `Trading:GBP/SGD` (trading) account
 - **When** he records a GBP→SGD conversion using the F37 rate for that date (splits: debit GBP bank, credit SGD bank, debit trading:GBP, credit trading:SGD)
 - **Then** the transaction balances to zero per currency (GBP splits sum to 0; SGD splits sum to 0); all four splits are committed
-- **And** the trading account balance accumulates the FX gain/loss; no TB transfer uses raw rate arithmetic outside the split model.
+- **And** the trading account balance accumulates the FX gain/loss; no GL posting uses raw rate arithmetic outside the split model.
 
 **AC8 — Manager can read income/expense register; cannot read balance-sheet accounts**  ‹maps: `AccountingManagerScopeIT`, web `accounting.spec` manager-forbidden›  *(invariant: account-type and entity scope; no leak)*
 - **Given** Lorna (Manager) and an entity with both bank (asset) and expense accounts
@@ -292,29 +292,29 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 **AC9 — Agent-proposed transaction requires Toby's confirmation; never auto-posts**  ‹maps: `AgentProposedTransactionIT`, web `triage.spec` accounting-propose›  *(invariant: financial/asset creation proposed, never auto-committed — F27)*
 - **Given** the email agent (F25) classifies an incoming invoice as a deductible expense and proposes a GL transaction
 - **When** the agent runs
-- **Then** the proposed transaction appears in Triage (F26) with status `proposed`; no `gl_transactions` row is created; no TB transfer is issued
-- **And** only when Toby clicks **Post to books** does the GL row commit and the TB posting fire; if he dismisses it, no entry is ever created.
+- **Then** the proposed transaction appears in Triage (F26) with status `proposed`; no `gl_transactions` row is created; no GL posting is issued
+- **And** only when Toby clicks **Post to books** does the GL row commit and the GL posting fire; if he dismisses it, no entry is ever created.
 
 ---
 
 ## 10. Test plan
 
-**Backend (weaver + Testcontainers — Postgres 16 + TigerBeetle test container)**
+**Backend (weaver + Testcontainers — Postgres 16 + the general ledger test container)**
 - `ChartOfAccountsSpec` (FreeSpec): account type taxonomy, hierarchical parent/child, placeholder guard, type-immutability after splits, soft-delete guards.
 - `BalancedTransactionSpec` (FreeSpec): zero-sum invariant across single-currency, multi-currency via trading accounts, mixed-sign splits, edge amounts (zero, negative).
 - `UnbalancedTransactionRejectedSpec` (FreeSpec): rejects with per-currency imbalance; no side-effects.
 - `ReversalCorrectionSpec` (FreeSpec): reversal creates equal-and-opposite; original `voided_at` set; net balance zero.
 - Integration tests (weaver + Testcontainers):
   - `ChartOfAccountsIT` — round-trip create/read/update/soft-delete accounts; hierarchy query.
-  - `BalancedTransactionIT` + `TbPostingAfterCommitIT` — full end-to-end: Postgres commit → TB transfer created; `tb_transfer_id` back-populated; idempotency (re-trigger does not double-post).
+  - `BalancedTransactionIT` — a balanced transaction commits its splits + balance update **atomically** in one Postgres transaction; idempotency (re-submit with the same key does not double-post).
   - `UnbalancedTransactionRejectedIT` — HTTP 422, zero DB side-effects confirmed.
   - `ReversalCorrectionIT` — both original and reversal queryable; audit log entries present.
   - `ClosedPeriodBlockIT` — mock F42 closed period; HTTP 409.
   - `PlaceholderAccountRejectedIT` — HTTP 422 with correct message.
   - `MultiCurrencyTradingAccountIT` — four-split transaction; per-currency balance zero; trading account accrues.
   - `AccountingManagerScopeIT` — account list filtered to income/expense; balance-sheet 403.
-  - `AgentProposedTransactionIT` — no GL row before confirmation; GL row + TB transfer after.
-  - `TbLedgerHiddenIT` — assert no `tb_transfer_id`, TB account ID, or raw posting appears in any public API response body.
+  - `AgentProposedTransactionIT` — no GL row before confirmation; GL row + GL posting after.
+  - `LedgerHiddenIT` — assert no raw posting or account id appears in any public API response body.
 
 **Web (Vitest + Playwright)**
 - Vitest: chart-of-accounts tree component (expand/collapse, placeholder badge, forbidden state); transaction form (live balance indicator, unbalanced inline error, multi-currency split rows); register (voided row styling, running balance).
@@ -330,12 +330,12 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 **Metrics (Prometheus)**
 - `kanzen_gl_transactions_total{entity, type}` — transactions created per entity and source type.
 - `kanzen_gl_imbalance_rejections_total{entity}` — unbalanced attempts rejected.
-- `kanzen_gl_tb_posting_lag_seconds` — time from Postgres commit to TB transfer confirmed.
-- `kanzen_gl_unposted_queue_depth` — splits with `tb_transfer_id=null` (TB resilience queue depth; F18).
+- `kanzen_gl_tb_posting_lag_seconds` — time from Postgres commit to GL posting confirmed.
+- `kanzen_gl_transactions_total` — committed GL transactions by entity/period.
 - `kanzen_gl_closed_period_rejections_total` — closed-period guard hits.
 - `kanzen_gl_reversals_total` — correcting reversals issued.
 
-**Tracing**: OpenTelemetry spans on the transaction commit path and the TB posting call. The TB posting span is labelled `internal` and never surfaced in user-visible traces or UI.
+**Tracing**: OpenTelemetry spans on the transaction commit path and the GL posting call. The GL posting span is labelled `internal` and never surfaced in user-visible traces or UI.
 
 ---
 

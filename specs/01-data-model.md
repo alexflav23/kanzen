@@ -26,7 +26,7 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 16. **Bills** (F15) — `bills`.
 17. **Payments** (F16) — `payment_methods`, `bill_payments`.
 18. **Budgets/Expenses** (F17) — `expenses`, `approvals` (polymorphic), `associated_costs(+asset_link)`, `budgets`.
-19. **Ledger** (F18) — `ledger_account_mappings`, `ledger_posting_groups`, `ledger_posting_references` (TigerBeetle holds accounts/transfers).
+19. **Ledger** (F18) — `ledger_account_mappings`, `ledger_posting_groups`, `ledger_posting_references` (the general ledger holds accounts/transfers).
 20. **Asset depth** (F19–F24) — `asset_events`, `asset_valuation_snapshots`, `asset_warranties`, `asset_insurance`, `category_templates`, `asset_attribute_definitions`, `asset_completeness`, `asset_quality_flags`, `restructure_operations`, `asset_import_batches(+rows)`.
 21. **Agent** (F25–F27) — `incoming_emails`, `agent_actions`, `agent_action_result_link`, `sender_rules`, `rules`, `trust_settings`.
 22. **Search** (F28) — `search_index` (FTS + trigram + **vector**), `saved_searches`, `recent_items`.
@@ -53,6 +53,6 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 - `asset.market_value`/`insured_value`/`valuation_snapshots` are the **Principal-only** fields enforced by F02 field-filtering everywhere (search, insights, API).
 
 ## Notes
-- TigerBeetle stores accounts/transfers **outside Postgres**; the Postgres ledger tables are the mapping/metadata only.
+- the general ledger stores accounts/transfers **outside Postgres**; the Postgres ledger tables are the mapping/metadata only.
 - Materialised views (F29) refresh incrementally; treat as derived.
 - This file is updated whenever a feature spec changes a table; the owning `F__` spec remains the detailed source of truth.
