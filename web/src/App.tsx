@@ -14,6 +14,8 @@ import { Tasks } from "./pages/Tasks";
 import { Lists } from "./pages/Lists";
 import { Maintenance } from "./pages/Maintenance";
 import { Wealth } from "./pages/Wealth";
+import { Inbox } from "./pages/Inbox";
+import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
@@ -29,6 +31,7 @@ const NAV: { group: string | null; items: string[] }[] = [
 
 function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
+  if (item === "Inbox") return "/inbox";
   if (item === "Inventory") return "/inventory";
   if (item === "Finance") return "/finance";
   if (item === "Wealth") return "/wealth";
@@ -88,6 +91,7 @@ export function App() {
         <main {...stylex.props(styles.main)}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/inbox" element={<Inbox />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/finance" element={<Finance />} />
@@ -103,6 +107,7 @@ export function App() {
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
+        <CommandPalette />
       </div>
     </BrowserRouter>
   );
