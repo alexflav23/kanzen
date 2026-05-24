@@ -72,8 +72,8 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F27 | Trust model, rules & learned categorisation | E | F25, F13 | ✅ | ✔️ Done (sandbox) — backend trust routing; financial/asset categories LOCKED to review (auto-execute 409, setTrust forced to review); confirm via agent-write authz + IT (never-auto-commit invariant proven). Deferred: learned categorisation |
 | F28 | Search + ⌘K command palette (semantic) | E | F04, F12, F13 | ✅ | ✔️ Done (sandbox) — backend permission-filtered full-text search (no leak: hit returned only if role can read that entity type) + IT. Deferred (infra): pgvector semantic embeddings, web ⌘K palette |
 | F32 | Advanced: bulk onboarding, **NL query (product-level spend)**, Drive export | E | F28, F30 | ✅ | ✔️ Done (sandbox) — backend NL query (read-only intent: count/last-purchase, permission-filtered, gibberish 422, Staff 403) + IT. Deferred: bulk onboarding (F24), Drive export, semantic NL via Claude |
-| F30 | Backup / export / restore | F | all domains | ✅ | ⬜ |
-| F31 | Flutter companion (capture-first; Triage) | F | F00, key reads | ✅ | ⬜ |
+| F30 | Backup / export / restore | F | all domains | ✅ | ✔️ Done (sandbox) — backend (self-descriptive archive: dependency-ordered sections + manifest w/ per-section sha256; validate w/ tamper detection; dry-run writes nothing; full restore faithful delete→restore round-trip AC4; Principal-only) + ITs. Deferred (infra): age encryption, S3 binary streaming, immutable snapshots, full entity coverage, web screen |
+| F31 | Flutter companion (capture-first; Triage) | F | F00, key reads | ✅ | ✔️ Done (sandbox) — Flutter app (5 parity screens already) + new capture-first Triage screen (Capture FAB → review queue; Confirm/Reject; financial items marked Review per F27) + widget tests. Deferred: real Dart API client (mock-data), camera/OCR, offline queue, push deep-links |
 | F42 | Legal entities, books & structures (multi-book foundation) | G | F02, F18, F37 | ✅ | ⬜ |
 | F39 | Chart of accounts & double-entry transactions/splits | G | F42, F18, F37, F14 | ✅ | ⬜ |
 | F40 | Investments & securities (lots, gains, prices) | G | F39, F42, F37 | ✅ | ⬜ |
