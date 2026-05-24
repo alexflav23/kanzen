@@ -23,10 +23,25 @@ object MaintenanceService {
 
 final case class Plan(id: UUID, frequency: String, nextDue: Option[LocalDate])
 
+final case class PlanRow(id: UUID, title: Option[String], frequency: String, nextDue: Option[LocalDate], leadDays: Int, vendor: Option[String], propertyId: Option[UUID])
+
 object MaintenanceRepo {
   def createPlan(frequency: String, firstDue: LocalDate, leadDays: Int): ConnectionIO[Plan] =
     sql"""insert into maintenance_plans (frequency, next_due, lead_days) values ($frequency, $firstDue, $leadDays)
           returning id, frequency, next_due""".query[Plan].unique
+
+  def insert(ownerId: UUID, title: String, propertyId: Option[UUID], vendor: Option[String], frequency: String,
+             firstDue: LocalDate, leadDays: Int): ConnectionIO[PlanRow] =
+    sql"""insert into maintenance_plans (owner_id, title, property_id, vendor, frequency, next_due, lead_days)
+          values ($ownerId, $title, $propertyId, $vendor, $frequency, $firstDue, $leadDays)
+          returning id, title, frequency, next_due, lead_days, vendor, property_id""".query[PlanRow].unique
+
+  def list: ConnectionIO[List[PlanRow]] =
+    sql"select id, title, frequency, next_due, lead_days, vendor, property_id from maintenance_plans where active order by next_due nulls last"
+      .query[PlanRow].to[List]
+
+  def exists(id: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from maintenance_plans where id = $id)".query[Boolean].unique
 
   /** Complete a service: write a log and roll next_due forward. Returns the new next_due. */
   def complete(planId: UUID, performedOn: LocalDate, costMinor: Option[Long]): ConnectionIO[LocalDate] =
