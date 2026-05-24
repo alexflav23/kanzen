@@ -67,7 +67,13 @@ export function AssetDetail() {
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tracking</span><span {...stylex.props(styles.kvV)}>{modeLabel}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Quantity</span><span {...stylex.props(styles.kvV)}>{a.quantity}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquisition</span><span {...stylex.props(styles.kvV)}>{money(a.acquisitionCostMinor, a.acquisitionCurrency)}</span></div>
-          <div {...stylex.props(styles.note)}>Valuation history arrives with F20; documents with F05.</div>
+          {(a.marketValueMinor != null || a.insuredValueMinor != null) && (
+            <>
+              <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Market value</span><span {...stylex.props(styles.kvV)}>{money(a.marketValueMinor ?? null, a.valuationCurrency ?? null)}</span></div>
+              <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Insured value</span><span {...stylex.props(styles.kvV)}>{money(a.insuredValueMinor ?? null, a.valuationCurrency ?? null)}</span></div>
+            </>
+          )}
+          <div {...stylex.props(styles.note)}>Valuation is Principal-only; documents arrive with F05.</div>
         </Card>
 
         <Card>

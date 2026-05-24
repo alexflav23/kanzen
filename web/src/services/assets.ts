@@ -21,6 +21,10 @@ export const AssetDetailSchema = AssetViewSchema.extend({
   acquisitionCurrency: z.string().nullable(),
   locationId: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
+  // F20 — Principal-only; absent/null for Manager (stripped server-side)
+  marketValueMinor: z.number().nullable().optional(),
+  insuredValueMinor: z.number().nullable().optional(),
+  valuationCurrency: z.string().nullable().optional(),
 });
 export type AssetDetail = z.infer<typeof AssetDetailSchema>;
 

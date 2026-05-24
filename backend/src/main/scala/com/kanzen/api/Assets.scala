@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.all._
-import com.kanzen.asset.{Asset, AssetRepo, Category}
+import com.kanzen.asset.{Asset, AssetRepo, Category, ValuationRepo}
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
 import doobie.ConnectionIO
@@ -33,7 +33,10 @@ object Assets {
                                vertical: Option[String], trackingMode: String, quantity: Int,
                                parentAssetId: Option[UUID], acquisitionCostMinor: Option[Long],
                                acquisitionCurrency: Option[String], ownershipStatus: String,
-                               locationId: Option[UUID], attributes: Json)
+                               locationId: Option[UUID], attributes: Json,
+                               // F20 — Principal-only; stripped server-side for Manager (F02/F04 AC5)
+                               marketValueMinor: Option[Long] = None, insuredValueMinor: Option[Long] = None,
+                               valuationCurrency: Option[String] = None)
   final case class CategoryView(id: UUID, name: String, parentId: Option[UUID])
   final case class CreateReq(title: String, maker: Option[String], categoryId: UUID, vertical: Option[String],
                              trackingMode: String, quantity: Int, parentAssetId: Option[UUID],
@@ -77,7 +80,17 @@ object Assets {
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[AssetDetail]] = {
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
-      else AssetRepo.get(id).map(_.map(detailOf).toRight(notFound))
+      else AssetRepo.get(id).flatMap {
+        case None => (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
+        case Some(a) =>
+          // Field-level stripping (F02/F04 AC5): valuation is read only if the role may
+          // read the field — Manager is denied (asset.market_value/insured_value = none).
+          val mkt = if (authz.canRead("asset", Some("market_value"))) ValuationRepo.latest(a.id, "market") else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
+          val ins = if (authz.canRead("asset", Some("insured_value"))) ValuationRepo.latest(a.id, "insured") else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
+          for { m <- mkt; i <- ins } yield Right(detailOf(a).copy(
+            marketValueMinor = m.map(_.amountMinor), insuredValueMinor = i.map(_.amountMinor),
+            valuationCurrency = m.map(_.currency).orElse(i.map(_.currency)))): Out[AssetDetail]
+      }
     }
     tx.transact(xa)
   }
