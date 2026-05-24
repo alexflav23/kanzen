@@ -79,7 +79,7 @@ export function Finance() {
         <div {...stylex.props(styles.desc)}>{pending.data?.length ?? 0} pending your approval. Kanzen records reality — it never moves money.</div>
       </header>
 
-      <div {...stylex.props(styles.tabs)} role="tablist">
+      <div {...stylex.props(styles.tabs)}>
         {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["reconcile", "Reconcile"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>{label}</button>
         ))}
@@ -171,7 +171,7 @@ export function Finance() {
             : accounts.data.length === 0 ? <EmptyState title="No accounts">Connect a bank or import a statement.</EmptyState>
             : (
               <>
-                <div {...stylex.props(styles.tabs)} role="tablist">
+                <div {...stylex.props(styles.tabs)}>
                   {accounts.data.map((a) => (
                     <button key={a.id} type="button" aria-pressed={acctId === a.id} onClick={() => setAcct(a.id)} {...stylex.props(styles.tab, acctId === a.id && styles.tabActive)}>{a.name}</button>
                   ))}

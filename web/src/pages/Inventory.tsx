@@ -225,7 +225,7 @@ export function Inventory() {
           <div {...stylex.props(styles.toolbar)}>
             <Search size={15} />
             <input {...stylex.props(styles.input)} placeholder="Search inventory by name or maker…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search inventory" />
-            <div {...stylex.props(styles.seg)} role="tablist" aria-label="View">
+            <div {...stylex.props(styles.seg)} aria-label="View">
               <button type="button" aria-pressed={view === "grid"} onClick={() => setView("grid")} {...stylex.props(styles.segBtn, view === "grid" && styles.segActive)}>Grid</button>
               <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")} {...stylex.props(styles.segBtn, view === "list" && styles.segActive)}>List</button>
             </div>

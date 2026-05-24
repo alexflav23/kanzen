@@ -108,7 +108,7 @@ export function PropertyBible() {
         </div>
       </div>
 
-      <div {...stylex.props(styles.tabs)} role="tablist" aria-label="Property sections">
+      <div {...stylex.props(styles.tabs)} aria-label="Property sections">
         {(["overview", "rooms", "defects"] as const).map((t) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>
             {t[0].toUpperCase() + t.slice(1)}

@@ -20,6 +20,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@babel/preset-typescript": "^7.28.5",
     "@playwright/test": "^1.49.1",
     "@stylexjs/babel-plugin": "^0.10.1",

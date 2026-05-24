@@ -51,7 +51,7 @@ export function Calendar() {
         <div {...stylex.props(styles.desc)}>Deliveries, maintenance, bookings and due tasks — the next 60 days. Task &amp; maintenance dates are shown read-only.</div>
       </header>
 
-      <div {...stylex.props(styles.filters)} role="tablist">
+      <div {...stylex.props(styles.filters)}>
         {CATS.map(([label, value]) => (
           <button key={label} type="button" aria-pressed={cat === value} onClick={() => setCat(value)} {...stylex.props(styles.tab, cat === value && styles.tabActive)}>{label}</button>
         ))}

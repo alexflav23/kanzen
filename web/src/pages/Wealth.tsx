@@ -58,7 +58,7 @@ export function Wealth() {
         <div {...stylex.props(styles.desc)}>Computed from the ledger — assets and investments at market, less liabilities. The books are never shown; figures only.</div>
       </header>
 
-      <div {...stylex.props(styles.scope)} role="tablist">
+      <div {...stylex.props(styles.scope)}>
         <button type="button" aria-pressed={entity === null} onClick={() => setEntity(null)} {...stylex.props(styles.tab, entity === null && styles.tabActive)}>Consolidated</button>
         {entities.data?.map((e) => (
           <button key={e.id} type="button" aria-pressed={entity === e.id} onClick={() => setEntity(e.id)} {...stylex.props(styles.tab, entity === e.id && styles.tabActive)}>{e.name}</button>

@@ -45,7 +45,8 @@ const styles = stylex.create({
   connGrid: { padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" },
   connItem: { display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", backgroundColor: colors.bgSunken, borderRadius: radius.md },
   greenDot: { width: "6px", height: "6px", borderRadius: "999px", backgroundColor: colors.positive },
-  colorPill: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "2px 10px", borderRadius: radius.sm, fontSize: "12px", fontWeight: 500 },
+  colorPill: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "2px 10px", borderRadius: radius.sm, fontSize: "12px", fontWeight: 500, color: colors.ink2, backgroundColor: colors.bgSunken },
+  colorDot: { width: "8px", height: "8px", borderRadius: "999px", flexShrink: 0 },
   spread: { display: "flex", alignItems: "flex-end", marginBottom: "10px" },
   rightText: { textAlign: "right" },
   janMay: { display: "flex", justifyContent: "space-between", marginTop: "6px" },
@@ -161,7 +162,8 @@ export function Dashboard() {
                       {ev.time}{ev.property !== "—" && ` · ${ev.property}`}
                     </div>
                   </div>
-                  <span {...stylex.props(styles.colorPill)} style={{ background: ev.color + "1A", color: ev.color }}>
+                  <span {...stylex.props(styles.colorPill)}>
+                    <span {...stylex.props(styles.colorDot)} style={{ background: ev.color }} />
                     {ev.category}
                   </span>
                   {ev.source === "agent" && <AgentRibbon>{""}</AgentRibbon>}

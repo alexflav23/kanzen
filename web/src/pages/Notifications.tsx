@@ -54,7 +54,7 @@ export function Notifications() {
           : inbox.data.items.length === 0 ? <EmptyState title="All caught up">No notifications.</EmptyState>
           : inbox.data.items.map((n) => (
             <div key={n.id} {...stylex.props(styles.row)} data-testid="notification-row">
-              <span {...stylex.props(n.read ? styles.readDot : styles.unreadDot)} aria-label={n.read ? "read" : "unread"} />
+              <span {...stylex.props(n.read ? styles.readDot : styles.unreadDot)} role="img" aria-label={n.read ? "read" : "unread"} />
               <div {...stylex.props(styles.grow)}>
                 <div {...stylex.props(styles.nTitle)}>{n.title}</div>
                 {n.body && <div {...stylex.props(styles.nBody)}>{n.body}</div>}
