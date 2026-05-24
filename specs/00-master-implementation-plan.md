@@ -46,7 +46,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F23 | Completeness scoring & data quality | B | F04, F19–F22 | ✅ | ⬜ |
 | F19 | Lifecycle events & timeline | B | F04 | ✅ | ✔️ Done (sandbox) — backend (log event + timeline + lifetime cost, authz) + web AssetDetail Lifecycle card + e2e; custody/location-history events deferred |
 | F20 | Valuation snapshots | B | F04 | ✅ | ✔️ Done (sandbox) — backend (record/list latest-by-kind, Principal-only) + field-level stripping for Manager (closes F04 AC5) + web detail; aggregate valuation summary deferred |
-| F21 | Warranty / provenance / insurance | B | F04 | ✅ | ⬜ |
+| F21 | Warranty / provenance / insurance | B | F04 | ✅ | ✔️ Done (sandbox) — backend (warranties registry-write; insurance Principal-only via field authz) + web AssetDetail card + tests; provenance asset-party roles deferred |
 | F24 | Legacy onboarding & restructure | B | F04, F19, F20 | ✅ | ⬜ |
 | F10 | People / HR | B | F02 | ✅ | ✔️ Done (sandbox) — backend (roster/detail/create/expiring, Staff own-only authz, permit surfacing) + web People wired + e2e; leave/offboarding/HR-doc-visibility deferred |
 | F09 | Vendors & contacts | B | F03 | ✅ | ✔️ Done (sandbox) — backend (scoped list/detail/create/approve/selectable, insurance gating, Staff read-scoped) + web Vendors wired + e2e; history panels (maintenance/bills/asset-roles) deferred to their features |
