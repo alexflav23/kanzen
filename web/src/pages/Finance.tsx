@@ -59,6 +59,14 @@ const styles = stylex.create({
   months: { display: "flex", gap: "6px", alignItems: "flex-end", height: "120px", marginTop: "28px" },
   monthCol: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" },
   filters: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" },
+  bold: { fontWeight: 500 },
+  narrow: { maxWidth: "580px" },
+  mb3: { marginBottom: "3px" },
+  pendDesc: { fontWeight: 500, fontSize: "14px" },
+  right: { textAlign: "right" },
+  amountLg: { fontSize: "17px" },
+  flexEnd: { display: "flex", alignItems: "flex-end" },
+  mt24: { marginTop: "24px" },
 });
 
 export function Finance() {
@@ -143,7 +151,7 @@ export function Finance() {
             <tbody>
               {bills.map((b) => (
                 <tr key={b.id} data-testid="bill-row">
-                  <td {...stylex.props(styles.td)}><div style={{ fontWeight: 500 }}>{b.payee}</div><div {...stylex.props(styles.sub)}>{b.method}</div></td>
+                  <td {...stylex.props(styles.td)}><div {...stylex.props(styles.bold)}>{b.payee}</div><div {...stylex.props(styles.sub)}>{b.method}</div></td>
                   <td {...stylex.props(styles.td)}><Pill>{b.category}</Pill></td>
                   <td {...stylex.props(styles.td)}>{b.freq}</td>
                   <td {...stylex.props(styles.td)}><div>{fmtDate(b.nextDue)}</div><div {...stylex.props(styles.sub)}>{daysUntil(b.nextDue) <= 0 ? "today" : `in ${daysUntil(b.nextDue)} days`}</div></td>
@@ -165,7 +173,7 @@ export function Finance() {
                 <Pill tone="accent">from agent reconciliation</Pill>
               </div>
               <div {...stylex.props(styles.h2)}>SP Group · usage up 59.6%</div>
-              <div {...stylex.props(styles.desc)} style={{ maxWidth: 580 }}>
+              <div {...stylex.props(styles.desc, styles.narrow)}>
                 The May invoice for Singapore is S$613 versus S$384 last month. The agent saw this in the inbound statement and updated the next due date — but flagged it for you.
               </div>
             </div>
@@ -221,8 +229,8 @@ function PayTab({ items, total, filter, setFilter }: { items: typeof PAY_QUEUE; 
                 <div {...stylex.props(styles.dateM)}>in {p.days}d</div>
               </div>
               <div {...stylex.props(styles.grow)}>
-                <div {...stylex.props(styles.rowGap8)} style={{ marginBottom: 3 }}>
-                  <span style={{ fontWeight: 500 }}>{p.payee}</span>
+                <div {...stylex.props(styles.rowGap8, styles.mb3)}>
+                  <span {...stylex.props(styles.bold)}>{p.payee}</span>
                   {p.varianceFlag && <Pill tone="warn"><Alert size={11} /> Variance</Pill>}
                   {p.auto && <Pill tone="default">Auto</Pill>}
                 </div>
@@ -254,11 +262,11 @@ function ExpensesTab({ pending, all, decide }: { pending: MockExpense[]; all: Mo
             <div key={e.id} data-testid="pending-row" {...stylex.props(styles.pendRow)}>
               <div {...stylex.props(styles.icoBox)}><Plus size={18} /></div>
               <div {...stylex.props(styles.grow)}>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{e.description} · {e.payee}</div>
+                <div {...stylex.props(styles.pendDesc)}>{e.description} · {e.payee}</div>
                 <div {...stylex.props(styles.sub)}>{e.property} · {e.category} · {e.date} · requested by {e.requestedBy}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div {...stylex.props(styles.amount)} style={{ fontSize: 17 }}>{fmtMoney(e.amountMinor, e.currency)}</div>
+              <div {...stylex.props(styles.right)}>
+                <div {...stylex.props(styles.amount, styles.amountLg)}>{fmtMoney(e.amountMinor, e.currency)}</div>
                 <div {...stylex.props(styles.sub)}>Above £1,500 threshold</div>
               </div>
               <button type="button" onClick={() => decide(e.id, "rejected")} {...stylex.props(styles.btn)}><X size={14} /> Reject</button>
@@ -267,7 +275,7 @@ function ExpensesTab({ pending, all, decide }: { pending: MockExpense[]; all: Mo
           ))}
         </Card>
       )}
-      <div style={{ marginTop: pending.length > 0 ? 24 : 0 }}>
+      <div {...stylex.props(pending.length > 0 && styles.mt24)}>
         <Card>
           <CardHeader><CardTitle>All expenses</CardTitle><button type="button" {...stylex.props(styles.btn)}><Plus size={12} /> Log expense</button></CardHeader>
           {pending.length === 0 && <CardRow><span {...stylex.props(styles.sub)}>Nothing awaiting approval.</span></CardRow>}
@@ -280,7 +288,7 @@ function ExpensesTab({ pending, all, decide }: { pending: MockExpense[]; all: Mo
               {all.map((e) => (
                 <tr key={e.id} data-testid="expense-row">
                   <td {...stylex.props(styles.td)}>{e.date}</td>
-                  <td {...stylex.props(styles.td)}><div style={{ fontWeight: 500 }}>{e.description}</div><div {...stylex.props(styles.sub)}>{e.payee}</div></td>
+                  <td {...stylex.props(styles.td)}><div {...stylex.props(styles.bold)}>{e.description}</div><div {...stylex.props(styles.sub)}>{e.payee}</div></td>
                   <td {...stylex.props(styles.td)}><Pill>{e.category}</Pill></td>
                   <td {...stylex.props(styles.td)}>
                     {e.status === "approved" && <Pill tone="default"><Check size={11} /> Approved</Pill>}
@@ -306,7 +314,7 @@ function BudgetsTab() {
         return (
           <Card key={b.propertyId} style={styles.budgetCard}>
             <div {...stylex.props(styles.eyebrow)}>{b.propertyName} · 2026</div>
-            <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <div {...stylex.props(styles.flexEnd)}>
               <div>
                 <div {...stylex.props(styles.bSpent)}>{fmtMoney(b.spent, b.currency)}</div>
                 <div {...stylex.props(styles.sub)}>of {fmtMoney(b.budget, b.currency)} annual</div>

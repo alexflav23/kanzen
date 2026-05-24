@@ -8,7 +8,6 @@ import { ASSETS, categoryName, propName, fmtMoneyShort } from "../data/mockInven
 
 const styles = stylex.create({
   page: { maxWidth: "1100px" },
-  back: { display: "inline-flex", alignItems: "center", gap: "4px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px", transform: "scaleX(-1)" },
   backWrap: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px" },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "6px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
@@ -23,6 +22,9 @@ const styles = stylex.create({
   kvV: { fontWeight: 500 },
   grow: { flex: 1 },
   num: { fontVariantNumeric: "tabular-nums" },
+  colStack: { display: "flex", flexDirection: "column", gap: "24px" },
+  b135: { fontSize: "13.5px" },
+  semibold: { fontWeight: 600 },
 });
 
 type Val = { date: string; value: number; by: string };
@@ -76,7 +78,7 @@ export function AssetDetail() {
       </div>
 
       <div {...stylex.props(styles.layout)}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div {...stylex.props(styles.colStack)}>
           <Card>
             <CardHeader><CardTitle>Key facts</CardTitle></CardHeader>
             <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquired</span><span {...stylex.props(styles.kvV)}>{asset.acquired}</span></div>
@@ -90,10 +92,10 @@ export function AssetDetail() {
             {valuations.map((v) => (
               <CardRow key={v.date}>
                 <div {...stylex.props(styles.grow)}>
-                  <div style={{ fontSize: 13.5 }}>{v.by}</div>
+                  <div {...stylex.props(styles.b135)}>{v.by}</div>
                   <div {...stylex.props(styles.sub)}>{v.date}</div>
                 </div>
-                <span {...stylex.props(styles.num)} style={{ fontWeight: 600 }}>{fmtMoneyShort(v.value, asset.currency)}</span>
+                <span {...stylex.props(styles.num, styles.semibold)}>{fmtMoneyShort(v.value, asset.currency)}</span>
               </CardRow>
             ))}
           </Card>
@@ -105,7 +107,7 @@ export function AssetDetail() {
             {docs.map((d) => (
               <CardRow key={d.name}>
                 <div {...stylex.props(styles.grow)}>
-                  <div style={{ fontSize: 13.5 }}>{d.name}</div>
+                  <div {...stylex.props(styles.b135)}>{d.name}</div>
                   <div {...stylex.props(styles.sub)}>{d.kind}</div>
                 </div>
                 <ChevronRight size={14} />

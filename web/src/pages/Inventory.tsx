@@ -64,6 +64,16 @@ const styles = stylex.create({
   tdR: { textAlign: "right", fontWeight: 500, fontVariantNumeric: "tabular-nums" },
   swatch: { width: "40px", height: "40px", borderRadius: "8px" },
   num: { fontVariantNumeric: "tabular-nums" },
+  chev: { display: "inline-flex" },
+  chevClosed: { transform: "rotate(-90deg)" },
+  groupBody: { marginTop: "2px", marginBottom: "6px" },
+  flush: { marginTop: 0 },
+  icoPositive: { color: colors.positive, display: "inline-flex" },
+  icoWarn: { color: colors.warn, display: "inline-flex" },
+  liWarn: { color: colors.warn },
+  emptyTitle: { fontSize: "18px", fontWeight: 600, marginTop: "12px", color: colors.ink },
+  tdSwatch: { width: "56px" },
+  bold: { fontWeight: 500 },
 });
 
 function FilterGroup({ label, defaultOpen, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
@@ -71,10 +81,10 @@ function FilterGroup({ label, defaultOpen, children }: { label: string; defaultO
   return (
     <div {...stylex.props(styles.group)}>
       <button type="button" onClick={() => setOpen(!open)} {...stylex.props(styles.groupBtn)}>
-        <span style={{ display: "inline-flex", transform: open ? "none" : "rotate(-90deg)" }}><ChevronDown size={11} /></span>
+        <span {...stylex.props(styles.chev, !open && styles.chevClosed)}><ChevronDown size={11} /></span>
         <span {...stylex.props(styles.railTitle)}>{label}</span>
       </button>
-      {open && <div style={{ marginTop: 2, marginBottom: 6 }}>{children}</div>}
+      {open && <div {...stylex.props(styles.groupBody)}>{children}</div>}
     </div>
   );
 }
@@ -154,8 +164,8 @@ export function Inventory() {
         <div {...stylex.props(styles.stat)}>
           <div {...stylex.props(styles.statL)}>Completeness</div>
           <div {...stylex.props(styles.statRow)}>
-            <div {...stylex.props(styles.statN)} style={{ marginTop: 0 }}>{Math.round(TOTAL_COMPLETENESS * 100)}%</div>
-            <span style={{ color: colors.positive, display: "inline-flex" }}><Shield size={18} /></span>
+            <div {...stylex.props(styles.statN, styles.flush)}>{Math.round(TOTAL_COMPLETENESS * 100)}%</div>
+            <span {...stylex.props(styles.icoPositive)}><Shield size={18} /></span>
           </div>
           <div {...stylex.props(styles.statSub)}>{DATA_QUALITY.expensiveMissingProof} expensive missing proof</div>
         </div>
@@ -206,13 +216,13 @@ export function Inventory() {
 
           <Card style={styles.dq}>
             <div {...stylex.props(styles.dqHead)}>
-              <span style={{ color: colors.warn, display: "inline-flex" }}><Alert size={14} /></span> Data quality
+              <span {...stylex.props(styles.icoWarn)}><Alert size={14} /></span> Data quality
             </div>
             <ul {...stylex.props(styles.dqList)}>
               <li>{DATA_QUALITY.missingPhoto} missing photo</li>
               <li>{DATA_QUALITY.missingLocation} missing location</li>
               <li>{DATA_QUALITY.missingProof} missing proof</li>
-              <li style={{ color: colors.warn }}>{DATA_QUALITY.expensiveMissingProof} expensive · no proof</li>
+              <li {...stylex.props(styles.liWarn)}>{DATA_QUALITY.expensiveMissingProof} expensive · no proof</li>
               <li>{DATA_QUALITY.suspectedDuplicates} suspected duplicate</li>
             </ul>
           </Card>
@@ -249,7 +259,7 @@ export function Inventory() {
             <Card>
               <div {...stylex.props(styles.empty)}>
                 <Search size={28} />
-                <div style={{ fontSize: 18, fontWeight: 600, marginTop: 12, color: colors.ink }}>No matches</div>
+                <div {...stylex.props(styles.emptyTitle)}>No matches</div>
                 <div>Try clearing a filter or searching differently.</div>
               </div>
             </Card>
@@ -273,11 +283,11 @@ export function Inventory() {
                 <tbody>
                   {filtered.map((a) => (
                     <tr key={a.id} data-testid="asset-row" onClick={() => open(a)}>
-                      <td {...stylex.props(styles.td)} style={{ width: 56 }}>
+                      <td {...stylex.props(styles.td, styles.tdSwatch)}>
                         <div {...stylex.props(styles.swatch)} style={{ background: a.fill }} />
                       </td>
                       <td {...stylex.props(styles.td)}>
-                        <div style={{ fontWeight: 500 }}>{a.title}</div>
+                        <div {...stylex.props(styles.bold)}>{a.title}</div>
                         <div {...stylex.props(styles.statL)}>{a.maker}</div>
                       </td>
                       <td {...stylex.props(styles.td)}>{categoryName(a.category)}</td>

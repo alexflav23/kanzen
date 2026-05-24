@@ -49,6 +49,13 @@ const styles = stylex.create({
   hRow: { display: "flex", alignItems: "center", gap: "10px" },
   num: { fontVariantNumeric: "tabular-nums" },
   body135: { fontSize: "13.5px" },
+  sparkTrack: { flex: 1, height: "24px", backgroundColor: colors.bgSunken, borderRadius: "4px", position: "relative", overflow: "hidden" },
+  sparkFill: { position: "absolute", bottom: 0, left: 0, right: 0, borderRadius: "4px", backgroundColor: colors.ink3 },
+  sparkFillCurrent: { backgroundColor: colors.accent },
+  coverWardian: { backgroundImage: "linear-gradient(135deg,#1B1F2E,#3B3F55)" },
+  coverSingapore: { backgroundImage: "linear-gradient(135deg,#243B47,#3D6B7D)" },
+  connName: { fontSize: "12.5px", fontWeight: 500 },
+  tiny: { fontSize: "11px" },
 });
 
 export function Dashboard() {
@@ -161,8 +168,8 @@ export function Dashboard() {
                     <Bar pct={pct} />
                     <div {...stylex.props(styles.monthRow)}>
                       {b.periods.map((v, i) => (
-                        <div key={i} style={{ flex: 1, height: 24, background: colors.bgSunken, borderRadius: 4, position: "relative", overflow: "hidden" }}>
-                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: v + "%", background: i === 4 ? colors.accent : colors.ink3, borderRadius: 4 }} />
+                        <div key={i} {...stylex.props(styles.sparkTrack)}>
+                          <div {...stylex.props(styles.sparkFill, i === 4 && styles.sparkFillCurrent)} style={{ height: `${v}%` }} />
                         </div>
                       ))}
                     </div>
@@ -205,7 +212,7 @@ export function Dashboard() {
               </button>
             </CardHeader>
             <CardRow onClick={() => navigate("/properties")}>
-              <div {...stylex.props(styles.cover)} style={{ background: "linear-gradient(135deg,#1B1F2E,#3B3F55)" }} />
+              <div {...stylex.props(styles.cover, styles.coverWardian)} />
               <div {...stylex.props(styles.grow)}>
                 <div {...stylex.props(styles.evTitle)}>Wardian, Apt 5206</div>
                 <div {...stylex.props(styles.small)}>London E14</div>
@@ -213,7 +220,7 @@ export function Dashboard() {
               <ChevronRight size={14} />
             </CardRow>
             <CardRow onClick={() => navigate("/properties")}>
-              <div {...stylex.props(styles.cover)} style={{ background: "linear-gradient(135deg,#243B47,#3D6B7D)" }} />
+              <div {...stylex.props(styles.cover, styles.coverSingapore)} />
               <div {...stylex.props(styles.grow)}>
                 <div {...stylex.props(styles.evTitle)}>Singapore</div>
                 <div {...stylex.props(styles.small)}>Marina Bay</div>
@@ -266,8 +273,8 @@ export function Dashboard() {
               {CONNECTED.map((s) => (
                 <div key={s.name} {...stylex.props(styles.connItem)}>
                   <div>
-                    <div style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name}</div>
-                    <div {...stylex.props(styles.small)} style={{ fontSize: 11 }}>{s.status}</div>
+                    <div {...stylex.props(styles.connName)}>{s.name}</div>
+                    <div {...stylex.props(styles.small, styles.tiny)}>{s.status}</div>
                   </div>
                   <div {...stylex.props(styles.grow)} />
                   <span {...stylex.props(styles.greenDot)} />

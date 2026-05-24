@@ -44,6 +44,8 @@ const styles = stylex.create({
   tdR: { textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 500 },
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "13px", color: colors.ink },
   evTitle: { fontSize: "13.5px", fontWeight: 500 },
+  f13: { fontSize: "13px" },
+  bold: { fontWeight: 500 },
 });
 
 export function PropertyBible() {
@@ -107,7 +109,7 @@ export function PropertyBible() {
               <div key={label} {...stylex.props(styles.linked)}>
                 <Box size={16} />
                 <div {...stylex.props(styles.grow)}>
-                  <div style={{ fontSize: 13 }}>{label}</div>
+                  <div {...stylex.props(styles.f13)}>{label}</div>
                   <div {...stylex.props(styles.mono)}>{v}</div>
                 </div>
                 {ext ? <Pill tone="accent">linked</Pill> : <Pill>reference</Pill>}
@@ -156,7 +158,7 @@ export function PropertyBible() {
             <tbody>
               {bills.map((b) => (
                 <tr key={b.id}>
-                  <td {...stylex.props(styles.td)} style={{ fontWeight: 500 }}>{b.payee}</td>
+                  <td {...stylex.props(styles.td, styles.bold)}>{b.payee}</td>
                   <td {...stylex.props(styles.td)}><Pill>{b.category}</Pill></td>
                   <td {...stylex.props(styles.td)}>{b.freq}</td>
                   <td {...stylex.props(styles.td)}>{fmtDate(b.nextDue)}</td>
