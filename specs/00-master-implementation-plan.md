@@ -59,7 +59,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F17 | Budgets, expenses & approvals **+ income/deductibility (marvis)** | C | F15 | ✅ | ✔️ Done (sandbox) — backend (threshold→Principal approvals, deductibility/VAT) + web Expenses tab (approve/reject) + e2e; budgets deferred |
 | F18 | General ledger — Postgres double-entry (hidden in UI) | C | F14 | ✅ | 🚧 backend done (gl_accounts/transactions/splits, balanced-or-rejected, derived balances, reversing corrections, registers, Principal-only) + tests; posting-cookbook auto-post + statements web deferred |
 | F38 | Tax, VAT & deductibility (marvis tax engine) | C | F13, F17, F37 | ✅ | 🚧 backend done (UK income-tax estimate, deductible/VAT report, Principal-only, estimation-only) + tests; dividend/NI/corp-tax + web deferred |
-| F29 | Dashboard, Insights & reporting | C | F18, F23 | ✅ | ⬜ |
+| F29 | Dashboard, Insights & reporting | C | F18, F23 | ✅ | ✔️ Done (sandbox) — backend summary (authz/scope-filtered counts, no leak) + web live at-a-glance + e2e; spend-trend charts/insights deferred |
 | F06 | Tasks — native | D | F03 | ✅ | ⬜ |
 | F07 | Calendar — Google (two-way) | D | F03, F06 | ✅ | ⬜ |
 | F08 | Lists | D | F03 | ✅ | ⬜ |
