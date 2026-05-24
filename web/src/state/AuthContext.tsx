@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { can as canFor, devToken, getMe, type Me, type Persona } from "../services/auth";
+import { can as canFor, devToken, getMe, impersonate as impersonateSvc, type Me, type Persona } from "../services/auth";
 
 type AuthState = {
   token: string | null;
@@ -9,14 +9,20 @@ type AuthState = {
   can: (resource: string, level?: "read" | "write" | "admin") => boolean;
   /** True while /api/me is loading (so consumers can avoid flicker). */
   meLoading: boolean;
+  /** True when the current session is an admin acting-as another user. */
+  impersonating: boolean;
   signIn: (p: Persona) => Promise<void>;
   signOut: () => void;
-  /** Swap the bearer to an impersonation token (admin act-as); re-fetches /api/me. */
+  /** Admin act-as: swap the bearer to an impersonation token for `email`; re-fetches /api/me. */
+  impersonate: (email: string) => Promise<void>;
+  /** Restore the real admin's session. */
+  stopImpersonating: () => void;
   setToken: (t: string | null) => void;
 };
 
 const TOKEN_KEY = "kanzen.token";
 const PERSONA_KEY = "kanzen.persona";
+const ADMIN_KEY = "kanzen.adminToken"; // the real admin's token, stashed during impersonation
 
 const AuthCtx = createContext<AuthState | null>(null);
 
@@ -61,19 +67,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(PERSONA_KEY);
+    localStorage.removeItem(ADMIN_KEY);
     setTokenState(null);
     setPersona(null);
     setMe(null);
   }, []);
 
+  const impersonate = useCallback(async (email: string) => {
+    const current = localStorage.getItem(TOKEN_KEY);
+    const t = await impersonateSvc(current, email);
+    if (current && !localStorage.getItem(ADMIN_KEY)) localStorage.setItem(ADMIN_KEY, current); // stash the real admin token once
+    setToken(t);
+  }, [setToken]);
+
+  const stopImpersonating = useCallback(() => {
+    const admin = localStorage.getItem(ADMIN_KEY);
+    localStorage.removeItem(ADMIN_KEY);
+    if (admin) setToken(admin);
+  }, [setToken]);
+
   const can = useCallback(
     (resource: string, level: "read" | "write" | "admin" = "read") => (me ? canFor(me.permissions, resource, level) : false),
     [me],
   );
+  const impersonating = !!me?.impersonatedBy;
 
   const value = useMemo<AuthState>(
-    () => ({ token, persona, me, can, meLoading, signIn, signOut, setToken }),
-    [token, persona, me, can, meLoading, signIn, signOut, setToken],
+    () => ({ token, persona, me, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken }),
+    [token, persona, me, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken],
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

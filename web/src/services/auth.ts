@@ -37,6 +37,11 @@ export type Me = z.infer<typeof MeSchema>;
 
 export const getMe = (token: string | null) => api("/api/me", MeSchema, { token });
 
+/** F02 — start impersonating a user (admin only); returns an act-as token. */
+const ImpersonateSchema = z.object({ token: z.string(), email: z.string(), role: z.string() });
+export const impersonate = (token: string | null, email: string): Promise<string> =>
+  api("/api/impersonate", ImpersonateSchema, { method: "POST", token, body: { email } }).then((r) => r.token);
+
 const RANK: Record<string, number> = { none: 0, read: 1, write: 2, admin: 3 };
 
 /** Mirror the backend Authorizer: most-specific wins (resource rule > `*` wildcard); default-deny.

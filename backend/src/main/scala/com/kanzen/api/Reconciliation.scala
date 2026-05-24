@@ -37,7 +37,14 @@ object Reconciliation {
   )
   final case class MatchReq(txnId: UUID, receiptId: UUID)
   final case class MatchResult(matchId: UUID, state: String)
-  final case class Candidate(receiptId: UUID, merchant: Option[String], totalMinor: Long, currency: String, score: Int, reasons: List[String])
+  final case class Candidate(
+      receiptId: UUID,
+      merchant: Option[String],
+      totalMinor: Long,
+      currency: String,
+      score: Int,
+      reasons: List[String]
+  )
   final case class Suggestion(txn: MatchableTx, candidates: List[Candidate])
 
   private val forbidden: (StatusCode, ApiError) =
@@ -65,25 +72,35 @@ object Reconciliation {
     tx.transact(xa)
   }
 
-  /** Auto-suggested reconciliations: for each unmatched transaction, the candidate receipts
-    * ranked by [[ReconciliationService.scoreMatch]] (amount/merchant/currency), best first. */
+  /** Auto-suggested reconciliations: for each unmatched transaction, the candidate receipts ranked by
+    * [[ReconciliationService.scoreMatch]] (amount/merchant/currency), best first.
+    */
   def suggestions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[Suggestion]]] = {
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[Suggestion]]).pure[ConnectionIO]
       else
         for {
-          txns     <- BankRepo.unmatched(accountId)
+          txns <- BankRepo.unmatched(accountId)
           receipts <- ReconciliationRepo.unmatchedReceipts
         } yield {
           val suggestions = txns.map { t =>
-            val cands = receipts.flatMap { case (rid, rMerchant, rTotal, rCurrency) =>
-              // the bank feed may carry the payee in `merchant` or only in `description`
-              val (score, reasons) = ReconciliationService.scoreMatch(
-                t.amountMinor, t.merchant.orElse(t.description), t.currency, rTotal.getOrElse(0L), rMerchant, rCurrency.getOrElse(""))
-              if (score >= ReconciliationService.suggestThreshold)
-                Some(Candidate(rid, rMerchant, rTotal.getOrElse(0L), rCurrency.getOrElse(t.currency), score, reasons))
-              else None
-            }.sortBy(-_.score).take(3)
+            val cands = receipts
+              .flatMap { case (rid, rMerchant, rTotal, rCurrency) =>
+                // the bank feed may carry the payee in `merchant` or only in `description`
+                val (score, reasons) = ReconciliationService.scoreMatch(
+                  t.amountMinor,
+                  t.merchant.orElse(t.description),
+                  t.currency,
+                  rTotal.getOrElse(0L),
+                  rMerchant,
+                  rCurrency.getOrElse("")
+                )
+                if (score >= ReconciliationService.suggestThreshold)
+                  Some(Candidate(rid, rMerchant, rTotal.getOrElse(0L), rCurrency.getOrElse(t.currency), score, reasons))
+                else None
+              }
+              .sortBy(-_.score)
+              .take(3)
             Suggestion(MatchableTx(t.id, t.bookedOn, t.amountMinor, t.currency, t.description, t.merchant), cands)
           }
           Right(suggestions): Out[List[Suggestion]]

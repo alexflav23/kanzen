@@ -20,7 +20,8 @@ class ReconciliationServiceSpec extends AnyFreeSpec with Matchers {
 
   "ReconciliationService.scoreMatch (auto-suggest)" - {
     "exact amount + merchant + currency scores highest and is suggestable" in {
-      val (score, reasons) = ReconciliationService.scoreMatch(184000L, Some("Hudson Sandler"), "GBP", 184000L, Some("Hudson Sandler"), "GBP")
+      val (score, reasons) =
+        ReconciliationService.scoreMatch(184000L, Some("Hudson Sandler"), "GBP", 184000L, Some("Hudson Sandler"), "GBP")
       score shouldBe 100
       reasons should contain("amount matches exactly")
       reasons should contain("merchant matches")

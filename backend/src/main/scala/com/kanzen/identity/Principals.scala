@@ -20,7 +20,17 @@ object Principals {
         case found @ Some(_) => (found: Option[User]).pure[ConnectionIO]
         case None => UserRepo.findByEmail(claims.email)
       }
-    } yield user.filter(_.status == "active").map(u => Principal(u.id, claims.subject, u.email, u.role))
+    } yield user
+      .filter(_.status == "active")
+      .map(u =>
+        Principal(
+          u.id,
+          claims.subject,
+          u.email,
+          u.role,
+          claims.impersonatedBy.flatMap(s => scala.util.Try(java.util.UUID.fromString(s)).toOption)
+        )
+      )
 
   def resolver(xa: Transactor[IO]): Claims => IO[Option[Principal]] =
     claims => resolve(claims).transact(xa)

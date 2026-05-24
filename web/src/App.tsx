@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
-import { colors } from "./styles/tokens.stylex";
+import { colors, radius } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
 import { AssetDetail } from "./pages/AssetDetail";
@@ -23,6 +23,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
+import { PERSONAS } from "./services/auth";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
@@ -72,11 +73,18 @@ const styles = stylex.create({
   who: { fontSize: "13px", color: colors.ink2, lineHeight: 1.25 },
   whoRole: { fontSize: "11px", color: colors.ink3, textTransform: "capitalize" },
   signout: { padding: "5px 9px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "12px", color: colors.ink2 },
+  impersonate: { marginTop: "12px" },
+  impersonateLabel: { fontSize: "10.5px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, marginBottom: "6px" },
+  impersonateSelect: { width: "100%", padding: "6px 8px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, fontSize: "12.5px", cursor: "pointer" },
+  banner: { display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", backgroundColor: colors.warnSoft, color: colors.warn, fontSize: "13px", borderRadius: radius.sm, marginBottom: "20px", fontWeight: 500 },
+  bannerGrow: { flex: 1 },
+  bannerBtn: { padding: "5px 12px", borderRadius: "7px", border: `1px solid ${colors.warn}`, backgroundColor: "transparent", color: colors.warn, cursor: "pointer", fontSize: "12.5px", fontWeight: 600 },
 });
 
 export function App() {
-  const { token, persona, signOut, can, meLoading } = useAuth();
+  const { token, persona, signOut, can, meLoading, me, impersonating, impersonate, stopImpersonating } = useAuth();
   if (!token) return <DevLogin />;
+  const canImpersonate = !impersonating && can("*", "admin"); // an admin not already acting-as someone
   // F02 — recalibrate the nav to the principal's permissions. While /api/me loads, show only the
   // ungated items (avoids a flash of gated links the principal may not keep).
   const visible = (item: string) => {
@@ -108,12 +116,34 @@ export function App() {
           <div {...stylex.props(styles.account)}>
             <div {...stylex.props(styles.who)}>
               {persona?.name ?? "Signed in"}
-              <div {...stylex.props(styles.whoRole)}>{persona?.role}</div>
+              <div {...stylex.props(styles.whoRole)}>{me?.role ?? persona?.role}</div>
             </div>
             <button type="button" onClick={signOut} {...stylex.props(styles.signout)}>Sign out</button>
           </div>
+          {canImpersonate && (
+            <div {...stylex.props(styles.impersonate)} data-testid="impersonate">
+              <div {...stylex.props(styles.impersonateLabel)}>View as</div>
+              <select
+                {...stylex.props(styles.impersonateSelect)}
+                aria-label="Impersonate a user"
+                value=""
+                onChange={(e) => { if (e.target.value) void impersonate(e.target.value); }}
+              >
+                <option value="">Impersonate…</option>
+                {PERSONAS.filter((p) => p.email !== me?.email).map((p) => (
+                  <option key={p.email} value={p.email}>{p.name} ({p.role})</option>
+                ))}
+              </select>
+            </div>
+          )}
         </nav>
         <main {...stylex.props(styles.main)}>
+          {impersonating && (
+            <div {...stylex.props(styles.banner)} role="status" data-testid="impersonation-banner">
+              <span {...stylex.props(styles.bannerGrow)}>Viewing as <strong>{me?.email}</strong> ({me?.role}) — admin impersonation</span>
+              <button type="button" onClick={stopImpersonating} {...stylex.props(styles.bannerBtn)} data-testid="stop-impersonating">Stop</button>
+            </div>
+          )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inbox" element={<Inbox />} />

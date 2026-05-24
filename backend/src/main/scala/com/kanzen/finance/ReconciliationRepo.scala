@@ -6,8 +6,9 @@ import doobie.postgres.implicits._
 
 import java.util.UUID
 
-/** F14 — transfer detection + auto-suggest scoring (pure). A candidate receipt is scored
-  * against an unmatched transaction by amount, merchant and currency; >= 50 is suggestable. */
+/** F14 — transfer detection + auto-suggest scoring (pure). A candidate receipt is scored against an unmatched
+  * transaction by amount, merchant and currency; >= 50 is suggestable.
+  */
 object ReconciliationService {
   def isTransferPair(aMinor: Long, bMinor: Long): Boolean = aMinor != 0L && aMinor == -bMinor
 
@@ -21,18 +22,19 @@ object ReconciliationService {
       case _ => false
     }
 
-  /** Score a receipt as a match for a transaction → (0–100, reasons). Amount is the strongest
-    * signal (exact = +60, within 2% = +35), then merchant (+30), then currency (+10). */
+  /** Score a receipt as a match for a transaction → (0–100, reasons). Amount is the strongest signal (exact = +60,
+    * within 2% = +35), then merchant (+30), then currency (+10).
+    */
   def scoreMatch(
       txAmountMinor: Long,
       txMerchant: Option[String],
       txCurrency: String,
       rTotalMinor: Long,
       rMerchant: Option[String],
-      rCurrency: String,
+      rCurrency: String
   ): (Int, List[String]) = {
     val tx = math.abs(txAmountMinor)
-    val r  = math.abs(rTotalMinor)
+    val r = math.abs(rTotalMinor)
     var score = 0
     val reasons = scala.collection.mutable.ListBuffer.empty[String]
     if (tx == r && tx != 0) { score += 60; reasons += "amount matches exactly" }
@@ -64,5 +66,6 @@ object ReconciliationRepo {
     sql"""select r.id, r.merchant, r.total_minor, r.currency from receipts r
           where not exists (select 1 from match_members m where m.member_type = 'receipt' and m.member_id = r.id)
           order by r.created_at desc"""
-      .query[(UUID, Option[String], Option[Long], Option[String])].to[List]
+      .query[(UUID, Option[String], Option[Long], Option[String])]
+      .to[List]
 }

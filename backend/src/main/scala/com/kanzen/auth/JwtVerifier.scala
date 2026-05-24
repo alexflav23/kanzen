@@ -8,7 +8,7 @@ import java.util.Base64
 import scala.util.{Failure, Success, Try}
 
 /** Claims we trust after RS256 + issuer/audience/expiry validation. */
-final case class Claims(subject: String, email: String, role: String)
+final case class Claims(subject: String, email: String, role: String, impersonatedBy: Option[String] = None)
 
 /** Validates a Cognito RS256 JWT against the JWKS: pick the key by `kid`, verify signature + expiry (jwt-scala), then
   * check issuer/audience. Pure of HTTP/DB — the key source is injected (`Jwks`), so CI runs against a local test-JWKS.
@@ -46,7 +46,8 @@ object JwtVerifier {
                           .toOption
                           .orElse(c.get[String]("role").toOption)
                           .getOrElse("staff")
-                        Claims(claim.subject.getOrElse(""), email, role)
+                        val impersonatedBy = c.get[String]("impersonated_by").toOption // act-as: the real admin
+                        Claims(claim.subject.getOrElse(""), email, role, impersonatedBy)
                       }
                     }
                     .toRight("missing required claim: email")

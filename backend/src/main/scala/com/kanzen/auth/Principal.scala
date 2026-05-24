@@ -7,4 +7,10 @@ import java.util.UUID
   * audit. `impersonatedBy` is set when an admin is acting-as this user (the impersonation engine) — the *effective*
   * principal is this user; `impersonatedBy` records the real admin for audit + the UI's "viewing as" banner.
   */
-final case class Principal(userId: UUID, subject: String, email: String, role: String, impersonatedBy: Option[UUID] = None)
+final case class Principal(
+    userId: UUID,
+    subject: String,
+    email: String,
+    role: String,
+    impersonatedBy: Option[UUID] = None
+)

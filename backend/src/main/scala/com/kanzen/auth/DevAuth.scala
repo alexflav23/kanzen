@@ -17,14 +17,15 @@ final class DevAuth private (kid: String, kp: KeyPair, issuer: String, audience:
 
   val jwks: Jwks = Jwks.inMemory(Map(kid -> kp.getPublic.asInstanceOf[RSAPublicKey]))
 
-  /** Mint a 12h dev token carrying the email + role (the claims the verifier reads). */
-  def mint(email: String, role: String): String = {
-    val content = io.circe.Json
-      .obj(
-        "email" -> io.circe.Json.fromString(email),
-        "custom:role" -> io.circe.Json.fromString(role)
-      )
-      .noSpaces
+  /** Mint a 12h dev token carrying the email + role (the claims the verifier reads). When `impersonatedBy` is set, the
+    * token authenticates AS `email` but records the real admin (the impersonation engine — F02).
+    */
+  def mint(email: String, role: String, impersonatedBy: Option[String] = None): String = {
+    val fields = List(
+      "email" -> io.circe.Json.fromString(email),
+      "custom:role" -> io.circe.Json.fromString(role)
+    ) ++ impersonatedBy.map(a => "impersonated_by" -> io.circe.Json.fromString(a))
+    val content = io.circe.Json.obj(fields: _*).noSpaces
     val base = JwtClaim(content).about(email).issuedNow.expiresIn(43200)
     val withIss = if (issuer.nonEmpty) base.by(issuer) else base
     val claim = if (audience.nonEmpty) withIss.to(audience) else withIss

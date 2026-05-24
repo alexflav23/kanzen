@@ -66,19 +66,22 @@ object ReconciliationApiIT extends IOSuite {
   test("auto-suggest: an unmatched txn gets its matching receipt as a top candidate (score 100)") { xa =>
     // a unique merchant + amount so the candidate is unambiguous despite the shared receipt pool
     val merchant = s"Vendor-${UUID.randomUUID().toString.take(8)}"
-    val amount   = 100000L + scala.util.Random.nextInt(900000)
+    val amount = 100000L + scala.util.Random.nextInt(900000)
     val prog = for {
       acct <- BankRepo.createAccount(s"acct-${UUID.randomUUID()}", "GBP", Some("current"))
-      _    <- BankRepo.ingest(acct.id, List(TxIn(s"tx-${UUID.randomUUID()}", LocalDate.now, amount, "GBP", "debit", merchant)))
+      _ <- BankRepo.ingest(
+        acct.id,
+        List(TxIn(s"tx-${UUID.randomUUID()}", LocalDate.now, amount, "GBP", "debit", merchant))
+      )
       txns <- BankRepo.list(acct.id)
-      r    <- ReceiptRepo.create(owner, "invoice", Some(merchant), Some(amount), Some("GBP"))
+      r <- ReceiptRepo.create(owner, "invoice", Some(merchant), Some(amount), Some("GBP"))
     } yield (acct.id, txns.head.id, r.id)
     for {
       ids <- prog.transact(xa)
       (accountId, txnId, receiptId) = ids
       sug <- Reconciliation.suggestions(xa, lorna, accountId).map(_.toOption.get)
       mine = sug.find(_.txn.id == txnId).get
-      top  = mine.candidates.head
+      top = mine.candidates.head
     } yield expect(mine.candidates.forall(_.score >= 50)) and
       expect(top.receiptId == receiptId) and expect(top.score == 100) and
       expect(top.reasons.contains("amount matches exactly")) and expect(top.reasons.contains("merchant matches"))
@@ -86,7 +89,7 @@ object ReconciliationApiIT extends IOSuite {
 
   test("Staff cannot see suggestions (403)") { xa =>
     for {
-      f   <- setup(xa)
+      f <- setup(xa)
       res <- Reconciliation.suggestions(xa, marcia, f.accountId)
     } yield expect(res.left.exists(_._1.code == 403))
   }
