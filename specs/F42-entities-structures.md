@@ -7,7 +7,7 @@
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
 | **Depends on** | F02 (RBAC — entity scope dimension), F18 (TigerBeetle ledger), F37 (FX + base currency per entity) |
-| **Spec references** | GnuCash multi-book model (`libgnucash/engine`); completion plan §O + §O.1 (multi-entity/multi-book locked decisions) |
+| **Spec references** | GnuCash multi-book model (`libgnucash/engine`); the implementation plan (multi-entity/multi-book locked decisions) |
 
 > **Decisions:** `entity` is a **first-class scoping dimension** across the entire accounting core — every downstream account, transaction/split, and TigerBeetle posting carries an `entity_id`. Each entity (personal / trust / company / SPV / partnership) keeps its own **book/ledger**, with a **base currency** and independent **accounting periods**; year-end close seals a period and blocks further postings into it. F02 RBAC gains an **entity scope** dimension (alongside property scope): Principal-private by default; no Manager carve-out for wealth/entity data. **Consolidation** rolls child entities up to a group net worth with intercompany elimination; the elimination is a computed view, never a ledger mutation. **Circular ownership is rejected at write time.** The TigerBeetle ledger remains hidden in the UI (F18 invariant holds per entity). **Financial and entity creation are always proposed, never auto-committed (F27).** This feature is **foundational**: F39, F40, F41, and F43 all extend it — land F42 first in Wave G.
 
@@ -161,7 +161,7 @@ CREATE INDEX ON consolidation_group_members (consolidation_group_id);
 entity_id  uuid  NOT NULL REFERENCES entities(id)
 ```
 
-This is the locked multi-book invariant from §O.1. Postgres foreign keys + application-layer `Authorizer.checkEntity` enforce it.
+This is the locked multi-book invariant (per the implementation plan). Postgres foreign keys + application-layer `Authorizer.checkEntity` enforce it.
 
 **Money convention:** all amounts in minor integer units + ISO currency column; cross-entity/cross-currency consolidation normalized via F37. No floats.
 

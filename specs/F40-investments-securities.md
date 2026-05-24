@@ -7,7 +7,7 @@
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
 | **Depends on** | F39 (accounting core), F42 (entities), F37 (FX); feeds F41/F43, F38 |
-| **Spec references** | GnuCash `gnc-commodity` / `gnc-pricedb` / `gnc-lot`; completion plan §O / §O.1 |
+| **Spec references** | GnuCash `gnc-commodity` / `gnc-pricedb` / `gnc-lot`; the implementation plan |
 
 > **Decisions:** full investment accounting — securities/commodities including illiquid/private holdings; a time-series price database (live + manual); holdings managed as typed **security accounts** in the F39 chart of accounts, entity-scoped (F42); cost-basis lot accounting (buy creates a lot; sell closes lots via FIFO or specific-identification → realised capital gains; unrealised gain from current price); dividends/distributions; corporate actions (stock splits, mergers, spin-offs) adjusting lots and holdings. Portfolio view: holdings table, allocation (by asset class / sector / currency / entity), performance (TWR/IRR), gains. **Invariant: Kanzen records investments, never executes trades** (no brokerage order, no PIS); the TigerBeetle ledger (F18) is hidden in the UI; investments are **Principal-private**. Money always integer minor units + ISO currency; quantity of shares as `numeric` (fractional shares); FX at transaction-date rate via F37.
 

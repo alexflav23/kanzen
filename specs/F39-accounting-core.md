@@ -7,7 +7,7 @@
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
 | **Depends on** | F42 (entities/books), F18 (TigerBeetle ledger), F37 (currencies/FX), F14 (reconciliation) |
-| **Spec references** | GnuCash `Account`/`Transaction`/`Split` model; `00-product-completion-plan.md` §O; SPEC §9 (finance); F18 (TB posting engine) |
+| **Spec references** | GnuCash `Account`/`Transaction`/`Split` model; `00-master-implementation-plan.md`; SPEC §9 (finance); F18 (TB posting engine) |
 
 > **Decisions:** a GnuCash-style chart of accounts + double-entry transaction/split engine, modernised on top of TigerBeetle. Postgres holds all domain data (accounts, GL transactions, splits); **TigerBeetle holds the immutable postings** — consistent with the F18 principle that TB and Postgres are never conflated and TB is fully **hidden from the UI**. Splits sum to zero (balanced or rejected). Multi-currency transactions use **trading accounts** (one per currency pair), following GnuCash's model. Corrections are **reversing entries**, never edits. The chart of accounts is **entity-scoped** (F42) so each legal/family entity has its own books. Financial-statement placement (balance sheet vs P&L) is driven by account type. The Agent may **propose** entries but never auto-commits financial/asset creation. **Kanzen never moves money.**
 

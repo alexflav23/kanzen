@@ -7,7 +7,7 @@
 | **Domain** | Finance |
 | **Status** | spec complete |
 | **Depends on** | F13 (receipts/line items), F17 (expenses), F37 (FX), F29 (insights), F30 (exports) |
-| **Spec references** | `gitlab.com/outworkers/marvis` (`domain/tax`, `domain/expenses`) — porting reference; SPEC §9 (finance); Kanzen completion plan §N |
+| **Spec references** | `gitlab.com/outworkers/marvis` (`domain/tax`, `domain/expenses`) — porting reference; SPEC §9 (finance); the implementation plan (`00-master-implementation-plan.md`) |
 
 > **Decisions:** ported from marvis's tax engine (Joda-Money/Cassandra → **Postgres/Doobie, integer minor units**). Tax computation is **estimation/reporting only — Kanzen never files or pays tax** (consistent with "never moves money"). UK-first (income/dividend/salary/NI/corporation tax, VAT), tax-year aware, with bands held as **versioned config** (not hard-coded). **Principal-private** (F02).
 

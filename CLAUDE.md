@@ -4,7 +4,7 @@ Guidance for Claude Code (and humans) building **Kanzen**, the household operati
 
 ## Canonical docs (read these first)
 - **`Kanzen-Platform-Spec.md`** — the *what/why* (v6, reconciled with the design prototype + Hypervolt stack). Keep current; this is `SPEC.md`.
-- **`specs/00-master-implementation-plan.md`** — the 33-feature plan, dependency graph, status tracker.
+- **`specs/00-master-implementation-plan.md`** — **the single source of truth**: the 44-feature plan (F00–F43), waves/sequence, Definition of Done, slice playbook, decisions, dependency graph + status tracker. (The former `00-product-completion-plan.md` is merged into it.)
 - **`specs/F__-*.md`** — implementation-ready spec per feature (data model, Tapir API, UI states, edge cases, acceptance, tests).
 - **`specs/01-data-model.md`** — consolidated schema + migration order.
 - **`SETUP.md`** — every operator-provided input (AWS, tokens, DNS, accounts). Keep current.

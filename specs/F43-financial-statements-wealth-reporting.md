@@ -7,7 +7,7 @@
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
 | **Depends on** | F39 (accounting core / chart of accounts + splits), F40 (investments + securities), F41 (liabilities + net worth), F42 (entities, structures + accounting periods); F37 (FX / display currency); ties to F17 (budgets → Budget vs Actual), F38 (tax year framing + deductibility), F29 (informal insights — superseded here for wealth reporting), F30 (export / PDF / CSV) |
-| **Spec references** | GnuCash report suite (`gnucash/report/`), plan §O / §O.1 |
+| **Spec references** | GnuCash report suite (`gnucash/report/`), the implementation plan |
 
 > **Decisions:** financial statements are **generated directly from the double-entry ledger** (F39 splits + F42 accounting periods) — not re-derived from the transactional domain tables. They are **read-only** (no statement mutates the books). Every statement is **entity-scoped** (F42 entity or consolidated group) and **period-scoped** (F42 accounting period, e.g. 2025 calendar year, 2025/26 UK tax year). **Multi-currency translation uses period-end rates** for balance-sheet items and **average-period rates** for income-statement items (the temporal method), with full labelling (see §6). **Principal-private**: no Manager or Staff access except a documented carve-out for Budget vs Actual (open question, §12). The Agent has no write path here; it is read-only reporting. **Drill-down from a statement line → chart-of-accounts register → splits** (F39) but **never to raw TigerBeetle IDs** — the ledger is always hidden in the UI (CLAUDE.md invariant).
 

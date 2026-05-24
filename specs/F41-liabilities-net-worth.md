@@ -7,7 +7,7 @@
 | **Domain** | Private Wealth |
 | **Status** | spec complete |
 | **Depends on** | F39 (accounting core — chart of accounts, double-entry splits), F42 (entities & structures — entity model, multi-book, consolidation); reads F04/F20 (illiquid assets at valuation), F12 (liquid cash/bank), F40 (investments at market), F37 (FX/display currency), F18 (TigerBeetle ledger) |
-| **Spec references** | GnuCash liability accounts (`libgnucash/engine/Account`); completion plan §O / §O.1; SPEC §8.6 (valuation), §9 (finance) |
+| **Spec references** | GnuCash liability accounts (`libgnucash/engine/Account`); the implementation plan; SPEC §8.6 (valuation), §9 (finance) |
 
 > **Decisions:** liability accounts are **F39 chart-of-accounts entries** of type `LIABILITY` (subkinds: `mortgage` / `loan` / `credit_line` / `margin`), posting repayments to the TigerBeetle ledger (F18, hidden in the UI) through the F39 split engine. The **consolidated net worth** view is a **computed, not stored, snapshot** of: liquid cash (F12 balances) + investments at market (F40 prices) + illiquid assets at latest valuation (F04/F20) − total outstanding liabilities — expressed in any **display currency (F37)**, per entity (F42) or consolidated across the full structure. Snapshots are persisted for time-series. **Net worth is Principal-private** — Manager and Staff receive a hard 403 (no leak via totals, aggregates, or partial data). The agent may **propose** new liability records, never auto-commits them (F27, invariant).
 
