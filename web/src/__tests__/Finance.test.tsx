@@ -27,6 +27,17 @@ vi.mock("../services/bank", () => ({
   listTransactions: async () => [
     { id: "t1", providerTxId: "p1", bookedOn: "2026-05-10", amountMinor: 4200, currency: "GBP", direction: "debit", description: "Waitrose", merchant: "Waitrose", reconciliationState: "unmatched" },
   ],
+  getSuggestions: async () => [
+    {
+      txn: { id: "t1", bookedOn: "2026-05-10", amountMinor: 184000, currency: "GBP", description: "Hudson Sandler Ltd", merchant: "Hudson Sandler" },
+      candidates: [{ receiptId: "r1", merchant: "Hudson Sandler", totalMinor: 184000, currency: "GBP", score: 100, reasons: ["amount matches exactly", "merchant matches", "same currency"] }],
+    },
+    {
+      txn: { id: "t2", bookedOn: "2026-05-12", amountMinor: 9999, currency: "GBP", description: "Unknown", merchant: null },
+      candidates: [],
+    },
+  ],
+  matchTxn: vi.fn(async () => ({ matchId: "m1", state: "matched" })),
 }));
 
 import { Finance } from "../pages/Finance";
@@ -76,6 +87,19 @@ describe("Finance", () => {
     expect(await screen.findByTestId("txn-row")).toBeInTheDocument();
     expect(screen.getByText("Waitrose")).toBeInTheDocument();
     expect(screen.getByText("unmatched")).toBeInTheDocument();
+  });
+
+  it("the Reconcile tab shows auto-suggested matches with a score (F14)", async () => {
+    renderFinance();
+    await screen.findByText("Recurring schedule · 2");
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile" }));
+    expect(await screen.findAllByTestId("recon-row")).toHaveLength(2);
+    // the high-confidence suggestion shows its score + reasons + a confirm action
+    expect(screen.getByText("100% match")).toBeInTheDocument();
+    expect(screen.getByText(/amount matches exactly/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirm match/ })).toBeInTheDocument();
+    // the unmatchable txn shows the manual fallback
+    expect(screen.getByText(/review and link a receipt manually/)).toBeInTheDocument();
   });
 
   it("the Tax tab shows the income estimate and deductible report (F38)", async () => {

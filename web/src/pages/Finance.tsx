@@ -9,9 +9,9 @@ import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { approveExpense, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
-import { listAccounts, listTransactions } from "../services/bank";
+import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
 
-type Tab = "bills" | "pay" | "transactions" | "expenses" | "budgets" | "tax";
+type Tab = "bills" | "pay" | "transactions" | "reconcile" | "expenses" | "budgets" | "tax";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -35,6 +35,10 @@ const styles = stylex.create({
   amount: { fontWeight: 600, fontVariantNumeric: "tabular-nums" },
   note: { padding: "16px 18px", fontSize: "13px", color: colors.ink3 },
   input: { width: "140px", padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink, fontSize: "13.5px", textAlign: "right", fontVariantNumeric: "tabular-nums" },
+  reconItem: { padding: "14px 18px", borderBottom: `1px solid ${colors.line}` },
+  reconTop: { display: "flex", alignItems: "center", gap: "12px" },
+  suggest: { display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", padding: "8px 12px", borderRadius: radius.sm, backgroundColor: colors.accentSoft },
+  reasons: { fontSize: "11.5px", color: colors.ink3 },
 });
 
 const statusTone = (s: string): "default" | "warn" | "danger" =>
@@ -53,6 +57,11 @@ export function Finance() {
   const [acct, setAcct] = useState<string | null>(null);
   const acctId = acct ?? accounts.data?.[0]?.id ?? null;
   const txns = useQuery({ queryKey: ["bank", "txns", token, acctId], queryFn: () => listTransactions(token, acctId as string), enabled: !!acctId });
+  const suggestions = useQuery({ queryKey: ["bank", "suggest", token, acctId], queryFn: () => getSuggestions(token, acctId as string), enabled: !!acctId });
+  const confirmMatch = useMutation({
+    mutationFn: ({ txnId, receiptId }: { txnId: string; receiptId: string }) => matchTxn(token, txnId, receiptId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bank", "suggest"] }); qc.invalidateQueries({ queryKey: ["bank", "txns"] }); },
+  });
   const [incomeGbp, setIncomeGbp] = useState(150000); // gross income in whole £ (F38 estimate)
   const deductible = useQuery({ queryKey: ["tax", "deductible", token], queryFn: () => getDeductibleReport(token) });
   const estimate   = useQuery({ queryKey: ["tax", "estimate", token, incomeGbp], queryFn: () => getIncomeEstimate(token, incomeGbp * 100) });
@@ -71,7 +80,7 @@ export function Finance() {
       </header>
 
       <div {...stylex.props(styles.tabs)} role="tablist">
-        {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
+        {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["reconcile", "Reconcile"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>{label}</button>
         ))}
       </div>
@@ -195,6 +204,38 @@ export function Finance() {
               </>
             )}
         </div>
+      )}
+
+      {tab === "reconcile" && (
+        <Card>
+          <CardHeader><CardTitle>Auto-suggested reconciliations · {suggestions.data?.length ?? 0} unmatched</CardTitle></CardHeader>
+          {suggestions.isPending ? <Loading /> : suggestions.isError ? <ErrorState error={suggestions.error} />
+            : suggestions.data.length === 0 ? <EmptyState title="All reconciled">No unmatched transactions.</EmptyState>
+            : suggestions.data.map((s) => {
+                const c = s.candidates[0];
+                return (
+                  <div key={s.txn.id} {...stylex.props(styles.reconItem)} data-testid="recon-row">
+                    <div {...stylex.props(styles.reconTop)}>
+                      <span {...stylex.props(styles.grow, styles.bold)}>{s.txn.merchant ?? s.txn.description ?? "—"}</span>
+                      <span {...stylex.props(styles.note)}>{s.txn.bookedOn ?? ""}</span>
+                      <span {...stylex.props(styles.amount)}>{fmtMoney(s.txn.amountMinor, s.txn.currency)}</span>
+                    </div>
+                    {c ? (
+                      <div {...stylex.props(styles.suggest)} data-testid="suggestion">
+                        <Pill tone="accent">{c.score}% match</Pill>
+                        <div {...stylex.props(styles.grow)}>
+                          <div {...stylex.props(styles.bold)}>{c.merchant ?? "receipt"} · {fmtMoney(c.totalMinor, c.currency)}</div>
+                          <div {...stylex.props(styles.reasons)}>{c.reasons.join(" · ")}</div>
+                        </div>
+                        <button type="button" {...stylex.props(styles.btn, styles.approve)} onClick={() => confirmMatch.mutate({ txnId: s.txn.id, receiptId: c.receiptId })}>
+                          <Check size={13} /> Confirm match
+                        </button>
+                      </div>
+                    ) : <div {...stylex.props(styles.note)}>No suggestion — review and link a receipt manually.</div>}
+                  </div>
+                );
+              })}
+        </Card>
       )}
 
       {tab === "tax" && (

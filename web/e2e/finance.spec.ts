@@ -36,6 +36,17 @@ test("the transactions tab lists a seeded account's transactions with reconcilia
   expect(await page.getByTestId("txn-row").count()).toBeGreaterThanOrEqual(1);
 });
 
+test("the reconcile tab auto-suggests a receipt match for a seeded transaction (F14)", async ({ page }) => {
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Reconcile" }).click();
+  await expect(page.getByTestId("recon-row").first()).toBeVisible(); // wait for the suggestions query
+  // the seeded Hudson Sandler £1,840 txn + matching receipt → a high-confidence suggestion
+  await expect(page.getByTestId("suggestion").first()).toBeVisible();
+  await expect(page.getByText(/% match/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Confirm match/ }).first()).toBeVisible();
+  // read-only: confirming persists on the shared dev DB, so it's covered by the backend IT + Vitest
+});
+
 test("the tax tab estimates UK income tax and shows the deductible report (F38)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Tax" }).click();

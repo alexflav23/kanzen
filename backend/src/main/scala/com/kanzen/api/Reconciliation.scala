@@ -5,7 +5,7 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
 import com.kanzen.bank.BankRepo
-import com.kanzen.finance.ReconciliationRepo
+import com.kanzen.finance.{ReconciliationRepo, ReconciliationService}
 import com.kanzen.receipt.{ReceiptRepo => ReceiptStore}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -37,6 +37,8 @@ object Reconciliation {
   )
   final case class MatchReq(txnId: UUID, receiptId: UUID)
   final case class MatchResult(matchId: UUID, state: String)
+  final case class Candidate(receiptId: UUID, merchant: Option[String], totalMinor: Long, currency: String, score: Int, reasons: List[String])
+  final case class Suggestion(txn: MatchableTx, candidates: List[Candidate])
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to finance"))
@@ -59,6 +61,33 @@ object Reconciliation {
               ts.map(t => MatchableTx(t.id, t.bookedOn, t.amountMinor, t.currency, t.description, t.merchant))
             ): Out[List[MatchableTx]]
           )
+    }
+    tx.transact(xa)
+  }
+
+  /** Auto-suggested reconciliations: for each unmatched transaction, the candidate receipts
+    * ranked by [[ReconciliationService.scoreMatch]] (amount/merchant/currency), best first. */
+  def suggestions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[Suggestion]]] = {
+    val tx = Authz.authorizer(p.role).flatMap { authz =>
+      if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[Suggestion]]).pure[ConnectionIO]
+      else
+        for {
+          txns     <- BankRepo.unmatched(accountId)
+          receipts <- ReconciliationRepo.unmatchedReceipts
+        } yield {
+          val suggestions = txns.map { t =>
+            val cands = receipts.flatMap { case (rid, rMerchant, rTotal, rCurrency) =>
+              // the bank feed may carry the payee in `merchant` or only in `description`
+              val (score, reasons) = ReconciliationService.scoreMatch(
+                t.amountMinor, t.merchant.orElse(t.description), t.currency, rTotal.getOrElse(0L), rMerchant, rCurrency.getOrElse(""))
+              if (score >= ReconciliationService.suggestThreshold)
+                Some(Candidate(rid, rMerchant, rTotal.getOrElse(0L), rCurrency.getOrElse(t.currency), score, reasons))
+              else None
+            }.sortBy(-_.score).take(3)
+            Suggestion(MatchableTx(t.id, t.bookedOn, t.amountMinor, t.currency, t.description, t.merchant), cands)
+          }
+          Right(suggestions): Out[List[Suggestion]]
+        }
     }
     tx.transact(xa)
   }
@@ -106,10 +135,20 @@ object Reconciliation {
       .out(jsonBody[MatchResult])
       .summary("Match a transaction to a receipt (single-spend enforced; Manager+)")
 
+  val suggestionsEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), List[Suggestion], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "reconciliation" / "suggestions")
+      .in(query[UUID]("account"))
+      .errorOut(err)
+      .out(jsonBody[List[Suggestion]])
+      .summary("Auto-suggested reconciliations: unmatched txns + ranked candidate receipts")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     unmatchedEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (acct: UUID) => unmatched(xa, p, acct)),
+    suggestionsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (acct: UUID) => suggestions(xa, p, acct)),
     matchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: MatchReq) => matchTxn(xa, p, r))
   )
 
-  val endpoints: List[AnyEndpoint] = List(unmatchedEndpoint, matchEndpoint)
+  val endpoints: List[AnyEndpoint] = List(unmatchedEndpoint, suggestionsEndpoint, matchEndpoint)
 }

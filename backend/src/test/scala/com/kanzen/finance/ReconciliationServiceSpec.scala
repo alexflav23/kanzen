@@ -17,4 +17,27 @@ class ReconciliationServiceSpec extends AnyFreeSpec with Matchers {
       ReconciliationService.isTransferPair(0L, 0L) shouldBe false
     }
   }
+
+  "ReconciliationService.scoreMatch (auto-suggest)" - {
+    "exact amount + merchant + currency scores highest and is suggestable" in {
+      val (score, reasons) = ReconciliationService.scoreMatch(184000L, Some("Hudson Sandler"), "GBP", 184000L, Some("Hudson Sandler"), "GBP")
+      score shouldBe 100
+      reasons should contain("amount matches exactly")
+      reasons should contain("merchant matches")
+      (score >= ReconciliationService.suggestThreshold) shouldBe true
+    }
+    "near amount (within 2%) on its own is below the suggest threshold" in {
+      val (score, _) = ReconciliationService.scoreMatch(10000L, None, "GBP", 10100L, None, "USD")
+      score shouldBe 35
+      (score >= ReconciliationService.suggestThreshold) shouldBe false
+    }
+    "amount sign is ignored (a debit matches a positive receipt total)" in {
+      val (score, _) = ReconciliationService.scoreMatch(-4250L, Some("Waitrose"), "GBP", 4250L, Some("Waitrose"), "GBP")
+      score shouldBe 100
+    }
+    "unrelated amounts + merchants score zero" in {
+      val (score, _) = ReconciliationService.scoreMatch(50000L, Some("Selfridges"), "GBP", 999L, Some("Bonhams"), "USD")
+      score shouldBe 0
+    }
+  }
 }
