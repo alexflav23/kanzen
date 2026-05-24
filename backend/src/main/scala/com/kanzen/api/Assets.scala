@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.all._
-import com.kanzen.asset.{Asset, AssetRepo, Category, ValuationRepo}
+import com.kanzen.asset.{Asset, AssetRepo, Category, TemplateRepo, TemplateService, ValuationRepo}
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
 import doobie.ConnectionIO
@@ -99,18 +99,24 @@ object Assets {
     if (!MODES.contains(req.trackingMode)) IO.pure(Left(badReq(s"tracking_mode must be one of ${MODES.mkString(", ")}")))
     else if (req.quantity < 1) IO.pure(Left(badReq("quantity must be ≥ 1")))
     else {
+      val attrs = req.attributes.getOrElse(Json.obj())
       val tx = for {
         authz    <- Authz.authorizer(p.role)
         catOk    <- AssetRepo.categoryExists(req.categoryId)
         parentOk <- req.parentAssetId.fold(true.pure[ConnectionIO])(AssetRepo.exists)
+        // F22: validate attributes against the vertical's template (if any). Unknown keys
+        // are allowed (freehand); required/typed keys are enforced.
+        tplErrors <- req.vertical.fold(List.empty[String].pure[ConnectionIO])(v =>
+          TemplateRepo.schemaFor(v).map(_.fold(List.empty[String])(s => TemplateService.validate(attrs, TemplateService.parseSchema(s)))))
         res <-
           if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
           else if (!catOk) (Left(badReq("category not found")): Out[AssetDetail]).pure[ConnectionIO]
           else if (!parentOk) (Left(badReq("parent asset not found")): Out[AssetDetail]).pure[ConnectionIO]
+          else if (tplErrors.nonEmpty) (Left(badReq(s"attributes invalid: ${tplErrors.mkString("; ")}")): Out[AssetDetail]).pure[ConnectionIO]
           else
             AssetRepo.insert(p.userId, req.title, req.maker, req.categoryId, req.vertical, req.trackingMode,
               req.quantity, req.parentAssetId, req.acquisitionCostMinor, req.acquisitionCurrency, req.locationId,
-              req.attributes.getOrElse(Json.obj())).map(a => Right(detailOf(a)): Out[AssetDetail])
+              attrs).map(a => Right(detailOf(a)): Out[AssetDetail])
       } yield res
       tx.transact(xa)
     }
