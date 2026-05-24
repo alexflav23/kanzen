@@ -19,6 +19,26 @@ object PropertyRepo {
           values ($name, $address, $jurisdiction, $currency)
           returning id, name, jurisdiction, default_currency, status""".query[Property].unique
 
+  /** Full create with owner (house rule) + type/ownership — the API path. */
+  def insert(ownerId: UUID, name: String, address: Option[String], jurisdiction: Option[String],
+             propType: Option[String], ownership: Option[String], currency: String): ConnectionIO[Property] =
+    sql"""insert into properties (owner_id, name, address, jurisdiction, type, ownership, default_currency)
+          values ($ownerId, $name, $address, $jurisdiction, $propType, $ownership, $currency)
+          returning id, name, jurisdiction, default_currency, status""".query[Property].unique
+
+  def findProperty(id: UUID): ConnectionIO[Option[Property]] =
+    sql"select id, name, jurisdiction, default_currency, status from properties where id = $id and deleted_at is null"
+      .query[Property].option
+
+  def patchProperty(id: UUID, name: String, address: Option[String], jurisdiction: Option[String],
+                    propType: Option[String], ownership: Option[String]): ConnectionIO[Int] =
+    sql"""update properties set name = $name, address = $address, jurisdiction = $jurisdiction,
+            type = $propType, ownership = $ownership, updated_at = now()
+          where id = $id and deleted_at is null""".update.run
+
+  def archive(id: UUID): ConnectionIO[Int] =
+    sql"update properties set status = 'archived', updated_at = now() where id = $id and deleted_at is null".update.run
+
   def list: ConnectionIO[List[Property]] =
     sql"select id, name, jurisdiction, default_currency, status from properties where deleted_at is null order by name"
       .query[Property].to[List]

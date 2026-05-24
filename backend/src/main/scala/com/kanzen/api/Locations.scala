@@ -38,18 +38,22 @@ object Locations {
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no write access to property"))
   private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such property or location."))
+  private val conflict: (StatusCode, ApiError)  = (StatusCode.Conflict, ApiError(409, "archived", "Property is archived; new activity is blocked."))
   private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
 
   /** May this principal write to `propertyId`? 404 if the property isn't in their scope
-    * (no leak), 403 if visible but the role can't write, else Right. */
+    * (no leak), 409 if archived (read-only, AC8), 403 if visible but the role can't write,
+    * else Right. */
   private def authorizeWrite(p: Principal, propertyId: UUID): ConnectionIO[Out[Unit]] =
     for {
       authz <- Authz.authorizer(p.role)
-      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.exists(_.id == propertyId))
-    } yield
-      if (!visible) Left(notFound)
-      else if (!authz.can(Level.Write, "property")) Left(forbidden)
-      else Right(())
+      prop  <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == propertyId))
+    } yield prop match {
+      case None                                          => Left(notFound)
+      case Some(pr) if pr.status == "archived"           => Left(conflict)
+      case Some(_) if !authz.can(Level.Write, "property") => Left(forbidden)
+      case Some(_)                                       => Right(())
+    }
 
   private def descendantsOf(all: List[Location], rootId: UUID): Set[UUID] = {
     val childrenOf: Map[UUID, List[UUID]] = all.flatMap(l => l.parentId.map(_ -> l.id)).groupMap(_._1)(_._2)

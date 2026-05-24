@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.Authz
+import com.kanzen.authz.{Authz, Level}
 import com.kanzen.property.{Property, PropertyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -31,11 +31,22 @@ object Properties {
     rooms: Int, assets: Int, bills: Int, vendors: Int,
   )
 
+  final case class CreateReq(name: String, address: Option[String], jurisdiction: Option[String],
+                             propType: Option[String], ownership: Option[String], currency: String)
+  final case class PatchReq(name: String, address: Option[String], jurisdiction: Option[String],
+                            propType: Option[String], ownership: Option[String])
+
+  private type Out[A] = Either[(StatusCode, ApiError), A]
+  private def toView(r: Property): PropertyView = PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)
+
   private val forbidden: (StatusCode, ApiError) =
-    (StatusCode.Forbidden, ApiError(403, "forbidden", "no read access to property"))
+    (StatusCode.Forbidden, ApiError(403, "forbidden", "no write access to property"))
   // A scoped user must not learn that an out-of-scope property exists (F03 AC4).
   private val notFound: (StatusCode, ApiError) =
     (StatusCode.NotFound, ApiError(404, "not_found", "No such property."))
+  // Archived properties are read-only — new activity is blocked (F03 AC8).
+  private val conflict: (StatusCode, ApiError) =
+    (StatusCode.Conflict, ApiError(409, "archived", "Property is archived; new activity is blocked."))
 
   /** Authorize against the principal's DB rules, then read what F02 scope allows — in one
     * transaction. The handler is public so tests can exercise the real authz + scope +
@@ -48,9 +59,50 @@ object Properties {
     } yield (allowed, props)
 
     tx.transact(xa).map {
-      case (true, props) => Right(props.map(r => PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)))
+      // Archived/sold properties are hidden from the default list (AC8); detail still reads them.
+      case (true, props) => Right(props.filter(_.status == "active").map(toView))
       case (false, _)    => Left(forbidden)
     }
+  }
+
+  def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[PropertyView]] = {
+    val tx = Authz.authorizer(p.role).flatMap { authz =>
+      if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+      else
+        PropertyRepo.insert(p.userId, req.name, req.address, req.jurisdiction, req.propType, req.ownership, req.currency)
+          .map(pr => Right(toView(pr)): Out[PropertyView])
+    }
+    tx.transact(xa)
+  }
+
+  def patch(xa: Transactor[IO], p: Principal, id: UUID, req: PatchReq): IO[Out[PropertyView]] = {
+    val tx = for {
+      authz   <- Authz.authorizer(p.role)
+      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+      res <- visible match {
+               case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
+               case Some(pr) =>
+                 if (pr.status == "archived") (Left(conflict): Out[PropertyView]).pure[ConnectionIO]
+                 else if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+                 else PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
+                   PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+             }
+    } yield res
+    tx.transact(xa)
+  }
+
+  def archive(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PropertyView]] = {
+    val tx = for {
+      authz   <- Authz.authorizer(p.role)
+      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+      res <- visible match {
+               case None    => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
+               case Some(_) =>
+                 if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+                 else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+             }
+    } yield res
+    tx.transact(xa)
   }
 
   /** The scoped Bible read. 403 if the role can't read properties; 404 if the property
@@ -71,29 +123,40 @@ object Properties {
     tx.transact(xa)
   }
 
+  private val err = statusCode.and(jsonBody[ApiError])
+
   val endpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[PropertyView], Any] =
-    sttp.tapir.endpoint.get
-      .in("api" / "properties")
-      .securityIn(auth.bearer[String]())
-      .errorOut(statusCode.and(jsonBody[ApiError]))
-      .out(jsonBody[List[PropertyView]])
-      .summary("Properties visible to the principal (F03, authz-filtered)")
+    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
+      .in("api" / "properties").errorOut(err).out(jsonBody[List[PropertyView]])
+      .summary("Properties visible to the principal (F03, authz + scope-filtered; archived hidden)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), PropertyDetail, Any] =
-    sttp.tapir.endpoint.get
-      .securityIn(auth.bearer[String]())
-      .in("api" / "properties" / path[UUID]("id"))
-      .errorOut(statusCode.and(jsonBody[ApiError]))
-      .out(jsonBody[PropertyDetail])
+    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id")).errorOut(err).out(jsonBody[PropertyDetail])
       .summary("A property's Bible aggregate (scoped; 404 if out of scope)")
 
-  def serverEndpoint(a: Auth, xa: Transactor[IO]): ServerEndpoint[Any, IO] =
-    endpoint
-      .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => (_: Unit) => list(xa, p))
+  val createEndpoint: Endpoint[String, CreateReq, (StatusCode, ApiError), PropertyView, Any] =
+    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
+      .in("api" / "properties").in(jsonBody[CreateReq]).errorOut(err).out(jsonBody[PropertyView])
+      .summary("Create a property (Manager+)")
 
-  def detailServerEndpoint(a: Auth, xa: Transactor[IO]): ServerEndpoint[Any, IO] =
-    detailEndpoint
-      .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => (id: UUID) => detail(xa, p, id))
+  val patchEndpoint: Endpoint[String, (UUID, PatchReq), (StatusCode, ApiError), PropertyView, Any] =
+    sttp.tapir.endpoint.patch.securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id")).in(jsonBody[PatchReq]).errorOut(err).out(jsonBody[PropertyView])
+      .summary("Edit a property's particulars (Manager+; blocked if archived)")
+
+  val archiveEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), PropertyView, Any] =
+    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id") / "archive").errorOut(err).out(jsonBody[PropertyView])
+      .summary("Archive a property (Manager+; hidden from lists, records preserved)")
+
+  def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
+    endpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => list(xa, p)),
+    detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
+    createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
+    patchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => patch(xa, p, id, r) }),
+    archiveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => archive(xa, p, id)),
+  )
+
+  val endpoints: List[AnyEndpoint] = List(endpoint, detailEndpoint, createEndpoint, patchEndpoint, archiveEndpoint)
 }

@@ -38,17 +38,21 @@ object Defects {
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "not permitted on defect"))
   private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such property or defect."))
+  private val conflict: (StatusCode, ApiError)  = (StatusCode.Conflict, ApiError(409, "archived", "Property is archived; new activity is blocked."))
   private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
 
-  /** Property in scope? (else 404, no leak) then the role check on `defect`(+field). */
+  /** Property in scope? (else 404, no leak); writes blocked on archived (409, AC8);
+    * then the role check on `defect`(+field). Reads are allowed on archived (read-only). */
   private def authorize(p: Principal, propertyId: UUID, level: Level, field: Option[String]): ConnectionIO[Out[Unit]] =
     for {
       authz <- Authz.authorizer(p.role)
-      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.exists(_.id == propertyId))
-    } yield
-      if (!visible) Left(notFound)
-      else if (!authz.can(level, "defect", field)) Left(forbidden)
-      else Right(())
+      prop  <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == propertyId))
+    } yield prop match {
+      case None                                                            => Left(notFound)
+      case Some(pr) if level == Level.Write && pr.status == "archived"      => Left(conflict)
+      case Some(_) if !authz.can(level, "defect", field)                   => Left(forbidden)
+      case Some(_)                                                         => Right(())
+    }
 
   def list(xa: Transactor[IO], p: Principal, propertyId: UUID, status: Option[String]): IO[Out[List[DefectView]]] = {
     val tx = authorize(p, propertyId, Level.Read, None).flatMap {
