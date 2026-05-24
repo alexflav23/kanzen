@@ -41,7 +41,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | ✔️ Done (sandbox) — backend complete; web list/Bible/Add-property wired + e2e; in-Bible write forms + mobile (via F31) deferred |
 | F04 | Asset registry core (JSONB) | B | F03 | ✅ | ✔️ Done (sandbox) — backend (list/detail/create/categories/seed, authz, modes, JSONB) + web Inventory/detail wired + e2e; location/custody, collections multi-ccy deferred; field-strip (AC5) done via F20 |
 | F05 | Documents — S3 evidence store | B | F02 | ✅ | ✔️ Done (sandbox) — backend (upload/list/detail/links/presign/dedup/soft-delete, visibility+scope, ObjectStore) + web Documents module + e2e; embedded asset/property tabs + real S3/LocalStack deferred |
-| F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
+| F22 | Verticals & category templates | B | F04 | ✅ | ✔️ Done (sandbox) — backend (versioned templates, typed validation wired into asset create, GET/POST endpoint, seed) + tests; template-driven web create form deferred (Specifications display via F04) |
 | F33 | Custom fields, tags & taxonomies | B | F02, F04, F22 | ✅ | ⬜ |
 | F23 | Completeness scoring & data quality | B | F04, F19–F22 | ✅ | ⬜ |
 | F19 | Lifecycle events & timeline | B | F04 | ✅ | ✔️ Done (sandbox) — backend (log event + timeline + lifetime cost, authz) + web AssetDetail Lifecycle card + e2e; custody/location-history events deferred |
