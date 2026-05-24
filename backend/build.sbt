@@ -16,6 +16,7 @@ lazy val V = new {
   val tc         = "0.41.4"
   val weaver     = "0.8.4"
   val scalatest  = "3.2.18"
+  val jwt        = "9.4.5"
 }
 
 lazy val root = (project in file("."))
@@ -40,6 +41,7 @@ lazy val root = (project in file("."))
       "org.tpolecat"                  %% "doobie-postgres-circe"     % V.doobie,
       "org.flywaydb"                  %  "flyway-core"               % V.flyway,
       "org.postgresql"                %  "postgresql"                % V.postgres,
+      "com.github.jwt-scala"          %% "jwt-circe"                 % V.jwt,
       // tests: weaver (effectful/server/integration) + ScalaTest FreeSpec (pure units)
       "com.disneystreaming"           %% "weaver-cats"               % V.weaver    % Test,
       "org.scalatest"                 %% "scalatest"                 % V.scalatest % Test,
