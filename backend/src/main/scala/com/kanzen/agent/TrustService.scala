@@ -30,4 +30,7 @@ object TrustRepo {
 
   def get(category: String): ConnectionIO[Option[String]] =
     sql"select routing from trust_settings where category = $category".query[String].option
+
+  def all: ConnectionIO[List[(String, String, Boolean)]] =
+    sql"select category, routing, locked from trust_settings order by category".query[(String, String, Boolean)].to[List]
 }

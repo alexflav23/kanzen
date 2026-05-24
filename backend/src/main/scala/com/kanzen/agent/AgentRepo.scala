@@ -38,4 +38,20 @@ object AgentRepo {
 
   def confirm(actionId: UUID): ConnectionIO[Int] =
     sql"update agent_actions set status = 'executed' where id = $actionId".update.run
+
+  def reject(actionId: UUID): ConnectionIO[Int] =
+    sql"update agent_actions set status = 'rejected' where id = $actionId".update.run
+
+  /** Proposed actions joined to their email's category/subject (the Triage stream). */
+  def listActions(status: String): ConnectionIO[List[AgentActionRow]] =
+    sql"""select a.id, a.email_id, a.action_type, a.status, e.category, e.subject
+          from agent_actions a join incoming_emails e on e.id = a.email_id
+          where a.status = $status order by a.created_at desc""".query[AgentActionRow].to[List]
+
+  /** (category, current status) of the email behind an action — drives F27 trust enforcement. */
+  def actionCategory(actionId: UUID): ConnectionIO[Option[(String, String)]] =
+    sql"""select coalesce(e.category, 'Other'), a.status from agent_actions a
+          join incoming_emails e on e.id = a.email_id where a.id = $actionId""".query[(String, String)].option
 }
+
+final case class AgentActionRow(id: UUID, emailId: UUID, actionType: String, status: String, category: Option[String], subject: Option[String])
