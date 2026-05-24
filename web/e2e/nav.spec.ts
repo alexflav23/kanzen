@@ -8,6 +8,7 @@ const BUILT: [string, RegExp][] = [
   ["Properties", /Properties/],
   ["People", /People/],
   ["Finance", /Bills, expenses/],
+  ["Wealth", /Net worth/],
   ["Documents", /Documents/],
   ["Vendors", /Vendors/],
   ["Tasks", /Tasks/],

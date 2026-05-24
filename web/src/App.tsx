@@ -13,6 +13,7 @@ import { Vendors } from "./pages/Vendors";
 import { Tasks } from "./pages/Tasks";
 import { Lists } from "./pages/Lists";
 import { Maintenance } from "./pages/Maintenance";
+import { Wealth } from "./pages/Wealth";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
@@ -23,13 +24,14 @@ const NAV: { group: string | null; items: string[] }[] = [
   { group: "INVENTORY", items: ["Inventory", "Collections", "Insights"] },
   { group: "OPERATIONS", items: ["Properties", "Tasks", "Calendar", "Lists", "Maintenance"] },
   { group: "RECORDS", items: ["People", "Vendors", "Vehicles", "Documents"] },
-  { group: "FINANCE & SYSTEM", items: ["Finance", "Backup", "Settings"] },
+  { group: "FINANCE & SYSTEM", items: ["Finance", "Wealth", "Backup", "Settings"] },
 ];
 
 function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inventory") return "/inventory";
   if (item === "Finance") return "/finance";
+  if (item === "Wealth") return "/wealth";
   if (item === "Properties") return "/properties";
   if (item === "People") return "/people";
   if (item === "Documents") return "/documents";
@@ -89,6 +91,7 @@ export function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/finance" element={<Finance />} />
+            <Route path="/wealth" element={<Wealth />} />
             <Route path="/properties" element={<Properties />} />
             <Route path="/properties/:id" element={<PropertyBible />} />
             <Route path="/people" element={<People />} />

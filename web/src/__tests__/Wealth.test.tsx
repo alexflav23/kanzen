@@ -1,0 +1,38 @@
+import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../state/AuthContext";
+
+vi.mock("../services/wealth", () => ({
+  listEntities: async () => [
+    { id: "e1", name: "Toby (Individual)", kind: "individual", jurisdiction: "UK", baseCurrency: "GBP", parentEntityId: null },
+  ],
+  getNetWorth: async () => ({ entityId: null, cashAndOtherMinor: 500000, investmentsMinor: 98000, assetsMinor: 598000, liabilitiesMinor: 0, netMinor: 598000 }),
+  getBalanceSheet: async () => ({ entityId: null, assetsMinor: 598000, liabilitiesMinor: 0, equityMinor: 598000, balances: true }),
+  listHoldings: async () => [
+    { securityId: "s1", symbol: "VWRL", quantity: 10, costBasisMinor: 90000, marketValueMinor: 98000, unrealizedGainMinor: 8000 },
+  ],
+}));
+
+import { Wealth } from "../pages/Wealth";
+
+const renderWealth = () =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AuthProvider><Wealth /></AuthProvider>
+    </QueryClientProvider>,
+  );
+
+beforeEach(() => localStorage.setItem("kanzen.token", "t"));
+
+describe("Wealth", () => {
+  it("shows the consolidated net worth, a holding with its unrealised gain, and a balanced sheet", async () => {
+    renderWealth();
+    expect(screen.getByRole("heading", { name: "Net worth" })).toBeInTheDocument();
+    // £5,980 net (598000 minor); a VWRL holding with +£80 unrealised
+    expect(await screen.findByTestId("networth-net")).toHaveTextContent("£5,980");
+    expect(await screen.findByText("VWRL")).toBeInTheDocument();
+    expect(screen.getByText("+£80")).toBeInTheDocument();
+    expect(screen.getByText("balanced")).toBeInTheDocument();
+  });
+});
