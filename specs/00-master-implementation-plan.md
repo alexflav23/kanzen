@@ -66,7 +66,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F34 | Event backbone (events, queue, push) | D | F00 | ✅ | ⬜ |
 | F35 | Products & stock (consumables) | D | F08, F09, F33, F34 | ✅ | ⬜ |
 | F36 | Predictive replenishment | D | F35, F12, F13 | ✅ | ⬜ |
-| F11 | Maintenance plans & reminder engine | D | F04, F06, F07 | ✅ | ⬜ |
+| F11 | Maintenance plans & reminder engine | D | F04, F06, F07 | ✅ | ✔️ Done (sandbox) — backend (plans, due-soon reminders, complete-rolls-forward + logs) + web Maintenance page + e2e; calendar/task spawn deferred |
 | F25 | Email agent pipeline (Gmail + Bedrock) | E | F05, F13, F15 | ✅ | ⬜ |
 | F26 | Unified Inbox + Triage | E | F25, F14, F23 | ✅ | ⬜ |
 | F27 | Trust model, rules & learned categorisation | E | F25, F13 | ✅ | ⬜ |
