@@ -53,7 +53,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F37 | Currencies & FX (ECB source + cache, rate-at-date) | C | F12, F17, F20 | ✅ | ⬜ |
 | F12 | Bank ingestion & transactions (AIS) **+ CSV import (marvis)** | C | F02 | ✅ | 🚧 backend done (accounts/transactions/CSV-import, idempotent, finance carve-out authz, seed, tests); web Finance surface + GoCardless sandbox deferred |
 | F13 | Receipts, OCR/parse + ML categorisation **+ brand/product resolution** | C | F05, F04 | ✅ | 🚧 backend done (receipts+line items, brand-norm resolution, line confirm, product-level spend F32, finance authz, tests); OCR/Bedrock adapter + ML categorise + web deferred |
-| F14 | Reconciliation engine (**single-spend / dedup association**) | C | F12, F13 | ✅ | ⬜ |
+| F14 | Reconciliation engine (**single-spend / dedup association**) | C | F12, F13 | ✅ | 🚧 backend done (txn↔receipt match, single-spend 409 guard, unmatched list, finance authz, tests); auto-suggest + split/refund/transfer + web deferred |
 | F15 | Bills & recurring schedule | C | F03, F09 | ✅ | ⬜ |
 | F16 | Payment methods & Pay queue (never moves money) | C | F15 | ✅ | ⬜ |
 | F17 | Budgets, expenses & approvals **+ income/deductibility (marvis)** | C | F15 | ✅ | ⬜ |
