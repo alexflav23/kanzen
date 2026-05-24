@@ -15,6 +15,7 @@ import { Lists } from "./pages/Lists";
 import { Maintenance } from "./pages/Maintenance";
 import { Wealth } from "./pages/Wealth";
 import { Inbox } from "./pages/Inbox";
+import { Calendar } from "./pages/Calendar";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
@@ -42,6 +43,7 @@ function routeFor(item: string): string {
   if (item === "Tasks") return "/tasks";
   if (item === "Lists") return "/lists";
   if (item === "Maintenance") return "/maintenance";
+  if (item === "Calendar") return "/calendar";
   return "/soon";
 }
 
@@ -104,6 +106,7 @@ export function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/lists" element={<Lists />} />
             <Route path="/maintenance" element={<Maintenance />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>

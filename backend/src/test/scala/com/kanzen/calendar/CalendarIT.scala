@@ -21,7 +21,9 @@ object CalendarIT extends IOSuite {
       all <- CalendarRepo.list
     } yield all
     prog.transact(xa).map { all =>
-      expect(all.size == 2) and expect(all.exists(_._2.contains("11:00")))
+      // scope to this test's google events — `list` also returns seeded native events (V2_53)
+      val mine = all.filter { case (gid, _) => gid == "g1" || gid == "g2" }
+      expect(mine.size == 2) and expect(mine.exists(_._2.contains("11:00")))
     }
   }
 }
