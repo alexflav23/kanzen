@@ -46,7 +46,7 @@ Receipts surface mostly through the **Inbox** (agent receipt proposals + reconci
 - **Learning loop**: on **confirm**, write/refresh a `line_item_memory` row (embedding of vendor+text → confirmed category/tags). Suggestions improve with use; no batch retraining.
 - **Auto-apply**: above a per-category **confidence threshold** (configurable, trust model §10.3), a suggestion may auto-confirm; **asset/financial creation never auto-commits** (always proposed).
 - **Originals immutable**; corrections = edits to derived line items or a new parse run.
-- **Line item → asset**: a line item maps to 0/1/many assets (e.g. "6 tumblers" → one grouped asset; "tea set" → structured set) — proposed, confirmed by a human (F19/F24).
+- **Line item → asset (inventory promotion)**: a line item maps to 0/1/many assets (e.g. "6 tumblers" → one grouped asset; "tea set" → structured set) — **proposed, never auto-committed**, confirmed by a human (F19/F24). On promotion the asset **carries provenance**: line `total`→`acquisition_cost`, receipt `merchant`/`purchased_at`→acquisition merchant/date, the **immutable receipt as the proof document** (F05 → asset `hero_document_id`/`document_link`), and any warranty terms → **F21**; this feeds valuation (**F20**) and lifetime cost (**F19**). The system **suggests which lines are inventory-worthy** (durable goods vs consumables) via the same ML categorisation layer.
 - **Privacy**: all inference on **Bedrock eu-west-1**; embeddings stored in our pgvector; no third party.
 
 ## 7. Integrations / external systems

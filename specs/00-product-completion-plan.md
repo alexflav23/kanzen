@@ -194,3 +194,19 @@ Compared against marvis's complete API surface (Expense · Income · Receipt · 
 - **Finance/report CSV export ("accountant export")** → extend **F29**: export expenses/reports to CSV/S3 (distinct from F30 system backup).
 
 Confirmed already-covered (no action): FX rate **source+cache** (F37 ECB + `fx_rates`), duplicate detection (F12/F14), receipt line-item VAT/manufacturer (F13), reports/stats/period framing (F29/F38), entry event log (audit F00 + F34), accounts/users/S3/mailer (F12/F01/F05+F30/SES).
+
+### N.2 The intelligent capture pipeline (Kanzen's elevation of marvis)
+marvis was CSV + manual/rule categorisation. Kanzen runs a single **AI-automated pipeline** — a human confirms only where invariants require it. This is the headline differentiator.
+
+**Capture → OCR → categorise → reconcile → post → propose inventory → confirm**
+1. **Capture** — emailed receipt (F25) · mobile photo (F31) · upload (F05) · bank feed (F12).
+2. **OCR / extract** — Claude-on-Bedrock multimodal → versioned line items (**F13**).
+3. **Categorise (ML)** — layered rules → **pgvector** nearest-neighbour over confirmed history → Claude for novel items, each with confidence; **learns on every confirm** (**F13** + **F27**).
+4. **Reconcile** — transaction ↔ receipt (amount/date/merchant + embeddings/Claude), confidence-gated (**F14**).
+5. **Post** — balanced double-entry to **TigerBeetle** (**F18**), hidden in the UI.
+6. **Promote to inventory** — qualifying line items (watch, guitar, art…) are **proposed as inventory assets** (**F04**) carrying provenance: price→`acquisition_cost`, merchant/date, the **immutable receipt as proof** (F05), warranty (F21) → feeds valuation (F20) + lifetime cost (F19).
+7. **Confirm** — the human confirms in **Triage** (**F26**).
+
+**Automation principle (F27):** automate as far as confidence + invariants allow. Non-financial steps (categorise/tag) may **auto-apply** above per-category confidence thresholds; **financial postings and asset/inventory creation are ALWAYS proposed, never auto-committed** — automation proposes, the Principal decides.
+
+**Already specced** (no new feature needed): OCR + ML categorisation + line-item→asset proposal (F13 incl. AC5), ML reconciliation (F14), TB postings (F18), learned trust/rules (F27), agent + mobile capture (F25/F31), Triage confirm (F26). This section makes the **end-to-end thread** + the **receipt→inventory promotion with provenance** the explicit product north star.
