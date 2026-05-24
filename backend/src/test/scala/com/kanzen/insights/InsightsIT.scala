@@ -25,4 +25,20 @@ object InsightsIT extends IOSuite {
     } yield total
     prog.transact(xa).map(total => expect(total == 4200000L + 9800000L))
   }
+
+  test("registry analytics aggregate value-by-category, top assets and lifetime spend (F29)") { xa =>
+    val prog = for {
+      byCat <- InsightsRepo.valueByCategory
+      top   <- InsightsRepo.topAssets(6)
+      spend <- InsightsRepo.lifetimeSpendMinor
+      total <- InsightsRepo.assetTotal
+    } yield (byCat, top, spend, total)
+    prog.transact(xa).map { case (byCat, top, spend, total) =>
+      expect(byCat.nonEmpty) and expect(byCat.forall(_._2 > 0)) and        // categories with real spend
+        expect(byCat == byCat.sortBy(-_._2)) and                            // ranked desc
+        expect(top.nonEmpty) and expect(top.size <= 6) and
+        expect(top == top.sortBy(-_._3)) and                                // top assets ranked desc
+        expect(spend > 0L) and expect(total > 0L)
+    }
+  }
 }

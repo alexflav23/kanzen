@@ -9,6 +9,14 @@ test("insights shows registry-health bars over the seeded registry", async ({ pa
   expect(await page.getByTestId("health-bar").count()).toBe(4);
 });
 
+test("insights shows real analytics: KPIs, value-by-category and top assets (F29)", async ({ page }) => {
+  await page.goto("/insights");
+  await expect(page.getByTestId("insight-kpis")).toBeVisible();      // assets / lifetime spend / categories
+  await expect(page.getByTestId("by-category")).toBeVisible();        // aggregated from real seeded assets
+  expect(await page.getByTestId("cat-row").count()).toBeGreaterThanOrEqual(1);
+  expect(await page.getByTestId("top-asset").count()).toBeGreaterThanOrEqual(1);
+});
+
 test("running a scan surfaces data-quality flags", async ({ page }) => {
   await page.goto("/insights");
   await page.getByRole("button", { name: "Run scan" }).click();

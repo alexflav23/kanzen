@@ -5,6 +5,12 @@ import { AuthProvider } from "../state/AuthContext";
 
 vi.mock("../services/insights", () => ({
   getRegistryHealth: async () => ({ total: 10, photographedPct: 20, categorisedPct: 80, locatedPct: 60, proofPct: 30 }),
+  getRegistryAnalytics: async () => ({
+    assetTotal: 10,
+    lifetimeSpendMinor: 27500000,
+    byCategory: [{ category: "Art", totalMinor: 9200000 }, { category: "Watches", totalMinor: 5165000 }],
+    topAssets: [{ title: "La Colombe", maker: "Picasso", valueMinor: 9200000 }, { title: "Royal Oak", maker: "AP", valueMinor: 4200000 }],
+  }),
   listQualityFlags: async () => [
     { id: "f1", assetId: "a1", assetTitle: "Royal Oak", kind: "missing_proof", severity: "medium" },
     { id: "f2", assetId: "a2", assetTitle: "Daytona", kind: "expensive_no_proof", severity: "high" },
@@ -28,7 +34,15 @@ describe("Insights", () => {
   it("shows registry-health bars and the data-quality flag stream", async () => {
     renderInsights();
     expect(screen.getByRole("heading", { name: "Insights" })).toBeInTheDocument();
-    expect(await screen.findByTestId("registry-health")).toBeInTheDocument();
+    // F29 analytics: KPIs + value-by-category + top assets (real aggregation)
+    expect(await screen.findByTestId("insight-kpis")).toBeInTheDocument();
+    expect(screen.getByTestId("by-category")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cat-row")).toHaveLength(2);
+    expect(screen.getByText("Art")).toBeInTheDocument();
+    expect(screen.getAllByTestId("top-asset").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("La Colombe")).toBeInTheDocument();
+    // F23 registry-health bars
+    expect(screen.getByTestId("registry-health")).toBeInTheDocument();
     expect(screen.getAllByTestId("health-bar")).toHaveLength(4);
     expect(screen.getByText("80%")).toBeInTheDocument(); // categorised
     expect(await screen.findAllByTestId("flag-row")).toHaveLength(2);

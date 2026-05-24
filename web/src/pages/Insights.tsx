@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { getRegistryHealth, listQualityFlags, resolveFlag, runScan, type RegistryHealth } from "../services/insights";
+import { fmtMoney } from "../data/money";
+import { getRegistryAnalytics, getRegistryHealth, listQualityFlags, resolveFlag, runScan, type RegistryHealth } from "../services/insights";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -25,7 +26,22 @@ const styles = stylex.create({
   flagTitle: { fontSize: "14px", fontWeight: 500, color: colors.ink },
   flagMeta: { fontSize: "12px", color: colors.ink3, marginTop: "2px" },
   link: { padding: "5px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "12.5px", color: colors.ink2 },
+  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px", marginBottom: "20px" },
+  kpi: { padding: "16px 18px", borderRadius: radius.lg, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev },
+  kpiN: { fontSize: "28px", fontWeight: 700, color: colors.ink, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" },
+  kpiL: { fontSize: "12px", color: colors.ink3, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: "2px" },
+  cols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", marginBottom: "20px", alignItems: "start" },
+  stack: { display: "flex", height: "14px", borderRadius: "7px", overflow: "hidden", margin: "4px 18px 16px" },
+  seg: { height: "100%" },
+  legendRow: { display: "flex", alignItems: "center", gap: "10px", padding: "6px 18px", fontSize: "13px" },
+  swatch: { width: "10px", height: "10px", borderRadius: "3px", flexShrink: 0 },
+  catName: { color: colors.ink2 },
+  catPct: { width: "42px", textAlign: "right", fontSize: "12px", color: colors.ink3 },
+  catVal: { minWidth: "84px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 500, color: colors.ink },
 });
+
+// category-segment palette (ported from the prototype's spend-by-category colours)
+const PALETTE = ["#4F46E5", "#A855F7", "#F97316", "#0EA5E9", "#15803D", "#B45309", "#475569", "#DB2777"];
 
 const sevTone = (s: string): "default" | "warn" | "danger" => (s === "high" ? "danger" : s === "medium" ? "warn" : "default");
 const kindLabel = (k: string) => k.replace(/_/g, " ");
@@ -43,7 +59,9 @@ export function Insights() {
   const { token } = useAuth();
   const qc = useQueryClient();
   const health = useQuery({ queryKey: ["insights", "health", token], queryFn: () => getRegistryHealth(token) });
+  const analytics = useQuery({ queryKey: ["insights", "analytics", token], queryFn: () => getRegistryAnalytics(token) });
   const flags = useQuery({ queryKey: ["insights", "flags", token], queryFn: () => listQualityFlags(token) });
+  const catTotal = analytics.data?.byCategory.reduce((s, c) => s + c.totalMinor, 0) ?? 0;
 
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["insights"] }); };
   const scan = useMutation({ mutationFn: () => runScan(token), onSuccess: invalidate });
@@ -56,6 +74,54 @@ export function Insights() {
         <h1 {...stylex.props(styles.title)}>Insights</h1>
         <div {...stylex.props(styles.desc)}>How complete the archive is, and what's worth fixing — without the nagging.</div>
       </header>
+
+      {analytics.data && (
+        <div {...stylex.props(styles.kpis)} data-testid="insight-kpis">
+          <div {...stylex.props(styles.kpi)}><div {...stylex.props(styles.kpiN)}>{analytics.data.assetTotal}</div><div {...stylex.props(styles.kpiL)}>Assets tracked</div></div>
+          <div {...stylex.props(styles.kpi)}><div {...stylex.props(styles.kpiN)}>{fmtMoney(analytics.data.lifetimeSpendMinor, "GBP")}</div><div {...stylex.props(styles.kpiL)}>Lifetime spend</div></div>
+          <div {...stylex.props(styles.kpi)}><div {...stylex.props(styles.kpiN)}>{analytics.data.byCategory.length}</div><div {...stylex.props(styles.kpiL)}>Categories</div></div>
+        </div>
+      )}
+
+      <div {...stylex.props(styles.cols)}>
+        <Card>
+          <CardHeader><CardTitle>Value by category</CardTitle></CardHeader>
+          {analytics.isPending ? <Loading /> : analytics.isError ? <ErrorState error={analytics.error} />
+            : analytics.data.byCategory.length === 0 ? <EmptyState title="No costed assets" />
+            : (
+              <div data-testid="by-category">
+                <div {...stylex.props(styles.stack)}>
+                  {analytics.data.byCategory.map((c, i) => (
+                    <span key={c.category} {...stylex.props(styles.seg)} style={{ width: `${catTotal ? (c.totalMinor / catTotal) * 100 : 0}%`, background: PALETTE[i % PALETTE.length] }} />
+                  ))}
+                </div>
+                {analytics.data.byCategory.map((c, i) => (
+                  <div key={c.category} {...stylex.props(styles.legendRow)} data-testid="cat-row">
+                    <span {...stylex.props(styles.swatch)} style={{ background: PALETTE[i % PALETTE.length] }} />
+                    <span {...stylex.props(styles.grow, styles.catName)}>{c.category}</span>
+                    <span {...stylex.props(styles.catPct)}>{catTotal ? Math.round((c.totalMinor / catTotal) * 100) : 0}%</span>
+                    <span {...stylex.props(styles.catVal)}>{fmtMoney(c.totalMinor, "GBP")}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Top assets by value</CardTitle></CardHeader>
+          {analytics.isPending ? <Loading /> : analytics.isError ? <ErrorState error={analytics.error} />
+            : analytics.data.topAssets.length === 0 ? <EmptyState title="No costed assets" />
+            : analytics.data.topAssets.map((a) => (
+              <div key={a.title} {...stylex.props(styles.row)} data-testid="top-asset">
+                <div {...stylex.props(styles.grow)}>
+                  <div {...stylex.props(styles.flagTitle)}>{a.title}</div>
+                  {a.maker && <div {...stylex.props(styles.flagMeta)}>{a.maker}</div>}
+                </div>
+                <span {...stylex.props(styles.catVal)}>{fmtMoney(a.valueMinor, "GBP")}</span>
+              </div>
+            ))}
+        </Card>
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Registry health{health.data ? ` · ${health.data.total} assets` : ""}</CardTitle></CardHeader>
