@@ -68,13 +68,54 @@ Per `properties.jsx` + App. E.4:
 - Concurrent location edits → optimistic concurrency (updated_at check).
 - Scoped user requests another property's Bible → 403/404 (don't leak existence).
 
-## 9. Acceptance criteria
-- **AC1** Principal seeds **Wardian (Apt 5206)** and **Singapore**; each Bible shows particulars, linked-system references, and live counts.
-- **AC2** A nested location tree can be built (Living room → Cabinet → Shelf → Case) and an asset (F04) attaches to any node.
-- **AC3** Deleting a non-empty location is blocked; an empty one soft-deletes.
-- **AC4** Marcia (Wardian Staff) can raise a defect on Wardian but cannot open the Singapore Bible (403/404).
-- **AC5** A defect moves open→in_progress→resolved with `resolved_at` set and the change audited; optionally spawns a native task (once F06 lands).
-- **AC6** Manager sees both properties; a Singapore-scoped user sees only Singapore.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Seed & view the two Bibles**  ‹maps: `PropertyIT.seed`, web `properties.spec`›
+- **Given** a freshly seeded system
+- **When** Toby opens **Properties**
+- **Then** he sees two cards — *Wardian, Apt 5206* (UK) and *Singapore* (SG) — each with cover, jurisdiction/ownership/type pills and live counts (rooms/assets/bills/vendors)
+- **And** opening either Bible shows Particulars, linked-system **references** (native task project, Calendar, Drive/1Password names — never a secret), and at-a-glance counts.
+
+**AC2 — Build a nested location tree**  ‹maps: `LocationTreeIT`, web rooms-tree Vitest›
+- **Given** Wardian has no rooms
+- **When** Lorna adds *Living room → Cabinet → Shelf → Case*
+- **Then** the tree renders nested and expandable
+- **And** an F04 asset can attach to any node and appears under it.
+
+**AC3 — Delete guards**  ‹maps: `LocationDeleteIT`›
+- **Given** a location *Study* containing 3 assets
+- **When** Lorna tries to delete *Study*
+- **Then** it is blocked with "move 3 assets first" (no delete)
+- **And** an empty location soft-deletes (`deleted_at` set), history preserved.
+
+**AC4 — Property scope (negative)**  ‹maps: `PropertyScopeIT`, web `properties.spec` scope›
+- **Given** Marcia is Wardian-Staff
+- **When** she requests the Singapore Bible (`GET /api/properties/:sg`)
+- **Then** she gets **403/404** — existence not leaked
+- **And** her Properties list shows **only Wardian**.
+
+**AC5 — Staff may raise a defect, nothing more**  ‹maps: `DefectAuthzIT`›
+- **Given** Marcia on Wardian
+- **When** she raises a defect (title/severity/location)
+- **Then** it is created with `reported_by = Marcia` and audited
+- **And** her attempt to edit property particulars or a location is **denied (403, default-deny)**.
+
+**AC6 — Defect lifecycle + audit**  ‹maps: `DefectLifecycleIT`›
+- **Given** an open defect
+- **When** Lorna moves it `open → in_progress → resolved`
+- **Then** `resolved_at` is set and **each transition is audited**
+- **And** once F06 lands, a high-severity defect optionally spawns a native task.
+
+**AC7 — Manager sees all; scoped Staff sees one**  ‹maps: `PropertyScopeIT`›
+- **Given** Lorna (Manager, all) and Siti (Singapore-Staff)
+- **When** each lists properties
+- **Then** Lorna sees **both**; Siti sees **only Singapore**.
+
+**AC8 — Archived property is read-only**  ‹maps: `PropertyArchiveIT`›
+- **Given** a property with open defects/active bills
+- **When** Toby archives it
+- **Then** it is hidden from default lists and **new activity is blocked**, while assets/history are preserved (warned first).
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG): location-tree invariants (same-property parent, no cycles, reparent), delete guards, defect lifecycle transitions, property-scope filtering (F02 integration), archive read-only.

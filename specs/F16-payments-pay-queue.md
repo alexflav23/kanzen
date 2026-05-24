@@ -45,12 +45,51 @@ F15 (bills → queue), F14 (reconcile → auto-mark paid), F09/1Password (vault 
 ## 8. Edge cases
 Card expiry (warn); auto bill that didn't actually settle (no matching transaction → flag); duplicate mark-paid; multi-currency totals; method used by many bills; method deleted while bills reference it (reassign).
 
-## 9. Acceptance criteria
-- **AC1** Due bills appear grouped by date, classified Auto/Manual/Review.
-- **AC2** "Mark paid" records a manual payment (paid-by/at) without any money movement; no PIS endpoint exists.
-- **AC3** A reconciled transaction auto-flips its bill payment to settled.
-- **AC4** Payment-method tiles show only display metadata; full card data is only in 1Password.
-- **AC5** An expiring card is flagged.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Pay queue classification**  ‹maps: `PayQueueMaterialiseIT`, web `finance.spec` pay-queue›
+- **Given** recurring bills due in the next 30 days (F15)
+- **When** Lorna opens the **Pay queue**
+- **Then** bills are grouped by date and classified **Auto** (DD/GIRO/card → "Scheduled") · **Manual** ("Mark paid") · **Review** (variance/awaiting)
+- **And** the four tiles show due-30d GBP, due-30d SGD, auto-paid count, awaiting-review count.
+
+**AC2 — "Mark paid" records reality, never moves money**  ‹maps: `MarkPaidIT` + `NoPaymentApiAssertionIT`, web `finance.spec` mark-paid›  *(invariant: Kanzen never moves money)*
+- **Given** a manual bill payment in state `due`
+- **When** Lorna clicks **Mark paid**
+- **Then** its state → `paid` with `marked_paid_by = Lorna` and `marked_paid_at`, audited
+- **And** **no payment/PIS endpoint exists anywhere** (asserted by test) — Kanzen moved no money.
+
+**AC3 — Auto-settle on reconciliation**  ‹maps: `AutoSettleIT`›
+- **Given** an `auto` bill payment `scheduled`, and an incoming bank transaction (F14) that reconciles to its bill
+- **When** reconciliation matches
+- **Then** the bill payment flips to `settled/paid` with `bank_transaction_id` set, audited.
+
+**AC4 — Payment methods show display metadata only**  ‹maps: `PaymentMethodIT`, web wallet Vitest›  *(invariant: no secrets in Kanzen)*
+- **Given** a credit-card payment method
+- **When** anyone views the wallet
+- **Then** only type/holder/··last4/expiry/currency/used-by are shown, plus the "card numbers live in 1Password" note
+- **And** **no PAN/credential is ever stored or returned** (only `vault_ref`).
+
+**AC5 — Expiring card flagged**  ‹maps: `CardExpiryIT`, web wallet Vitest›
+- **Given** a card expiring within the warning window
+- **When** the wallet renders
+- **Then** it shows an expiry warning.
+
+**AC6 — Finance is Principal/Manager-only (negative)**  ‹maps: `PayQueueAuthzIT`›  *(invariant: server-side scope; no leak)*
+- **Given** Marcia (Staff)
+- **When** she requests the pay queue or payment methods
+- **Then** she is **denied (403)** — she never sees amounts or methods.
+
+**AC7 — Method-in-use guard (edge)**  ‹maps: `MethodInUseIT`›
+- **Given** a payment method referenced by active bills
+- **When** someone deletes it
+- **Then** deletion is **blocked / requires reassign** — no orphaned `bill_payments`.
+
+**AC8 — Auto bill that didn't settle (edge)**  ‹maps: `AutoUnsettledIT`›
+- **Given** an `auto` bill payment whose due date passed with **no** matching transaction
+- **When** the queue refreshes
+- **Then** it is flagged into **Review** (not silently assumed paid).
 
 ## 10. Test plan
 Backend (weaver+PG): queue materialisation from bills; mark-paid lifecycle; auto-settle via reconciliation; no-PIS assertion; method-in-use guard. Web: Vitest pay queue + wallet; Playwright mark-paid + filter.
