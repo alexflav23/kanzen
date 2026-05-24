@@ -60,3 +60,16 @@ const people = <Person>[
   Person('marcia', 'Marcia', 'Housekeeper · Wardian'),
   Person('siti', 'Siti', 'Housekeeper · Singapore', 50),
 ];
+
+/// F31 capture-first — a Triage item mirrors a proposed agent action (F25/F26): a captured
+/// or ingested document the Principal reviews. Financial categories are never auto-committed.
+class TriageItem {
+  final String id, title, category, source;
+  const TriageItem(this.id, this.title, this.category, this.source);
+  bool get locked => const {'Bill / Invoice', 'Receipt', 'Asset'}.contains(category); // F27
+}
+
+const seedTriage = <TriageItem>[
+  TriageItem('t1', 'SP Group · May invoice S\$612.80', 'Bill / Invoice', 'accounts@kanzen.family'),
+  TriageItem('t2', 'Amazon · Order dispatched, delivery Tue', 'Delivery', 'deliveries@kanzen.family'),
+];

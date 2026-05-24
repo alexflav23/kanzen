@@ -5,6 +5,7 @@ import 'screens/inventory.dart';
 import 'screens/finance.dart';
 import 'screens/properties.dart';
 import 'screens/people.dart';
+import 'screens/triage.dart';
 
 void main() {
   // Deep-link the initial tab via ?tab=N (used for per-screen web screenshots);
@@ -46,7 +47,7 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  late int _index = widget.initialTab.clamp(0, 4);
+  late int _index = widget.initialTab.clamp(0, 5);
 
   static const _screens = <Widget>[
     DashboardScreen(),
@@ -54,6 +55,7 @@ class _HomeShellState extends State<HomeShell> {
     PropertiesScreen(),
     PeopleScreen(),
     FinanceScreen(),
+    TriageScreen(),
   ];
 
   @override
@@ -70,6 +72,7 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.home_work_outlined), label: 'Properties'),
           NavigationDestination(icon: Icon(Icons.people_outline), label: 'People'),
           NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), label: 'Money'),
+          NavigationDestination(icon: Icon(Icons.inbox_outlined), selectedIcon: Icon(Icons.inbox), label: 'Triage'),
         ],
       ),
     );
