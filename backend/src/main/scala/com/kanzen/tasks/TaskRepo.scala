@@ -56,4 +56,8 @@ object TaskRepo {
 
   def get(taskId: UUID): ConnectionIO[Option[Task]] =
     sql"select id, title, status, recurrence from tasks where id = $taskId".query[Task].option
+
+  /** owner + title of a task (for the F34 event envelope). */
+  def ownerAndTitle(taskId: UUID): ConnectionIO[Option[(Option[UUID], String)]] =
+    sql"select owner_id, title from tasks where id = $taskId".query[(Option[UUID], String)].option
 }

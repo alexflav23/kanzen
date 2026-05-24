@@ -7,6 +7,7 @@ import com.kanzen.api.{Admin, Api}
 import com.kanzen.auth.{Auth, DevAuth, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
+import com.kanzen.events.{Consumers, Relay}
 import com.kanzen.identity.Principals
 import com.kanzen.s3.ObjectStore
 import doobie.util.transactor.Transactor
@@ -56,8 +57,12 @@ object Main extends IOApp.Simple {
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
                  val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
-                 (server(host"0.0.0.0", p, primaryApp(auth, xa, store, dev)),
-                  server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
+                 val servers = (server(host"0.0.0.0", p, primaryApp(auth, xa, store, dev)),
+                                server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
+                 // F34: the transactional-outbox relay runs alongside the servers (in-process
+                 // consumers in sandbox; Pulsar transport is infra, deferred to hardening).
+                 val relay = log.info("F34 event relay started") *> Relay.run(xa, Consumers.sandbox)
+                 IO.both(servers, relay).void
                }
         } yield ()
     }

@@ -4,11 +4,13 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
+import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
 import com.kanzen.product.{Product, ProductRepo, ProductService}
 import com.kanzen.replenishment.ReplenishmentService
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.Json
 import io.circe.generic.auto._
 import sttp.model.StatusCode
 import sttp.tapir._
@@ -71,9 +73,30 @@ object Products {
         res <-
           if (!authz.can(Level.Write, "product")) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[ProductView]).pure[ConnectionIO]
-          else ProductRepo.setStock(id, status) *> ProductRepo.list.map(_.find(_.id == id).map(pv).toRight(notFound))
+          else
+            ProductRepo.setStock(id, status) *>
+              emitStock(p, id, status) *> // F34: out/low transitions become events (buy requests, alerts)
+              ProductRepo.list.map(_.find(_.id == id).map(pv).toRight(notFound))
       } yield res
       tx.transact(xa)
+    }
+  }
+
+  // F34: a stock transition into low/out is a domain event (Lists turns it into a buy request).
+  private def emitStock(p: Principal, id: UUID, status: String): ConnectionIO[Unit] = {
+    val eventType = status match {
+      case "out" => Some("product.out_of_stock")
+      case "low" => Some("product.low")
+      case _     => None
+    }
+    eventType match {
+      case None => ().pure[ConnectionIO]
+      case Some(et) =>
+        ProductRepo.ownerAndProperty(id).flatMap {
+          case Some((owner, propertyId)) =>
+            EventRepo.emit(Envelope(et, Actor.user(p.userId), Subject("product", id), owner, propertyId, Json.obj())).void
+          case None => ().pure[ConnectionIO]
+        }
     }
   }
 

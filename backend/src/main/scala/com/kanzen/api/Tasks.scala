@@ -4,7 +4,10 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
+import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
 import com.kanzen.tasks.{TaskProject, TaskRepo, TaskRow}
+import io.circe.Json
+import io.circe.syntax._
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -46,7 +49,15 @@ object Tasks {
   def create(xa: Transactor[IO], p: Principal, r: CreateTaskReq): IO[Out[TaskView]] =
     write(p, TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence).map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence))).transact(xa)
   def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =
-    write(p, TaskRepo.complete(id).map(next => CompleteResult(id, next))).transact(xa)
+    write(p, for {
+      next  <- TaskRepo.complete(id)
+      meta  <- TaskRepo.ownerAndTitle(id)
+      // F34: emit task.completed in the same tx as the write (transactional outbox).
+      _ <- meta.traverse_ { case (owner, title) =>
+        EventRepo.emit(Envelope("task.completed", Actor.user(p.userId), Subject("task", id),
+          owner.getOrElse(p.userId), None, Json.obj("title" -> title.asJson, "completed_by" -> p.email.asJson)))
+      }
+    } yield CompleteResult(id, next)).transact(xa)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()

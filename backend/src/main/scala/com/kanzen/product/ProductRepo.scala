@@ -35,6 +35,10 @@ object ProductRepo {
   def setStock(id: UUID, status: String): ConnectionIO[Int] =
     sql"update products set stock_status = $status where id = $id".update.run
 
+  /** owner + property of a product (for the F34 event envelope). */
+  def ownerAndProperty(id: UUID): ConnectionIO[Option[(UUID, Option[UUID])]] =
+    sql"select owner_id, property_id from products where id = $id".query[(UUID, Option[UUID])].option
+
   def needingReorder: ConnectionIO[List[Product]] =
     sql"select id, name, stock_status, preferred_spec from products where stock_status in ('out','low') and deleted_at is null"
       .query[Product].to[List]
