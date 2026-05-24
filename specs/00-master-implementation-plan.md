@@ -6,7 +6,7 @@ The one plan we build against. Bridges the spec (`../Kanzen-Platform-Spec.md`, t
 Private **family-office / UHNWI** software, built by the owner for themselves: household operations + a full **asset registry**, on a core of **GnuCash-grade double-entry accounting** (translated to a modern stack on a **Postgres double-entry general ledger**), with an **AI capture pipeline** (OCR + ML categorisation; absorbs the `marvis` expense engine) and a **Private Wealth module** (consolidated net worth, investments, multi-entity). Real personas: Toby (Principal), Lorna (Manager), Marcia/Siti (Staff), + the email Agent.
 
 ## Where we are (honest)
-Real: the StyleX design system + **theme engine** (light/dark, static CSS extraction). **44 feature specs (F00–F43)** written, each with UAT acceptance scenarios. Backend domain modules + 126 tests exist but **isolated** (the server serves only `/api/health`). Web = 5 mock-data screens. **Nothing is wired end-to-end** → ~15–20% to a usable product. "Tested module exists" ≠ done.
+Real: the StyleX design system + **theme engine** (light/dark, static CSS extraction). **44 feature specs (F00–F43)** written, each with UAT acceptance scenarios. **Phase 0 rails + Phase 1 walking skeleton are done and verified end-to-end** (May 2026): config→Flyway→Doobie boot, Cognito JWKS auth + dev-JWKS fallback, default-deny `Authorizer` from `permission_rules`, seeded real users + 2 properties; web data layer (typed fetch + Zod + TanStack + AuthContext + state primitives) + dev sign-in; **`GET /api/properties` flows login → API → Postgres → UI**, proven by 139 backend + 21 Vitest + 22 Playwright (live, audit-clean) tests. Still pending: CI green-gate, mobile foundation, visual-diff, and **0 of 44 features at full DoD** — the skeleton proves the stack; every feature slice now repeats the Playbook on top. "Tested module exists" ≠ done.
 
 ## Definition of Done (every feature)
 Full **web UI** (all states, light/dark, a11y) · **mobile** surface (or N/A) · **Tapir API** (auth + RBAC + audit) · **wired** (web/mobile consume the real API; its mock deleted) · **integration** (real or flagged sandbox) · **full test pyramid** · **design-matched** · **invariants honoured**. Done only when a real user can use it end-to-end against the real backend.
@@ -35,10 +35,10 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 
 | ID | Feature | Wave | Depends on | Spec | Build |
 |---|---|---|---|---|---|
-| F00 | Foundation: infra, repo, design system | Phase 0 | — | ✅ | 🚧 partial (design system done) |
-| F01 | Identity, auth & session (Cognito) | Phase 0/1 | F00 | ✅ | ⬜ Backlog |
+| F00 | Foundation: infra, repo, design system | Phase 0 | — | ✅ | 🚧 rails done (API+auth+boot+seed+skeleton); CI/mobile/visual-diff pending |
+| F01 | Identity, auth & session (Cognito) | Phase 0/1 | F00 | ✅ | 🚧 In-slice (JWKS verify + dev-JWKS + /api/me + web login; DB principal resolution + real pool pending) |
 | F02 | Authorization (resource/field RBAC + custom roles + property **& entity** scope) | A | F01 | ✅ | ⬜ |
-| F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | ⬜ |
+| F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | 🚧 In-slice (read end-to-end: API+authz+web+e2e done; CRUD/locations/defects/bible pending) |
 | F04 | Asset registry core (JSONB) | B | F03 | ✅ | ⬜ |
 | F05 | Documents — S3 evidence store | B | F02 | ✅ | ⬜ |
 | F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
