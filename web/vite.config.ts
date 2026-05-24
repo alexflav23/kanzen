@@ -19,9 +19,14 @@ export default defineConfig(({ command }) => {
     },
   ];
 
+  // Local hostnames allowed to reach the dev/preview server (kanzen.local needs
+  // a matching /etc/hosts entry: `127.0.0.1 kanzen.local`).
+  const allowedHosts = ["kanzen.local", "localhost"];
+
   return {
     plugins: [react({ babel: { plugins: [stylexBabel] } })],
-    server: { port: 3001 },
+    server: { port: 3020, allowedHosts },
+    preview: { port: 3020, allowedHosts },
     test: {
       environment: "jsdom",
       globals: true,
