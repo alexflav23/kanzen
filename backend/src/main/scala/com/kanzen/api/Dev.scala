@@ -8,8 +8,9 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
-/** DEV-ONLY — `POST /api/dev/token`: mint a local JWT for a role, so the web app can
-  * log in without a live Cognito pool. Mounted only when `env=local` (see Main). */
+/** DEV-ONLY — `POST /api/dev/token`: mint a local JWT for a role, so the web app can log in without a live Cognito
+  * pool. Mounted only when `env=local` (see Main).
+  */
 object Dev {
   final case class TokenReq(email: String, role: String)
   final case class TokenResp(token: String, note: String)
@@ -23,5 +24,6 @@ object Dev {
 
   def serverEndpoint(dev: DevAuth): ServerEndpoint[Any, IO] =
     endpoint.serverLogicSuccess(req =>
-      IO.pure(TokenResp(dev.mint(req.email, req.role), "dev token — local only, expires in 12h")))
+      IO.pure(TokenResp(dev.mint(req.email, req.role), "dev token — local only, expires in 12h"))
+    )
 }

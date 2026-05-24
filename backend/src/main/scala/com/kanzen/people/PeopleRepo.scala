@@ -15,15 +15,23 @@ final case class Person(
     jurisdiction: Option[String],
     propertyId: Option[UUID],
     permitExpiry: Option[LocalDate],
-    reviewDue: Option[LocalDate],
+    reviewDue: Option[LocalDate]
 )
 
 /** F10 — staff/HR records + permit-expiry surfacing. */
 object PeopleRepo {
   private val cols = fr"id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due"
 
-  def insert(ownerId: UUID, userId: Option[UUID], name: String, role: Option[String], jurisdiction: Option[String],
-             propertyId: Option[UUID], permitExpiry: Option[LocalDate], reviewDue: Option[LocalDate]): ConnectionIO[Person] =
+  def insert(
+      ownerId: UUID,
+      userId: Option[UUID],
+      name: String,
+      role: Option[String],
+      jurisdiction: Option[String],
+      propertyId: Option[UUID],
+      permitExpiry: Option[LocalDate],
+      reviewDue: Option[LocalDate]
+  ): ConnectionIO[Person] =
     (fr"""insert into employment_records (owner_id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due)
           values ($ownerId, $userId, $name, $role, $jurisdiction, $propertyId, $permitExpiry, $reviewDue)
           returning""" ++ cols).query[Person].unique
@@ -32,7 +40,9 @@ object PeopleRepo {
     (fr"select" ++ cols ++ fr"from employment_records where deleted_at is null order by name").query[Person].to[List]
 
   def listForUser(userId: UUID): ConnectionIO[List[Person]] =
-    (fr"select" ++ cols ++ fr"from employment_records where user_id = $userId and deleted_at is null").query[Person].to[List]
+    (fr"select" ++ cols ++ fr"from employment_records where user_id = $userId and deleted_at is null")
+      .query[Person]
+      .to[List]
 
   def find(id: UUID): ConnectionIO[Option[Person]] =
     (fr"select" ++ cols ++ fr"from employment_records where id = $id and deleted_at is null").query[Person].option

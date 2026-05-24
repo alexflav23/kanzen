@@ -17,19 +17,29 @@ final case class Document(
     visibility: String,
     source: String,
     propertyId: Option[UUID],
-    immutable: Boolean,
+    immutable: Boolean
 )
 
-/** F05 — in-house evidence store metadata. Originals are immutable (no update path);
-  * documents attach polymorphically to any entity.
+/** F05 — in-house evidence store metadata. Originals are immutable (no update path); documents attach polymorphically
+  * to any entity.
   */
 object DocumentRepo {
   private val cols =
     fr"id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id, immutable"
 
-  def insert(id: UUID, ownerId: UUID, name: String, category: String, contentType: Option[String],
-             sizeBytes: Option[Long], s3Key: String, sha256: String, visibility: String, source: String,
-             propertyId: Option[UUID]): ConnectionIO[Document] =
+  def insert(
+      id: UUID,
+      ownerId: UUID,
+      name: String,
+      category: String,
+      contentType: Option[String],
+      sizeBytes: Option[Long],
+      s3Key: String,
+      sha256: String,
+      visibility: String,
+      source: String,
+      propertyId: Option[UUID]
+  ): ConnectionIO[Document] =
     (fr"""insert into documents (id, owner_id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id)
           values ($id, $ownerId, $name, $category, $contentType, $sizeBytes, $s3Key, $sha256, $visibility, $source, $propertyId)
           returning""" ++ cols).query[Document].unique
@@ -44,7 +54,7 @@ object DocumentRepo {
     val conds = List(
       Some(fr"deleted_at is null"),
       category.map(c => fr"category = $c"),
-      q.map(s => fr"name ilike ${"%" + s + "%"}"),
+      q.map(s => fr"name ilike ${"%" + s + "%"}")
     ).flatten
     val where = conds.reduce((a, b) => a ++ fr"and" ++ b)
     (fr"select" ++ cols ++ fr"from documents where" ++ where ++ fr"order by created_at desc").query[Document].to[List]
@@ -61,8 +71,12 @@ object DocumentRepo {
     sql"delete from document_links where document_id = $documentId and target_type = $targetType and target_id = $targetId".update.run
 
   def linksFor(targetType: String, targetId: UUID): ConnectionIO[List[UUID]] =
-    sql"select document_id from document_links where target_type = $targetType and target_id = $targetId".query[UUID].to[List]
+    sql"select document_id from document_links where target_type = $targetType and target_id = $targetId"
+      .query[UUID]
+      .to[List]
 
   def targetsOf(documentId: UUID): ConnectionIO[List[(String, UUID)]] =
-    sql"select target_type, target_id from document_links where document_id = $documentId".query[(String, UUID)].to[List]
+    sql"select target_type, target_id from document_links where document_id = $documentId"
+      .query[(String, UUID)]
+      .to[List]
 }

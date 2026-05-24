@@ -17,9 +17,10 @@ import sttp.tapir.server.ServerEndpoint
 
 import java.util.UUID
 
-/** F23 — completeness scoring + data-quality flags + registry health. Registry-private:
-  * completeness/health gated on `asset` read (Manager carve-out, Staff none); the flag
-  * stream + scan/resolve gated on `data_quality` (Principal writes, Manager reads). */
+/** F23 — completeness scoring + data-quality flags + registry health. Registry-private: completeness/health gated on
+  * `asset` read (Manager carve-out, Staff none); the flag stream + scan/resolve gated on `data_quality` (Principal
+  * writes, Manager reads).
+  */
 object DataQuality {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
@@ -32,22 +33,36 @@ object DataQuality {
   private def fv(f: QualityFlag): FlagView = FlagView(f.id, f.assetId, f.assetTitle, f.kind, f.severity)
   private def pct(n: Long, total: Long): Int = if (total <= 0) 0 else ((n * 100) / total).toInt
   private def hv(h: RegistryHealth): HealthView =
-    HealthView(h.total, pct(h.photographed, h.total), pct(h.categorised, h.total), pct(h.located, h.total), pct(h.proofed, h.total))
+    HealthView(
+      h.total,
+      pct(h.photographed, h.total),
+      pct(h.categorised, h.total),
+      pct(h.located, h.total),
+      pct(h.proofed, h.total)
+    )
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access"))
-  private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
+  private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
 
   private def gate[A](p: Principal, level: Level, resource: String)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
-    Authz.authorizer(p.role).flatMap(a => if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+    Authz
+      .authorizer(p.role)
+      .flatMap(a =>
+        if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
+      )
 
   def completeness(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[Completeness]] =
-    Authz.authorizer(p.role).flatMap { a =>
-      if (!a.canRead("asset")) (Left(forbidden): Out[Completeness]).pure[ConnectionIO]
-      else DataQualityRepo.checksFor(assetId).map {
-        case None    => Left(notFound)
-        case Some(c) => Right(Completeness(CompletenessService.score(c), CompletenessService.missing(c)))
+    Authz
+      .authorizer(p.role)
+      .flatMap { a =>
+        if (!a.canRead("asset")) (Left(forbidden): Out[Completeness]).pure[ConnectionIO]
+        else
+          DataQualityRepo.checksFor(assetId).map {
+            case None => Left(notFound)
+            case Some(c) => Right(Completeness(CompletenessService.score(c), CompletenessService.missing(c)))
+          }
       }
-    }.transact(xa)
+      .transact(xa)
 
   def registryHealth(xa: Transactor[IO], p: Principal): IO[Out[HealthView]] =
     gate(p, Level.Read, "asset")(DataQualityRepo.registryHealth.map(hv)).transact(xa)
@@ -64,12 +79,42 @@ object DataQuality {
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
-  val completenessEndpoint = sttp.tapir.endpoint.get.securityIn(bearer).in("api" / "assets" / path[UUID]("id") / "completeness").errorOut(err).out(jsonBody[Completeness]).summary("An asset's completeness score + improve hints")
-  val healthEndpoint       = sttp.tapir.endpoint.get.securityIn(bearer).in("api" / "insights" / "registry-health").errorOut(err).out(jsonBody[HealthView]).summary("Registry health aggregate")
-  val streamEndpoint       = sttp.tapir.endpoint.get.securityIn(bearer).in("api" / "data-quality").errorOut(err).out(jsonBody[List[FlagView]]).summary("Open data-quality flags (Inbox stream)")
-  val scanEndpoint         = sttp.tapir.endpoint.post.securityIn(bearer).in("api" / "data-quality" / "scan").errorOut(err).out(jsonBody[ScanResult]).summary("Scan the registry and raise flags (Principal)")
-  val resolveEndpoint      = sttp.tapir.endpoint.post.securityIn(bearer).in("api" / "data-quality" / path[UUID]("flagId") / "resolve").errorOut(err).out(jsonBody[Ok]).summary("Resolve a flag")
-  val dismissEndpoint      = sttp.tapir.endpoint.post.securityIn(bearer).in("api" / "data-quality" / path[UUID]("flagId") / "dismiss").errorOut(err).out(jsonBody[Ok]).summary("Dismiss a flag (false positive)")
+  val completenessEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "assets" / path[UUID]("id") / "completeness")
+    .errorOut(err)
+    .out(jsonBody[Completeness])
+    .summary("An asset's completeness score + improve hints")
+  val healthEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "insights" / "registry-health")
+    .errorOut(err)
+    .out(jsonBody[HealthView])
+    .summary("Registry health aggregate")
+  val streamEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "data-quality")
+    .errorOut(err)
+    .out(jsonBody[List[FlagView]])
+    .summary("Open data-quality flags (Inbox stream)")
+  val scanEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "data-quality" / "scan")
+    .errorOut(err)
+    .out(jsonBody[ScanResult])
+    .summary("Scan the registry and raise flags (Principal)")
+  val resolveEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "data-quality" / path[UUID]("flagId") / "resolve")
+    .errorOut(err)
+    .out(jsonBody[Ok])
+    .summary("Resolve a flag")
+  val dismissEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "data-quality" / path[UUID]("flagId") / "dismiss")
+    .errorOut(err)
+    .out(jsonBody[Ok])
+    .summary("Dismiss a flag (false positive)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     completenessEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => completeness(xa, p, id)),
@@ -77,8 +122,9 @@ object DataQuality {
     streamEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => stream(xa, p)),
     scanEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => scan(xa, p)),
     resolveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => resolve(xa, p, id, "resolved")),
-    dismissEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => resolve(xa, p, id, "dismissed")),
+    dismissEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => resolve(xa, p, id, "dismissed"))
   )
 
-  val endpoints: List[AnyEndpoint] = List(completenessEndpoint, healthEndpoint, streamEndpoint, scanEndpoint, resolveEndpoint, dismissEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(completenessEndpoint, healthEndpoint, streamEndpoint, scanEndpoint, resolveEndpoint, dismissEndpoint)
 }

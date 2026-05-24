@@ -10,12 +10,14 @@ import scala.util.{Failure, Success, Try}
 /** Claims we trust after RS256 + issuer/audience/expiry validation. */
 final case class Claims(subject: String, email: String, role: String)
 
-/** Validates a Cognito RS256 JWT against the JWKS: pick the key by `kid`, verify
-  * signature + expiry (jwt-scala), then check issuer/audience. Pure of HTTP/DB —
-  * the key source is injected (`Jwks`), so CI runs against a local test-JWKS. */
+/** Validates a Cognito RS256 JWT against the JWKS: pick the key by `kid`, verify signature + expiry (jwt-scala), then
+  * check issuer/audience. Pure of HTTP/DB — the key source is injected (`Jwks`), so CI runs against a local test-JWKS.
+  */
 object JwtVerifier {
   private def kidOf(token: String): Option[String] =
-    token.split('.').headOption
+    token
+      .split('.')
+      .headOption
       .flatMap(h => Try(new String(Base64.getUrlDecoder.decode(h), "UTF-8")).toOption)
       .flatMap(json => parser.parse(json).toOption)
       .flatMap(_.hcursor.get[String]("kid").toOption)
@@ -33,15 +35,21 @@ object JwtVerifier {
                 if (issuer.nonEmpty && !claim.issuer.contains(issuer)) Left("bad issuer")
                 else if (audience.nonEmpty && !claim.audience.exists(_.contains(audience))) Left("bad audience")
                 else
-                  parser.parse(claim.content).toOption.flatMap { j =>
-                    val c = j.hcursor
-                    c.get[String]("email").toOption.map { email =>
-                      val role = c.get[String]("custom:role").toOption
-                        .orElse(c.get[String]("role").toOption)
-                        .getOrElse("staff")
-                      Claims(claim.subject.getOrElse(""), email, role)
+                  parser
+                    .parse(claim.content)
+                    .toOption
+                    .flatMap { j =>
+                      val c = j.hcursor
+                      c.get[String]("email").toOption.map { email =>
+                        val role = c
+                          .get[String]("custom:role")
+                          .toOption
+                          .orElse(c.get[String]("role").toOption)
+                          .getOrElse("staff")
+                        Claims(claim.subject.getOrElse(""), email, role)
+                      }
                     }
-                  }.toRight("missing required claim: email")
+                    .toRight("missing required claim: email")
             }
         }
     }

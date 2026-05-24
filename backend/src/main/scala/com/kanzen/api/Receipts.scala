@@ -17,40 +17,78 @@ import sttp.tapir.server.ServerEndpoint
 
 import java.util.UUID
 
-/** F13 — receipts + line items (the parsed OCR result; Bedrock parse is a deferred
-  * adapter). Each line is brand-normalised → product-level spend (F32). Finance
-  * Principal-private with the Manager carve-out (Staff none). */
+/** F13 — receipts + line items (the parsed OCR result; Bedrock parse is a deferred adapter). Each line is
+  * brand-normalised → product-level spend (F32). Finance Principal-private with the Manager carve-out (Staff none).
+  */
 object Receipts {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
-  final case class ReceiptView(id: UUID, kind: String, merchant: Option[String], totalMinor: Option[Long], currency: Option[String], status: String)
-  final case class LineView(id: UUID, lineNo: Option[Int], description: Option[String], totalMinor: Option[Long],
-                            currency: Option[String], brandNorm: Option[String], suggestedCategory: Option[String],
-                            confirmedCategory: Option[String], status: String)
+  final case class ReceiptView(
+      id: UUID,
+      kind: String,
+      merchant: Option[String],
+      totalMinor: Option[Long],
+      currency: Option[String],
+      status: String
+  )
+  final case class LineView(
+      id: UUID,
+      lineNo: Option[Int],
+      description: Option[String],
+      totalMinor: Option[Long],
+      currency: Option[String],
+      brandNorm: Option[String],
+      suggestedCategory: Option[String],
+      confirmedCategory: Option[String],
+      status: String
+  )
   final case class ReceiptDetail(receipt: ReceiptView, lines: List[LineView])
-  final case class LineIn(description: Option[String], totalMinor: Option[Long], currency: Option[String], suggestedCategory: Option[String])
-  final case class CreateReq(kind: Option[String], merchant: Option[String], totalMinor: Option[Long], currency: Option[String], lines: List[LineIn])
+  final case class LineIn(
+      description: Option[String],
+      totalMinor: Option[Long],
+      currency: Option[String],
+      suggestedCategory: Option[String]
+  )
+  final case class CreateReq(
+      kind: Option[String],
+      merchant: Option[String],
+      totalMinor: Option[Long],
+      currency: Option[String],
+      lines: List[LineIn]
+  )
   final case class ConfirmReq(category: String)
   final case class SpendResult(brand: String, totalMinor: Long)
   final case class OkResult(ok: Boolean)
 
   private def rv(r: Receipt): ReceiptView = ReceiptView(r.id, r.kind, r.merchant, r.totalMinor, r.currency, r.status)
   private def lv(l: LineItem): LineView =
-    LineView(l.id, l.lineNo, l.description, l.totalMinor, l.currency, l.brandNorm, l.suggestedCategory, l.confirmedCategory, l.status)
+    LineView(
+      l.id,
+      l.lineNo,
+      l.description,
+      l.totalMinor,
+      l.currency,
+      l.brandNorm,
+      l.suggestedCategory,
+      l.confirmedCategory,
+      l.status
+    )
 
-  private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to receipts"))
-  private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such receipt or line."))
+  private val forbidden: (StatusCode, ApiError) =
+    (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to receipts"))
+  private val notFound: (StatusCode, ApiError) =
+    (StatusCode.NotFound, ApiError(404, "not_found", "No such receipt or line."))
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[ReceiptDetail]] = {
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[ReceiptDetail]).pure[ConnectionIO]
       else
         for {
-          r  <- ReceiptRepo.create(p.userId, req.kind.getOrElse("receipt"), req.merchant, req.totalMinor, req.currency)
+          r <- ReceiptRepo.create(p.userId, req.kind.getOrElse("receipt"), req.merchant, req.totalMinor, req.currency)
           ls <- req.lines.zipWithIndex.traverse { case (l, i) =>
-                  val bn = l.description.map(ReceiptService.brandNorm).filter(_.nonEmpty)
-                  ReceiptRepo.addLine(r.id, Some(i + 1), l.description, l.totalMinor, l.currency, bn, l.suggestedCategory)
-                }
+            val bn = l.description.map(ReceiptService.brandNorm).filter(_.nonEmpty)
+            ReceiptRepo.addLine(r.id, Some(i + 1), l.description, l.totalMinor, l.currency, bn, l.suggestedCategory)
+          }
         } yield Right(ReceiptDetail(rv(r), ls.map(lv))): Out[ReceiptDetail]
     }
     tx.transact(xa)
@@ -67,17 +105,23 @@ object Receipts {
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ReceiptDetail]] = {
     val tx = for {
       authz <- Authz.authorizer(p.role)
-      r     <- ReceiptRepo.get(id)
-      ls    <- r.fold(List.empty[LineItem].pure[ConnectionIO])(_ => ReceiptRepo.lines(id))
+      r <- ReceiptRepo.get(id)
+      ls <- r.fold(List.empty[LineItem].pure[ConnectionIO])(_ => ReceiptRepo.lines(id))
     } yield
       if (!authz.canRead("receipt")) Left(forbidden)
       else r.map(rr => ReceiptDetail(rv(rr), ls.map(lv))).toRight(notFound)
     tx.transact(xa)
   }
 
-  def confirmLine(xa: Transactor[IO], p: Principal, receiptId: UUID, lineId: UUID, category: String): IO[Out[OkResult]] = {
+  def confirmLine(
+      xa: Transactor[IO],
+      p: Principal,
+      receiptId: UUID,
+      lineId: UUID,
+      category: String
+  ): IO[Out[OkResult]] = {
     val tx = for {
-      authz  <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       exists <- ReceiptRepo.lineExists(lineId, receiptId)
       res <-
         if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
@@ -100,33 +144,56 @@ object Receipts {
   private val err = statusCode.and(jsonBody[ApiError])
 
   val createEndpoint: Endpoint[String, CreateReq, (StatusCode, ApiError), ReceiptDetail, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "receipts").in(jsonBody[CreateReq]).errorOut(err).out(jsonBody[ReceiptDetail]).summary("Create a parsed receipt (Manager+)")
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "receipts")
+      .in(jsonBody[CreateReq])
+      .errorOut(err)
+      .out(jsonBody[ReceiptDetail])
+      .summary("Create a parsed receipt (Manager+)")
 
   val listEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[ReceiptView], Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "receipts").errorOut(err).out(jsonBody[List[ReceiptView]]).summary("Receipts (finance read)")
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "receipts")
+      .errorOut(err)
+      .out(jsonBody[List[ReceiptView]])
+      .summary("Receipts (finance read)")
 
   val spendEndpoint: Endpoint[String, String, (StatusCode, ApiError), SpendResult, Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "receipts" / "spend").in(query[String]("brand")).errorOut(err).out(jsonBody[SpendResult])
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "receipts" / "spend")
+      .in(query[String]("brand"))
+      .errorOut(err)
+      .out(jsonBody[SpendResult])
       .summary("Product-level spend by brand (F32)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), ReceiptDetail, Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "receipts" / path[UUID]("id")).errorOut(err).out(jsonBody[ReceiptDetail]).summary("A receipt + its line items")
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "receipts" / path[UUID]("id"))
+      .errorOut(err)
+      .out(jsonBody[ReceiptDetail])
+      .summary("A receipt + its line items")
 
   val confirmEndpoint: Endpoint[String, (UUID, UUID, ConfirmReq), (StatusCode, ApiError), OkResult, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "receipts" / path[UUID]("id") / "lines" / path[UUID]("lineId") / "confirm").in(jsonBody[ConfirmReq])
-      .errorOut(err).out(jsonBody[OkResult]).summary("Confirm a line item's category (Manager+)")
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "receipts" / path[UUID]("id") / "lines" / path[UUID]("lineId") / "confirm")
+      .in(jsonBody[ConfirmReq])
+      .errorOut(err)
+      .out(jsonBody[OkResult])
+      .summary("Confirm a line item's category (Manager+)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => list(xa, p)),
     spendEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (b: String) => spend(xa, p, b)),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
-    confirmEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, lineId, r) => confirmLine(xa, p, id, lineId, r.category) }),
+    confirmEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, lineId, r) => confirmLine(xa, p, id, lineId, r.category) })
   )
 
   val endpoints: List[AnyEndpoint] = List(createEndpoint, listEndpoint, spendEndpoint, detailEndpoint, confirmEndpoint)

@@ -9,7 +9,8 @@ import java.time.LocalDate
 class ReplenishmentServiceSpec extends AnyFreeSpec with Matchers {
   "ReplenishmentService" - {
     "learns a weekly cadence" in {
-      val weekly = List(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 8), LocalDate.of(2026, 5, 15), LocalDate.of(2026, 5, 22))
+      val weekly =
+        List(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 8), LocalDate.of(2026, 5, 15), LocalDate.of(2026, 5, 22))
       ReplenishmentService.avgIntervalDays(weekly) shouldBe Some(7.0)
     }
     "predicts the next purchase" in {

@@ -19,32 +19,51 @@ import java.time.LocalDate
 import java.util.UUID
 import scala.util.Try
 
-/** F12 — bank accounts + transactions (AIS read-only; CSV import for marvis). Finance is
-  * Principal-private with the Manager operational carve-out: Manager/Principal read +
-  * import; Staff have no access. Kanzen never moves money. */
+/** F12 — bank accounts + transactions (AIS read-only; CSV import for marvis). Finance is Principal-private with the
+  * Manager operational carve-out: Manager/Principal read + import; Staff have no access. Kanzen never moves money.
+  */
 object Bank {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class AccountView(id: UUID, name: String, currency: String, kind: Option[String])
-  final case class TxView(id: UUID, providerTxId: Option[String], bookedOn: Option[LocalDate], amountMinor: Long,
-                          currency: String, direction: String, description: Option[String], merchant: Option[String],
-                          reconciliationState: String)
+  final case class TxView(
+      id: UUID,
+      providerTxId: Option[String],
+      bookedOn: Option[LocalDate],
+      amountMinor: Long,
+      currency: String,
+      direction: String,
+      description: Option[String],
+      merchant: Option[String],
+      reconciliationState: String
+  )
   final case class ImportResult(parsed: Int, inserted: Int)
 
   private def av(a: BankAccount): AccountView = AccountView(a.id, a.name, a.currency, a.kind)
   private def tv(t: BankTx): TxView =
-    TxView(t.id, t.providerTxId, t.bookedOn, t.amountMinor, t.currency, t.direction, t.description, t.merchant, t.reconciliationState)
+    TxView(
+      t.id,
+      t.providerTxId,
+      t.bookedOn,
+      t.amountMinor,
+      t.currency,
+      t.direction,
+      t.description,
+      t.merchant,
+      t.reconciliationState
+    )
 
-  private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to finance"))
-  private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such account."))
+  private val forbidden: (StatusCode, ApiError) =
+    (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to finance"))
+  private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such account."))
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
   /** CSV: `provider_tx_id,booked_on,amount_minor,currency,direction,description` (header optional). */
   def parseCsv(text: String): Either[String, List[TxIn]] = {
     val lines = text.split("\r?\n").toList.map(_.trim).filter(_.nonEmpty)
-    val rows  = lines match {
+    val rows = lines match {
       case h :: t if h.toLowerCase.contains("provider_tx_id") || h.toLowerCase.contains("amount") => t
-      case all                                                                                     => all
+      case all => all
     }
     rows.traverse { line =>
       val c = line.split(",", -1).map(_.trim)
@@ -52,7 +71,7 @@ object Bank {
       else
         for {
           date <- Try(LocalDate.parse(c(1))).toEither.left.map(_ => s"bad date: ${c(1)}")
-          amt  <- Try(c(2).toLong).toEither.left.map(_ => s"bad amount: ${c(2)}")
+          amt <- Try(c(2).toLong).toEither.left.map(_ => s"bad amount: ${c(2)}")
         } yield TxIn(c(0), date, amt, c(3), c(4), c(5))
     }
   }
@@ -78,7 +97,7 @@ object Bank {
       case Left(err) => IO.pure(Left(badReq(err)))
       case Right(txs) =>
         val tx = for {
-          authz  <- Authz.authorizer(p.role)
+          authz <- Authz.authorizer(p.role)
           exists <- BankRepo.accountExists(accountId)
           res <-
             if (!authz.can(Level.Write, "bank_account")) (Left(forbidden): Out[ImportResult]).pure[ConnectionIO]
@@ -91,23 +110,36 @@ object Bank {
   private val err = statusCode.and(jsonBody[ApiError])
 
   val accountsEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[AccountView], Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "bank" / "accounts").errorOut(err).out(jsonBody[List[AccountView]]).summary("Bank accounts (finance read)")
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "bank" / "accounts")
+      .errorOut(err)
+      .out(jsonBody[List[AccountView]])
+      .summary("Bank accounts (finance read)")
 
   val transactionsEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), List[TxView], Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "bank" / "accounts" / path[UUID]("id") / "transactions").errorOut(err).out(jsonBody[List[TxView]])
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "bank" / "accounts" / path[UUID]("id") / "transactions")
+      .errorOut(err)
+      .out(jsonBody[List[TxView]])
       .summary("Transactions for an account")
 
   val importEndpoint: Endpoint[String, (UUID, String), (StatusCode, ApiError), ImportResult, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "bank" / "accounts" / path[UUID]("id") / "import").in(stringBody).errorOut(err).out(jsonBody[ImportResult])
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "bank" / "accounts" / path[UUID]("id") / "import")
+      .in(stringBody)
+      .errorOut(err)
+      .out(jsonBody[ImportResult])
       .summary("Import transactions from CSV (idempotent; Manager+)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     accountsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => accounts(xa, p)),
     transactionsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => transactions(xa, p, id)),
-    importEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, csv) => importCsv(xa, p, id, csv) }),
+    importEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, csv) => importCsv(xa, p, id, csv) })
   )
 
   val endpoints: List[AnyEndpoint] = List(accountsEndpoint, transactionsEndpoint, importEndpoint)

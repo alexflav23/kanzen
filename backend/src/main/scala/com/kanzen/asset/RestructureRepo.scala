@@ -22,7 +22,9 @@ object RestructureService {
 /** F24 — auditable restructure operations (no silent destructive mutation). */
 object RestructureRepo {
   def record(kind: String, inputs: Json, outputs: Json): ConnectionIO[UUID] =
-    sql"insert into restructure_operations (kind, inputs, outputs) values ($kind, $inputs, $outputs) returning id".query[UUID].unique
+    sql"insert into restructure_operations (kind, inputs, outputs) values ($kind, $inputs, $outputs) returning id"
+      .query[UUID]
+      .unique
 
   /** Record with the explicit cost-basis before/after (explainability + reversal). */
   def recordFull(kind: String, inputs: Json, outputs: Json, before: Json, after: Json): ConnectionIO[UUID] =
@@ -62,15 +64,23 @@ object RestructureRepo {
   /** (owner_id, category_id, title, acquisition_cost_minor) — for legacy children + previews. */
   def assetBasics(id: UUID): ConnectionIO[Option[(Option[UUID], Option[UUID], String, Option[Long])]] =
     sql"select owner_id, category_id, title, acquisition_cost_minor from assets where id = $id"
-      .query[(Option[UUID], Option[UUID], String, Option[Long])].option
+      .query[(Option[UUID], Option[UUID], String, Option[Long])]
+      .option
 
   def isSuperseded(id: UUID): ConnectionIO[Boolean] =
     sql"select superseded_at is not null from assets where id = $id".query[Boolean].option.map(_.getOrElse(false))
 
   /** A legacy/child asset: relaxed fields (approximate cost/date, optional category, note). */
-  def createBare(ownerId: UUID, title: String, categoryId: Option[UUID], parentId: Option[UUID],
-                 costMinor: Option[Long], currency: Option[String], acquisitionDate: Option[LocalDate],
-                 uncertaintyNote: Option[String]): ConnectionIO[UUID] =
+  def createBare(
+      ownerId: UUID,
+      title: String,
+      categoryId: Option[UUID],
+      parentId: Option[UUID],
+      costMinor: Option[Long],
+      currency: Option[String],
+      acquisitionDate: Option[LocalDate],
+      uncertaintyNote: Option[String]
+  ): ConnectionIO[UUID] =
     sql"""insert into assets (owner_id, title, category_id, parent_asset_id, acquisition_cost_minor,
             acquisition_currency, acquisition_date, uncertainty_note)
           values ($ownerId, $title, $categoryId, $parentId, $costMinor, $currency, $acquisitionDate, $uncertaintyNote)

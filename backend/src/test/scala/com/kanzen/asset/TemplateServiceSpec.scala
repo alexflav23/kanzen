@@ -10,16 +10,24 @@ class TemplateServiceSpec extends AnyFreeSpec with Matchers {
 
   "TemplateService.validate" - {
     "passes a complete, well-typed asset" in {
-      TemplateService.validate(Json.obj("maker" -> Json.fromString("Gibson"), "year" -> Json.fromInt(1959)), guitar) shouldBe empty
+      TemplateService.validate(
+        Json.obj("maker" -> Json.fromString("Gibson"), "year" -> Json.fromInt(1959)),
+        guitar
+      ) shouldBe empty
     }
     "flags a missing required field" in {
       TemplateService.validate(Json.obj("year" -> Json.fromInt(1959)), guitar) should contain("missing required: maker")
     }
     "flags a wrong type" in {
-      TemplateService.validate(Json.obj("maker" -> Json.fromInt(1)), guitar).exists(_.contains("wrong type for maker")) shouldBe true
+      TemplateService
+        .validate(Json.obj("maker" -> Json.fromInt(1)), guitar)
+        .exists(_.contains("wrong type for maker")) shouldBe true
     }
     "allows unknown (freehand) keys" in {
-      TemplateService.validate(Json.obj("maker" -> Json.fromString("Gibson"), "nickname" -> Json.fromString("Lucille")), guitar) shouldBe empty
+      TemplateService.validate(
+        Json.obj("maker" -> Json.fromString("Gibson"), "nickname" -> Json.fromString("Lucille")),
+        guitar
+      ) shouldBe empty
     }
   }
 }

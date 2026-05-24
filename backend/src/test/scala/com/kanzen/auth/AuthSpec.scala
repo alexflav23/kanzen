@@ -9,22 +9,23 @@ import java.security.interfaces.RSAPublicKey
 import java.time.Clock
 import java.util.UUID
 
-/** F01/Phase 0 — proves the JWKS auth core against a **local test-JWKS** (a generated
-  * RSA keypair), so CI validates real RS256 verification without a live Cognito pool. */
+/** F01/Phase 0 — proves the JWKS auth core against a **local test-JWKS** (a generated RSA keypair), so CI validates
+  * real RS256 verification without a live Cognito pool.
+  */
 object AuthSpec extends SimpleIOSuite {
   private implicit val clock: Clock = Clock.systemUTC()
 
   private val kp = {
     val g = KeyPairGenerator.getInstance("RSA"); g.initialize(2048); g.generateKeyPair()
   }
-  private val kid      = "test-key-1"
-  private val issuer   = "https://cognito-idp.eu-west-1.amazonaws.com/test-pool"
+  private val kid = "test-key-1"
+  private val issuer = "https://cognito-idp.eu-west-1.amazonaws.com/test-pool"
   private val audience = "test-client-id"
-  private val jwks     = Jwks.inMemory(Map(kid -> kp.getPublic.asInstanceOf[RSAPublicKey]))
+  private val jwks = Jwks.inMemory(Map(kid -> kp.getPublic.asInstanceOf[RSAPublicKey]))
 
   private def sign(content: String, iss: String = issuer, aud: String = audience, theKid: String = kid): String = {
     val header = JwtHeader(Some(JwtAlgorithm.RS256), Some("JWT"), None, Some(theKid))
-    val claim  = JwtClaim(content = content).about("toby-sub").by(iss).to(aud).issuedNow.expiresIn(3600)
+    val claim = JwtClaim(content = content).about("toby-sub").by(iss).to(aud).issuedNow.expiresIn(3600)
     JwtCirce.encode(header, claim, kp.getPrivate)
   }
 

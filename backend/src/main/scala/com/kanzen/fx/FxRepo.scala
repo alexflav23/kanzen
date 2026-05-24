@@ -11,13 +11,15 @@ final case class Currency(code: String, symbol: Option[String], decimals: Int)
 
 /** F37 — convert at the rate on the transaction's own date (rounded; native stays truth). */
 object FxService {
+
   /** Our reporting/base currency (configurable; default GBP). */
   val Base = "GBP"
 
   def convertMinor(amountMinor: Long, rate: Double): Long = math.round(amountMinor * rate)
 
-  /** Cross rate from→to via the base: 1 from = (fromToBase / toToBase) to.
-    * (`*ToBase` = 1 unit of that currency expressed in base; base→base = 1.0.) */
+  /** Cross rate from→to via the base: 1 from = (fromToBase / toToBase) to. (`*ToBase` = 1 unit of that currency
+    * expressed in base; base→base = 1.0.)
+    */
   def cross(fromToBase: Double, toToBase: Double): Double = fromToBase / toToBase
 }
 
@@ -30,7 +32,8 @@ object FxRepo {
   /** The rate effective ON a given date = the latest snapshot on-or-before it (nearest prior). */
   def rateOn(base: String, quote: String, on: LocalDate): ConnectionIO[Option[Double]] =
     sql"select rate from fx_rates where base = $base and quote = $quote and as_of <= $on order by as_of desc limit 1"
-      .query[Double].option
+      .query[Double]
+      .option
 
   /** 1 unit of `currency` expressed in our base, on a date (base→base = 1.0). */
   def toBaseOn(currency: String, on: LocalDate): ConnectionIO[Option[Double]] =

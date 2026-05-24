@@ -17,9 +17,9 @@ import sttp.tapir.server.ServerEndpoint
 
 import java.util.UUID
 
-/** F28 — full-text search + ⌘K. **Permission-filtered server-side**: a hit is only returned
-  * if the caller could read that entity directly, so search can never leak an entity (e.g. an
-  * asset title) to a role that lacks access to it. */
+/** F28 — full-text search + ⌘K. **Permission-filtered server-side**: a hit is only returned if the caller could read
+  * that entity directly, so search can never leak an entity (e.g. an asset title) to a role that lacks access to it.
+  */
 object Search {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
@@ -30,33 +30,45 @@ object Search {
 
   /** The F02 resource a hit's entity type maps to; None ⇒ not searchable (deny by default). */
   private def resourceFor(entityType: String): Option[String] = entityType match {
-    case "asset"    => Some("asset")
+    case "asset" => Some("asset")
     case "document" => Some("document")
-    case "vendor"   => Some("vendor")
-    case "person"   => Some("person")
+    case "vendor" => Some("vendor")
+    case "person" => Some("person")
     case "property" => Some("property")
-    case "product"  => Some("product")
-    case _          => None
+    case "product" => Some("product")
+    case _ => None
   }
   private def visible(a: Authorizer, entityType: String): Boolean =
     resourceFor(entityType).exists(r => a.canRead(r))
 
   def search(xa: Transactor[IO], p: Principal, q: String): IO[Out[Results]] =
-    Authz.authorizer(p.role).flatMap { a =>
-      if (!a.canRead("search")) (Left(forbidden): Out[Results]).pure[ConnectionIO]
-      else SearchRepo.hits(q).map { hits =>
-        val allowed = hits.filter(h => visible(a, h.entityType)).map((h: SearchHit) => Hit(h.entityType, h.entityId, h.title, h.subtitle))
-        Right(Results(q, allowed)): Out[Results]
+    Authz
+      .authorizer(p.role)
+      .flatMap { a =>
+        if (!a.canRead("search")) (Left(forbidden): Out[Results]).pure[ConnectionIO]
+        else
+          SearchRepo.hits(q).map { hits =>
+            val allowed = hits
+              .filter(h => visible(a, h.entityType))
+              .map((h: SearchHit) => Hit(h.entityType, h.entityId, h.title, h.subtitle))
+            Right(Results(q, allowed)): Out[Results]
+          }
       }
-    }.transact(xa)
+      .transact(xa)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
-  val searchEndpoint = sttp.tapir.endpoint.get.securityIn(bearer).in("api" / "search").in(query[String]("q")).errorOut(err).out(jsonBody[Results]).summary("Permission-filtered full-text search (⌘K)")
+  val searchEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "search")
+    .in(query[String]("q"))
+    .errorOut(err)
+    .out(jsonBody[Results])
+    .summary("Permission-filtered full-text search (⌘K)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
-    searchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (q: String) => search(xa, p, q)),
+    searchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (q: String) => search(xa, p, q))
   )
 
   val endpoints: List[AnyEndpoint] = List(searchEndpoint)

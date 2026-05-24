@@ -7,23 +7,37 @@ import doobie.postgres.implicits._
 import java.util.UUID
 
 final case class Defect(
-  id: UUID, propertyId: UUID, locationId: Option[UUID], title: String,
-  description: Option[String], severity: String, status: String, reportedBy: Option[UUID],
+    id: UUID,
+    propertyId: UUID,
+    locationId: Option[UUID],
+    title: String,
+    description: Option[String],
+    severity: String,
+    status: String,
+    reportedBy: Option[UUID]
 )
 
-/** F03 — property defects (a first-class entity). Lifecycle open → in_progress →
-  * resolved|wont_fix; `resolved_at` is set on resolve and cleared on reopen. */
+/** F03 — property defects (a first-class entity). Lifecycle open → in_progress → resolved|wont_fix; `resolved_at` is
+  * set on resolve and cleared on reopen.
+  */
 object DefectRepo {
   private val cols = fr"id, property_id, location_id, title, description, severity, status, reported_by"
 
-  def raise(ownerId: UUID, propertyId: UUID, locationId: Option[UUID], title: String,
-            description: Option[String], severity: String, reportedBy: UUID): ConnectionIO[Defect] =
+  def raise(
+      ownerId: UUID,
+      propertyId: UUID,
+      locationId: Option[UUID],
+      title: String,
+      description: Option[String],
+      severity: String,
+      reportedBy: UUID
+  ): ConnectionIO[Defect] =
     (fr"""insert into defects (owner_id, property_id, location_id, title, description, severity, reported_by)
           values ($ownerId, $propertyId, $locationId, $title, $description, $severity, $reportedBy)
           returning""" ++ cols).query[Defect].unique
 
   def list(propertyId: UUID, status: Option[String]): ConnectionIO[List[Defect]] = {
-    val base     = fr"select" ++ cols ++ fr"from defects where property_id = $propertyId and deleted_at is null"
+    val base = fr"select" ++ cols ++ fr"from defects where property_id = $propertyId and deleted_at is null"
     val filtered = status.fold(base)(s => base ++ fr"and status = $s")
     (filtered ++ fr"order by created_at desc").query[Defect].to[List]
   }

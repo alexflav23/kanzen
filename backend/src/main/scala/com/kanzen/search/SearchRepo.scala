@@ -20,8 +20,9 @@ object SearchRepo {
           where fts @@ plainto_tsquery('english', $q)
           order by ts_rank(fts, plainto_tsquery('english', $q)) desc""".query[(String, String)].to[List]
 
-  /** Hits with entity type + id + title (the API permission-filters by entity-type so a role
-    * never sees, via search, an entity it couldn't read directly — no leak via search). */
+  /** Hits with entity type + id + title (the API permission-filters by entity-type so a role never sees, via search, an
+    * entity it couldn't read directly — no leak via search).
+    */
   def hits(q: String): ConnectionIO[List[SearchHit]] =
     sql"""select entity_type, entity_id, title, subtitle from search_index
           where fts @@ plainto_tsquery('english', $q)

@@ -18,8 +18,26 @@ object PeopleIT extends IOSuite {
 
   test("expiringPermits(60) surfaces a soon-to-expire permit but not a far-future one") { xa =>
     val prog = for {
-      soon <- PeopleRepo.insert(owner, None, "Test Soon", Some("Housekeeper"), Some("sg"), None, Some(LocalDate.now.plusDays(50)), None)
-      far  <- PeopleRepo.insert(owner, None, "Test Far", Some("Housekeeper"), Some("uk"), None, Some(LocalDate.now.plusDays(300)), None)
+      soon <- PeopleRepo.insert(
+        owner,
+        None,
+        "Test Soon",
+        Some("Housekeeper"),
+        Some("sg"),
+        None,
+        Some(LocalDate.now.plusDays(50)),
+        None
+      )
+      far <- PeopleRepo.insert(
+        owner,
+        None,
+        "Test Far",
+        Some("Housekeeper"),
+        Some("uk"),
+        None,
+        Some(LocalDate.now.plusDays(300)),
+        None
+      )
       expiring <- PeopleRepo.expiringPermits(60)
     } yield (soon, far, expiring)
     prog.transact(xa).map { case (soon, far, expiring) =>

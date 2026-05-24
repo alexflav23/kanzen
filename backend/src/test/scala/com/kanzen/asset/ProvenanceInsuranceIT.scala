@@ -19,7 +19,13 @@ object ProvenanceInsuranceIT extends IOSuite {
     val prog = for {
       cat <- AssetRepo.createCategory("Watches", None)
       a <- AssetRepo.create("Royal Oak", Some("Audemars Piguet"), cat, "unique", 1, Json.obj())
-      _ <- InsuranceRepo.set(a.id, insured = true, Some("Hiscox-2026"), Some(4200000L), Some(LocalDate.now.plusMonths(11)))
+      _ <- InsuranceRepo.set(
+        a.id,
+        insured = true,
+        Some("Hiscox-2026"),
+        Some(4200000L),
+        Some(LocalDate.now.plusMonths(11))
+      )
       _ <- InsuranceRepo.addWarranty(a.id, Some("Audemars Piguet"), Some(LocalDate.now.plusYears(2)))
       ins <- InsuranceRepo.get(a.id)
     } yield ins
@@ -32,7 +38,7 @@ object ProvenanceInsuranceIT extends IOSuite {
       id <- RestructureRepo.record(
         "split",
         Json.obj("source" -> "tumblers-set".asJson, "total_minor" -> 180000.asJson),
-        Json.obj("allocations" -> parts.asJson),
+        Json.obj("allocations" -> parts.asJson)
       )
       fetched <- RestructureRepo.get(id)
     } yield fetched

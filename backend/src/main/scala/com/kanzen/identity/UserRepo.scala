@@ -8,8 +8,8 @@ import java.util.UUID
 
 final case class User(id: UUID, displayName: String, email: String, role: String, status: String)
 
-/** F01 — canonical user + login-identity persistence (Doobie).
-  * Supports lazy provisioning: resolve a Cognito `sub` to a user, or link by email.
+/** F01 — canonical user + login-identity persistence (Doobie). Supports lazy provisioning: resolve a Cognito `sub` to a
+  * user, or link by email.
   */
 object UserRepo {
   def create(displayName: String, email: String, role: String): ConnectionIO[User] =

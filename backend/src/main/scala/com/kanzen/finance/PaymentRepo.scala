@@ -16,12 +16,24 @@ final case class BillPayment(id: UUID, mode: String, state: String)
 final case class PaymentQueueItem(id: UUID, amountMinor: Long, currency: String, mode: String, state: String)
 
 object PaymentRepo {
-  def createMethod(`type`: String, displayName: String, last4: Option[String], currency: Option[String], vaultRef: Option[String]): ConnectionIO[PaymentMethod] =
+  def createMethod(
+      `type`: String,
+      displayName: String,
+      last4: Option[String],
+      currency: Option[String],
+      vaultRef: Option[String]
+  ): ConnectionIO[PaymentMethod] =
     sql"""insert into payment_methods (type, display_name, last4, currency, vault_ref)
           values (${`type`}, $displayName, $last4, $currency, $vaultRef)
           returning id, display_name, last4""".query[PaymentMethod].unique
 
-  def schedule(billId: Option[UUID], methodId: Option[UUID], amountMinor: Long, currency: String, mode: String): ConnectionIO[BillPayment] =
+  def schedule(
+      billId: Option[UUID],
+      methodId: Option[UUID],
+      amountMinor: Long,
+      currency: String,
+      mode: String
+  ): ConnectionIO[BillPayment] =
     sql"""insert into bill_payments (bill_id, payment_method_id, amount_minor, currency, mode)
           values ($billId, $methodId, $amountMinor, $currency, $mode)
           returning id, mode, state""".query[BillPayment].unique
@@ -34,8 +46,12 @@ object PaymentRepo {
     sql"select id, mode, state from bill_payments where id = $id".query[BillPayment].option
 
   def queue: ConnectionIO[List[PaymentQueueItem]] =
-    sql"select id, amount_minor, currency, mode, state from bill_payments order by created_at desc".query[PaymentQueueItem].to[List]
+    sql"select id, amount_minor, currency, mode, state from bill_payments order by created_at desc"
+      .query[PaymentQueueItem]
+      .to[List]
 
   def listMethods: ConnectionIO[List[PaymentMethod]] =
-    sql"select id, display_name, last4 from payment_methods where status = 'active' order by display_name".query[PaymentMethod].to[List]
+    sql"select id, display_name, last4 from payment_methods where status = 'active' order by display_name"
+      .query[PaymentMethod]
+      .to[List]
 }

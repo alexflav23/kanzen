@@ -14,7 +14,11 @@ object AgentIT extends IOSuite {
 
   test("a delivery email is classified and its actions proposed") { xa =>
     val prog = for {
-      ingested <- AgentRepo.ingest("deliveries@kanzen.family", "amazon", "Your order has been dispatched · delivery Tue")
+      ingested <- AgentRepo.ingest(
+        "deliveries@kanzen.family",
+        "amazon",
+        "Your order has been dispatched · delivery Tue"
+      )
       emailId = ingested._1
       category = ingested._2
       actionIds <- AgentService.proposedActions(category).traverse(a => AgentRepo.propose(emailId, a))

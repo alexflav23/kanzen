@@ -19,7 +19,9 @@ object LedgerService {
 
 object LedgerRepo {
   def createAccount(code: String, name: String, `type`: String, currency: String): ConnectionIO[UUID] =
-    sql"insert into ledger_accounts (code, name, type, currency) values ($code, $name, ${`type`}, $currency) returning id".query[UUID].unique
+    sql"insert into ledger_accounts (code, name, type, currency) values ($code, $name, ${`type`}, $currency) returning id"
+      .query[UUID]
+      .unique
 
   def postGroup(kind: String, entries: List[LedgerService.Entry], currency: String): ConnectionIO[UUID] =
     for {
@@ -34,5 +36,6 @@ object LedgerRepo {
   def balanceOf(accountId: UUID): ConnectionIO[Long] =
     sql"""select coalesce((select sum(amount_minor) from ledger_postings where debit_account = $accountId), 0)
                - coalesce((select sum(amount_minor) from ledger_postings where credit_account = $accountId), 0)"""
-      .query[Long].unique
+      .query[Long]
+      .unique
 }

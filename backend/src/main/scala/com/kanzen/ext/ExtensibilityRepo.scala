@@ -10,7 +10,15 @@ import java.util.UUID
 
 final case class Tag(id: UUID, name: String)
 final case class Taxonomy(id: UUID, name: String, appliesTo: String, isSystem: Boolean)
-final case class CustomFieldDef(id: UUID, entityType: String, key: String, label: String, `type`: String, enumValues: Option[Json], sensitive: Boolean)
+final case class CustomFieldDef(
+    id: UUID,
+    entityType: String,
+    key: String,
+    label: String,
+    `type`: String,
+    enumValues: Option[Json],
+    sensitive: Boolean
+)
 
 /** F33 — polymorphic tags across any entity. */
 object TagRepo {
@@ -44,7 +52,9 @@ object TaxonomyRepo {
     sql"select id, name, applies_to, is_system from taxonomies order by name".query[Taxonomy].to[List]
 
   def addNode(taxonomyId: UUID, parentId: Option[UUID], name: String): ConnectionIO[UUID] =
-    sql"insert into taxonomy_nodes (taxonomy_id, parent_id, name) values ($taxonomyId, $parentId, $name) returning id".query[UUID].unique
+    sql"insert into taxonomy_nodes (taxonomy_id, parent_id, name) values ($taxonomyId, $parentId, $name) returning id"
+      .query[UUID]
+      .unique
 
   def exists(taxonomyId: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from taxonomies where id = $taxonomyId)".query[Boolean].unique
@@ -53,7 +63,9 @@ object TaxonomyRepo {
     sql"insert into entity_taxonomy_links (taxonomy_node_id, entity_type, entity_id) values ($nodeId, $entityType, $entityId) on conflict do nothing".update.run
 
   def nodes(taxonomyId: UUID): ConnectionIO[List[(UUID, Option[UUID], String)]] =
-    sql"select id, parent_id, name from taxonomy_nodes where taxonomy_id = $taxonomyId".query[(UUID, Option[UUID], String)].to[List]
+    sql"select id, parent_id, name from taxonomy_nodes where taxonomy_id = $taxonomyId"
+      .query[(UUID, Option[UUID], String)]
+      .to[List]
 
   /** the taxonomy nodes an entity is linked to (for its detail chips). */
   def linksFor(entityType: String, entityId: UUID): ConnectionIO[List[(UUID, String)]] =
@@ -63,7 +75,15 @@ object TaxonomyRepo {
 
 /** F33 — typed custom-field definitions (values live in the host's `attributes`). */
 object CustomFieldRepo {
-  def create(ownerId: UUID, entityType: String, key: String, label: String, typ: String, enumValues: Option[Json], sensitive: Boolean): ConnectionIO[CustomFieldDef] =
+  def create(
+      ownerId: UUID,
+      entityType: String,
+      key: String,
+      label: String,
+      typ: String,
+      enumValues: Option[Json],
+      sensitive: Boolean
+  ): ConnectionIO[CustomFieldDef] =
     sql"""insert into custom_field_definitions (owner_id, entity_type, key, label, type, enum_values, sensitive)
           values ($ownerId, $entityType, $key, $label, $typ, $enumValues, $sensitive)
           returning id, entity_type, key, label, type, enum_values, sensitive""".query[CustomFieldDef].unique
@@ -85,6 +105,6 @@ object Attributes {
   def strip(attributes: Json, sensitiveKeys: List[String]): Json =
     attributes.asObject match {
       case Some(o) => Json.fromJsonObject(sensitiveKeys.foldLeft(o)((acc, k) => acc.remove(k)))
-      case None    => attributes
+      case None => attributes
     }
 }

@@ -28,3 +28,9 @@ web-e2e-test:
   image: mcr.microsoft.com/playwright:v1.49.1-noble
   script:
     - cd web && npm ci --no-audit --no-fund && npx playwright test
+
+mobile-test:
+  stage: test
+  image: ghcr.io/cirruslabs/flutter:3.27.4
+  script:
+    - cd mobile && flutter pub get && flutter analyze && flutter test

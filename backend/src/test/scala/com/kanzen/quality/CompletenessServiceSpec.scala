@@ -15,7 +15,7 @@ class CompletenessServiceSpec extends AnyFreeSpec with Matchers {
     "scores an empty asset at 0% and lists all checks" in {
       val c = Checks(false, false, false, false)
       CompletenessService.score(c) shouldBe 0
-      CompletenessService.missing(c) should contain allOf("photo", "category", "location", "proof")
+      CompletenessService.missing(c) should contain allOf ("photo", "category", "location", "proof")
     }
     "scores a 1-of-4-missing asset at 75%" in {
       val c = Checks(hasPhoto = true, hasCategory = true, hasLocation = true, hasProof = false)

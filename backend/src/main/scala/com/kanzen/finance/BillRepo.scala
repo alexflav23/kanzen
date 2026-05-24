@@ -8,11 +8,17 @@ import java.util.UUID
 
 final case class Bill(id: UUID, payee: String, amountMinor: Long, currency: String, varianceFlag: Boolean)
 
-/** F15 — recurring bills; `recordSeen` applies a newly-observed amount (e.g. from the
-  * agent's invoice reconciliation) and flags a >= ±15% variance vs the prior amount.
+/** F15 — recurring bills; `recordSeen` applies a newly-observed amount (e.g. from the agent's invoice reconciliation)
+  * and flags a >= ±15% variance vs the prior amount.
   */
 object BillRepo {
-  def create(payee: String, propertyId: Option[UUID], amountMinor: Long, currency: String, frequency: Option[String]): ConnectionIO[Bill] =
+  def create(
+      payee: String,
+      propertyId: Option[UUID],
+      amountMinor: Long,
+      currency: String,
+      frequency: Option[String]
+  ): ConnectionIO[Bill] =
     sql"""insert into bills (payee, property_id, amount_minor, currency, frequency)
           values ($payee, $propertyId, $amountMinor, $currency, $frequency)
           returning id, payee, amount_minor, currency, variance_flag""".query[Bill].unique
@@ -31,5 +37,6 @@ object BillRepo {
 
   def list: ConnectionIO[List[Bill]] =
     sql"select id, payee, amount_minor, currency, variance_flag from bills where deleted_at is null and active order by next_due nulls last"
-      .query[Bill].to[List]
+      .query[Bill]
+      .to[List]
 }

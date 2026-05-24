@@ -8,8 +8,8 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.http4s.Http4sServerInterpreter
 
-/** F00 — health/liveness. The first real Tapir endpoint; proves the
-  * config → server → OpenAPI path. Extended into /api/whoami once auth (F01) lands.
+/** F00 — health/liveness. The first real Tapir endpoint; proves the config → server → OpenAPI path. Extended into
+  * /api/whoami once auth (F01) lands.
   */
 object Health {
   final case class HealthStatus(status: String, service: String, version: String)

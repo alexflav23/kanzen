@@ -1,8 +1,8 @@
 package com.kanzen.nl
 
-/** F32 — natural-language query: translate a prompt to a structured, READ-ONLY intent
-  * (Claude does this in production; here is the validation + a deterministic stub).
-  * Never mutates; the generated query is schema-validated and permission-filtered downstream.
+/** F32 — natural-language query: translate a prompt to a structured, READ-ONLY intent (Claude does this in production;
+  * here is the validation + a deterministic stub). Never mutates; the generated query is schema-validated and
+  * permission-filtered downstream.
   */
 object NlQueryService {
   private val mutationKeywords = Set("insert", "update", "delete", "drop", "alter", "truncate", "create")

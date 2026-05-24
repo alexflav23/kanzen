@@ -14,13 +14,13 @@ object MigrationsIT extends IOSuite {
   // One sequential test: the two tests previously shared a transactor and weaver runs a
   // suite's tests in parallel, so the insert below could race ahead of an emptiness count.
   test("baseline migration creates an empty audit_log_entries table that can be written and read back") { xa =>
-    val empty  = sql"select count(*) from audit_log_entries".query[Long].unique
+    val empty = sql"select count(*) from audit_log_entries".query[Long].unique
     val insert = sql"insert into audit_log_entries (actor_type, action) values ('system', 'boot')".update.run
-    val count  = sql"select count(*) from audit_log_entries".query[Long].unique
+    val count = sql"select count(*) from audit_log_entries".query[Long].unique
     (for {
       before <- empty
-      _      <- insert
-      after  <- count
+      _ <- insert
+      after <- count
     } yield expect(before == 0L) and expect(after == 1L)).transact(xa)
   }
 }

@@ -17,27 +17,47 @@ import sttp.tapir.server.ServerEndpoint
 
 import java.util.UUID
 
-/** Phase 1 walking skeleton — `GET /api/properties`: the first DB-backed, authz-gated
-  * read. Bearer → `Principal` (Cognito JWKS) → the role's rules from `permission_rules`
-  * (F02, default-deny) → `PropertyRepo.list` from Postgres, or 403. Proves config →
-  * migrate → auth → authorize → query → JSON end-to-end. */
+/** Phase 1 walking skeleton — `GET /api/properties`: the first DB-backed, authz-gated read. Bearer → `Principal`
+  * (Cognito JWKS) → the role's rules from `permission_rules` (F02, default-deny) → `PropertyRepo.list` from Postgres,
+  * or 403. Proves config → migrate → auth → authorize → query → JSON end-to-end.
+  */
 object Properties {
   final case class PropertyView(id: UUID, name: String, jurisdiction: Option[String], currency: String, status: String)
 
-  /** The Bible aggregate. Counts beyond `rooms` are placeheld until their features land
-    * (assets F04, bills F15, vendors F09). */
+  /** The Bible aggregate. Counts beyond `rooms` are placeheld until their features land (assets F04, bills F15, vendors
+    * F09).
+    */
   final case class PropertyDetail(
-    id: UUID, name: String, jurisdiction: Option[String], currency: String, status: String,
-    rooms: Int, assets: Int, bills: Int, vendors: Int,
+      id: UUID,
+      name: String,
+      jurisdiction: Option[String],
+      currency: String,
+      status: String,
+      rooms: Int,
+      assets: Int,
+      bills: Int,
+      vendors: Int
   )
 
-  final case class CreateReq(name: String, address: Option[String], jurisdiction: Option[String],
-                             propType: Option[String], ownership: Option[String], currency: String)
-  final case class PatchReq(name: String, address: Option[String], jurisdiction: Option[String],
-                            propType: Option[String], ownership: Option[String])
+  final case class CreateReq(
+      name: String,
+      address: Option[String],
+      jurisdiction: Option[String],
+      propType: Option[String],
+      ownership: Option[String],
+      currency: String
+  )
+  final case class PatchReq(
+      name: String,
+      address: Option[String],
+      jurisdiction: Option[String],
+      propType: Option[String],
+      ownership: Option[String]
+  )
 
   private type Out[A] = Either[(StatusCode, ApiError), A]
-  private def toView(r: Property): PropertyView = PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)
+  private def toView(r: Property): PropertyView =
+    PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no write access to property"))
@@ -48,9 +68,9 @@ object Properties {
   private val conflict: (StatusCode, ApiError) =
     (StatusCode.Conflict, ApiError(409, "archived", "Property is archived; new activity is blocked."))
 
-  /** Authorize against the principal's DB rules, then read what F02 scope allows — in one
-    * transaction. The handler is public so tests can exercise the real authz + scope +
-    * query path without HTTP plumbing. */
+  /** Authorize against the principal's DB rules, then read what F02 scope allows — in one transaction. The handler is
+    * public so tests can exercise the real authz + scope + query path without HTTP plumbing.
+    */
   def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] = {
     val tx: ConnectionIO[(Boolean, List[Property])] = for {
       authz <- Authz.authorizer(p.role)
@@ -61,7 +81,7 @@ object Properties {
     tx.transact(xa).map {
       // Archived/sold properties are hidden from the default list (AC8); detail still reads them.
       case (true, props) => Right(props.filter(_.status == "active").map(toView))
-      case (false, _)    => Left(forbidden)
+      case (false, _) => Left(forbidden)
     }
   }
 
@@ -69,7 +89,8 @@ object Properties {
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
       else
-        PropertyRepo.insert(p.userId, req.name, req.address, req.jurisdiction, req.propType, req.ownership, req.currency)
+        PropertyRepo
+          .insert(p.userId, req.name, req.address, req.jurisdiction, req.propType, req.ownership, req.currency)
           .map(pr => Right(toView(pr)): Out[PropertyView])
     }
     tx.transact(xa)
@@ -77,48 +98,54 @@ object Properties {
 
   def patch(xa: Transactor[IO], p: Principal, id: UUID, req: PatchReq): IO[Out[PropertyView]] = {
     val tx = for {
-      authz   <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
       res <- visible match {
-               case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
-               case Some(pr) =>
-                 if (pr.status == "archived") (Left(conflict): Out[PropertyView]).pure[ConnectionIO]
-                 else if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
-                 else PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
-                   PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
-             }
+        case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
+        case Some(pr) =>
+          if (pr.status == "archived") (Left(conflict): Out[PropertyView]).pure[ConnectionIO]
+          else if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+          else
+            PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
+              PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+      }
     } yield res
     tx.transact(xa)
   }
 
   def archive(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PropertyView]] = {
     val tx = for {
-      authz   <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
       res <- visible match {
-               case None    => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
-               case Some(_) =>
-                 if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
-                 else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
-             }
+        case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
+        case Some(_) =>
+          if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+          else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+      }
     } yield res
     tx.transact(xa)
   }
 
-  /** The scoped Bible read. 403 if the role can't read properties; 404 if the property
-    * isn't in the principal's scope (existence not leaked); else the aggregate. */
+  /** The scoped Bible read. 403 if the role can't read properties; 404 if the property isn't in the principal's scope
+    * (existence not leaked); else the aggregate.
+    */
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Either[(StatusCode, ApiError), PropertyDetail]] = {
     val tx: ConnectionIO[Either[(StatusCode, ApiError), PropertyDetail]] = for {
       authz <- Authz.authorizer(p.role)
-      visible <- if (authz.canRead("property")) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
-                 else Option.empty[Property].pure[ConnectionIO]
+      visible <-
+        if (authz.canRead("property")) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+        else Option.empty[Property].pure[ConnectionIO]
       result <- (authz.canRead("property"), visible) match {
-                  case (false, _)       => (Left(forbidden): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
-                  case (true, None)     => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
-                  case (true, Some(pr)) =>
-                    PropertyRepo.locationCount(id).map(rooms =>
-                      Right(PropertyDetail(pr.id, pr.name, pr.jurisdiction, pr.defaultCurrency, pr.status, rooms, 0, 0, 0)))
-                }
+        case (false, _) => (Left(forbidden): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
+        case (true, None) => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
+        case (true, Some(pr)) =>
+          PropertyRepo
+            .locationCount(id)
+            .map(rooms =>
+              Right(PropertyDetail(pr.id, pr.name, pr.jurisdiction, pr.defaultCurrency, pr.status, rooms, 0, 0, 0))
+            )
+      }
     } yield result
     tx.transact(xa)
   }
@@ -126,28 +153,45 @@ object Properties {
   private val err = statusCode.and(jsonBody[ApiError])
 
   val endpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[PropertyView], Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "properties").errorOut(err).out(jsonBody[List[PropertyView]])
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "properties")
+      .errorOut(err)
+      .out(jsonBody[List[PropertyView]])
       .summary("Properties visible to the principal (F03, authz + scope-filtered; archived hidden)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), PropertyDetail, Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "properties" / path[UUID]("id")).errorOut(err).out(jsonBody[PropertyDetail])
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id"))
+      .errorOut(err)
+      .out(jsonBody[PropertyDetail])
       .summary("A property's Bible aggregate (scoped; 404 if out of scope)")
 
   val createEndpoint: Endpoint[String, CreateReq, (StatusCode, ApiError), PropertyView, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "properties").in(jsonBody[CreateReq]).errorOut(err).out(jsonBody[PropertyView])
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "properties")
+      .in(jsonBody[CreateReq])
+      .errorOut(err)
+      .out(jsonBody[PropertyView])
       .summary("Create a property (Manager+)")
 
   val patchEndpoint: Endpoint[String, (UUID, PatchReq), (StatusCode, ApiError), PropertyView, Any] =
-    sttp.tapir.endpoint.patch.securityIn(auth.bearer[String]())
-      .in("api" / "properties" / path[UUID]("id")).in(jsonBody[PatchReq]).errorOut(err).out(jsonBody[PropertyView])
+    sttp.tapir.endpoint.patch
+      .securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id"))
+      .in(jsonBody[PatchReq])
+      .errorOut(err)
+      .out(jsonBody[PropertyView])
       .summary("Edit a property's particulars (Manager+; blocked if archived)")
 
   val archiveEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), PropertyView, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "properties" / path[UUID]("id") / "archive").errorOut(err).out(jsonBody[PropertyView])
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "properties" / path[UUID]("id") / "archive")
+      .errorOut(err)
+      .out(jsonBody[PropertyView])
       .summary("Archive a property (Manager+; hidden from lists, records preserved)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
@@ -155,7 +199,7 @@ object Properties {
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     patchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => patch(xa, p, id, r) }),
-    archiveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => archive(xa, p, id)),
+    archiveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => archive(xa, p, id))
   )
 
   val endpoints: List[AnyEndpoint] = List(endpoint, detailEndpoint, createEndpoint, patchEndpoint, archiveEndpoint)

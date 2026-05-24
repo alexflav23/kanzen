@@ -8,29 +8,33 @@ import weaver.IOSuite
 
 import java.util.UUID
 
-/** F12 — bank transactions: finance read (Manager carve-out, Staff 403), idempotent
-  * CSV import, AIS read-only. Seeded Coutts account (V2_32). */
+/** F12 — bank transactions: finance read (Manager carve-out, Staff 403), idempotent CSV import, AIS read-only. Seeded
+  * Coutts account (V2_32).
+  */
 object BankApiIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  private val toby   = Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "toby@kanzen.local", "principal")
-  private val lorna  = Principal(UUID.randomUUID(), "l", "lorna@kanzen.local", "manager")
+  private val toby =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "toby@kanzen.local", "principal")
+  private val lorna = Principal(UUID.randomUUID(), "l", "lorna@kanzen.local", "manager")
   private val marcia = Principal(UUID.randomUUID(), "m", "marcia@kanzen.local", "staff")
   private val coutts = UUID.fromString("80000000-0000-0000-0000-000000000001")
 
   test("pure CSV parser tolerates a header + parses rows") {
-    val csv = "provider_tx_id,booked_on,amount_minor,currency,direction,description\nx-1,2026-01-02,1299,GBP,debit,Coffee"
+    val csv =
+      "provider_tx_id,booked_on,amount_minor,currency,direction,description\nx-1,2026-01-02,1299,GBP,debit,Coffee"
     IO.pure(Bank.parseCsv(csv) match {
-      case Right(txs) => expect(txs.size == 1) and expect(txs.head.amountMinor == 1299L) and expect(txs.head.providerTxId == "x-1")
-      case Left(e)    => failure(e)
+      case Right(txs) =>
+        expect(txs.size == 1) and expect(txs.head.amountMinor == 1299L) and expect(txs.head.providerTxId == "x-1")
+      case Left(e) => failure(e)
     })
   }
 
   test("Manager sees accounts + seeded transactions; Staff is denied (403)") { xa =>
     for {
       accts <- Bank.accounts(xa, lorna).map(_.toOption.get)
-      txs   <- Bank.transactions(xa, lorna, coutts).map(_.toOption.get)
+      txs <- Bank.transactions(xa, lorna, coutts).map(_.toOption.get)
       staff <- Bank.accounts(xa, marcia)
     } yield expect(accts.exists(_.name == "Coutts Current")) and
       expect(txs.exists(_.merchant.contains("Waitrose"))) and
@@ -38,17 +42,28 @@ object BankApiIT extends IOSuite {
   }
 
   test("CSV import is idempotent (re-import inserts nothing)") { xa =>
-    val csv = "provider_tx_id,booked_on,amount_minor,currency,direction,description\nimp-1,2026-02-01,9900,GBP,debit,Vendor A\nimp-2,2026-02-02,12000,GBP,debit,Vendor B"
+    val csv =
+      "provider_tx_id,booked_on,amount_minor,currency,direction,description\nimp-1,2026-02-01,9900,GBP,debit,Vendor A\nimp-2,2026-02-02,12000,GBP,debit,Vendor B"
     for {
-      first  <- Bank.importCsv(xa, toby, coutts, csv).map(_.toOption.get)
+      first <- Bank.importCsv(xa, toby, coutts, csv).map(_.toOption.get)
       second <- Bank.importCsv(xa, toby, coutts, csv).map(_.toOption.get)
     } yield expect(first.parsed == 2 && first.inserted == 2) and expect(second.inserted == 0)
   }
 
   test("Staff cannot import (403); a malformed CSV is 400") { xa =>
     for {
-      denied <- Bank.importCsv(xa, marcia, coutts, "provider_tx_id,booked_on,amount_minor,currency,direction,description\ny-1,2026-01-01,100,GBP,debit,x")
-      bad    <- Bank.importCsv(xa, toby, coutts, "provider_tx_id,booked_on,amount_minor,currency,direction,description\nz-1,not-a-date,abc,GBP,debit,x")
+      denied <- Bank.importCsv(
+        xa,
+        marcia,
+        coutts,
+        "provider_tx_id,booked_on,amount_minor,currency,direction,description\ny-1,2026-01-01,100,GBP,debit,x"
+      )
+      bad <- Bank.importCsv(
+        xa,
+        toby,
+        coutts,
+        "provider_tx_id,booked_on,amount_minor,currency,direction,description\nz-1,not-a-date,abc,GBP,debit,x"
+      )
     } yield expect(denied.left.exists(_._1.code == 403)) and expect(bad.left.exists(_._1.code == 400))
   }
 }

@@ -20,33 +20,62 @@ import sttp.tapir.server.ServerEndpoint
 import java.util.{Base64, UUID}
 import scala.util.Try
 
-/** F05 — the in-house evidence store. Originals are write-once (immutable) in the
-  * `ObjectStore`; metadata + polymorphic links live in Postgres. Principal-private
-  * documents are invisible to Manager/Staff (server-side); property-bound documents
-  * respect scope. Download is a short-lived presigned URL (no public objects). */
+/** F05 — the in-house evidence store. Originals are write-once (immutable) in the `ObjectStore`; metadata + polymorphic
+  * links live in Postgres. Principal-private documents are invisible to Manager/Staff (server-side); property-bound
+  * documents respect scope. Download is a short-lived presigned URL (no public objects).
+  */
 object Documents {
   private type Out[A] = Either[(StatusCode, ApiError), A]
   private val PRESIGN_TTL = 300 // seconds
 
-  final case class DocumentView(id: UUID, name: String, category: String, contentType: Option[String],
-                                sizeBytes: Option[Long], sha256: Option[String], visibility: String,
-                                source: String, propertyId: Option[UUID], immutable: Boolean)
-  final case class UploadReq(name: String, category: String, contentType: String, contentBase64: String,
-                             visibility: Option[String], source: Option[String], propertyId: Option[UUID])
+  final case class DocumentView(
+      id: UUID,
+      name: String,
+      category: String,
+      contentType: Option[String],
+      sizeBytes: Option[Long],
+      sha256: Option[String],
+      visibility: String,
+      source: String,
+      propertyId: Option[UUID],
+      immutable: Boolean
+  )
+  final case class UploadReq(
+      name: String,
+      category: String,
+      contentType: String,
+      contentBase64: String,
+      visibility: Option[String],
+      source: Option[String],
+      propertyId: Option[UUID]
+  )
   final case class UploadResult(document: DocumentView, deduped: Boolean)
   final case class LinkReq(targetType: String, targetId: UUID, role: Option[String])
   final case class PresignResult(url: String, expiresInSeconds: Int)
   final case class OkResult(ok: Boolean)
 
   private def view(d: Document): DocumentView =
-    DocumentView(d.id, d.name, d.category, d.contentType, d.sizeBytes, d.sha256, d.visibility, d.source, d.propertyId, d.immutable)
+    DocumentView(
+      d.id,
+      d.name,
+      d.category,
+      d.contentType,
+      d.sizeBytes,
+      d.sha256,
+      d.visibility,
+      d.source,
+      d.propertyId,
+      d.immutable
+    )
 
-  private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "not permitted on document"))
-  private val notFound: (StatusCode, ApiError)  = (StatusCode.NotFound, ApiError(404, "not_found", "No such document."))
+  private val forbidden: (StatusCode, ApiError) =
+    (StatusCode.Forbidden, ApiError(403, "forbidden", "not permitted on document"))
+  private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such document."))
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
-  /** A document is visible to a principal iff: not principal-private (unless Principal),
-    * and (no property, or property in scope). */
+  /** A document is visible to a principal iff: not principal-private (unless Principal), and (no property, or property
+    * in scope).
+    */
   private def visibleTo(p: Principal, d: Document, scoped: Set[UUID]): Boolean =
     (d.visibility != "principal_private" || p.role == "principal") &&
       d.propertyId.forall(scoped.contains)
@@ -60,44 +89,62 @@ object Documents {
     Try(Base64.getDecoder.decode(req.contentBase64)).toEither match {
       case Left(_) => IO.pure(Left(badReq("contentBase64 is not valid base64")))
       case Right(bytes) =>
-        val sha        = ObjectStore.sha256Hex(bytes)
+        val sha = ObjectStore.sha256Hex(bytes)
         val visibility = req.visibility.getOrElse("household")
-        val source     = req.source.getOrElse("manual")
-        val id         = UUID.randomUUID()
-        val key        = s"documents/${p.userId}/$id/original.${extOf(req.name)}"
+        val source = req.source.getOrElse("manual")
+        val id = UUID.randomUUID()
+        val key = s"documents/${p.userId}/$id/original.${extOf(req.name)}"
 
         val pre: ConnectionIO[Out[Either[Document, Unit]]] = for {
-          authz  <- Authz.authorizer(p.role)
+          authz <- Authz.authorizer(p.role)
           scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
-          dup    <- DocumentRepo.findBySha256(sha)
+          dup <- DocumentRepo.findBySha256(sha)
         } yield {
           if (!authz.can(Level.Write, "document")) Left(forbidden)
           else if (visibility == "principal_private" && p.role != "principal") Left(forbidden)
           else if (req.propertyId.exists(pid => !scoped.contains(pid))) Left(notFound)
-          else dup.filter(d => visibleTo(p, d, scoped)) match {
-            case Some(d) => Right(Left(d))   // dedup hit
-            case None    => Right(Right(()))  // proceed
-          }
+          else
+            dup.filter(d => visibleTo(p, d, scoped)) match {
+              case Some(d) => Right(Left(d)) // dedup hit
+              case None => Right(Right(())) // proceed
+            }
         }
 
         pre.transact(xa).flatMap {
-          case Left(err)             => IO.pure(Left(err))
+          case Left(err) => IO.pure(Left(err))
           case Right(Left(existing)) => IO.pure(Right(UploadResult(view(existing), deduped = true)))
           case Right(Right(())) =>
             store.put(key, req.contentType, bytes) *>
               DocumentRepo
-                .insert(id, p.userId, req.name, req.category, Some(req.contentType), Some(bytes.length.toLong), key, sha, visibility, source, req.propertyId)
+                .insert(
+                  id,
+                  p.userId,
+                  req.name,
+                  req.category,
+                  Some(req.contentType),
+                  Some(bytes.length.toLong),
+                  key,
+                  sha,
+                  visibility,
+                  source,
+                  req.propertyId
+                )
                 .transact(xa)
                 .map(d => Right(UploadResult(view(d), deduped = false)))
         }
     }
   }
 
-  def list(xa: Transactor[IO], p: Principal, category: Option[String], q: Option[String]): IO[Out[List[DocumentView]]] = {
+  def list(
+      xa: Transactor[IO],
+      p: Principal,
+      category: Option[String],
+      q: Option[String]
+  ): IO[Out[List[DocumentView]]] = {
     val tx = for {
-      authz  <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
-      docs   <- if (authz.canRead("document")) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
+      docs <- if (authz.canRead("document")) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
     } yield
       if (!authz.canRead("document")) Left(forbidden)
       else Right(docs.filter(d => visibleTo(p, d, scoped)).map(view))
@@ -107,9 +154,9 @@ object Documents {
   /** Load + authorize a single document for a read op; Right(doc) or the right error. */
   private def readable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
     val tx = for {
-      authz  <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
-      doc    <- DocumentRepo.find(id)
+      doc <- DocumentRepo.find(id)
     } yield
       if (!authz.canRead("document")) Left(forbidden)
       else doc.filter(d => visibleTo(p, d, scoped)).toRight(notFound)
@@ -121,10 +168,10 @@ object Documents {
 
   def download(store: ObjectStore, xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PresignResult]] =
     readable(xa, p, id).flatMap {
-      case Left(e)    => IO.pure(Left(e))
+      case Left(e) => IO.pure(Left(e))
       case Right(doc) =>
         doc.s3Key match {
-          case None    => IO.pure(Left(notFound))
+          case None => IO.pure(Left(notFound))
           case Some(k) => store.presignGet(k, PRESIGN_TTL).map(url => Right(PresignResult(url, PRESIGN_TTL)))
         }
     }
@@ -132,11 +179,11 @@ object Documents {
   /** Load + authorize for a write op (link/delete): 404 if not visible, 403 if no write. */
   private def writable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
     val tx = for {
-      authz  <- Authz.authorizer(p.role)
+      authz <- Authz.authorizer(p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
-      doc    <- DocumentRepo.find(id)
+      doc <- DocumentRepo.find(id)
     } yield doc.filter(d => visibleTo(p, d, scoped)) match {
-      case None    => Left(notFound)
+      case None => Left(notFound)
       case Some(d) => if (authz.can(Level.Write, "document")) Right(d) else Left(forbidden)
     }
     tx.transact(xa)
@@ -144,13 +191,14 @@ object Documents {
 
   def addLink(xa: Transactor[IO], p: Principal, id: UUID, req: LinkReq): IO[Out[OkResult]] =
     writable(xa, p, id).flatMap {
-      case Left(e)  => IO.pure(Left(e))
-      case Right(_) => DocumentRepo.link(id, req.targetType, req.targetId, req.role).transact(xa).as(Right(OkResult(true)))
+      case Left(e) => IO.pure(Left(e))
+      case Right(_) =>
+        DocumentRepo.link(id, req.targetType, req.targetId, req.role).transact(xa).as(Right(OkResult(true)))
     }
 
   def softDelete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[OkResult]] =
     writable(xa, p, id).flatMap {
-      case Left(e)  => IO.pure(Left(e))
+      case Left(e) => IO.pure(Left(e))
       case Right(_) => DocumentRepo.softDelete(id).transact(xa).as(Right(OkResult(true)))
     }
 
@@ -158,32 +206,56 @@ object Documents {
   private val err = statusCode.and(jsonBody[ApiError])
 
   val uploadEndpoint: Endpoint[String, UploadReq, (StatusCode, ApiError), UploadResult, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "documents").in(jsonBody[UploadReq]).errorOut(err).out(jsonBody[UploadResult])
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents")
+      .in(jsonBody[UploadReq])
+      .errorOut(err)
+      .out(jsonBody[UploadResult])
       .summary("Upload a document (write-once original + sha256; dedup by checksum)")
 
-  val listEndpoint: Endpoint[String, (Option[String], Option[String]), (StatusCode, ApiError), List[DocumentView], Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "documents").in(query[Option[String]]("category")).in(query[Option[String]]("q"))
-      .errorOut(err).out(jsonBody[List[DocumentView]]).summary("List documents (visibility + scope filtered)")
+  val listEndpoint
+      : Endpoint[String, (Option[String], Option[String]), (StatusCode, ApiError), List[DocumentView], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents")
+      .in(query[Option[String]]("category"))
+      .in(query[Option[String]]("q"))
+      .errorOut(err)
+      .out(jsonBody[List[DocumentView]])
+      .summary("List documents (visibility + scope filtered)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), DocumentView, Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "documents" / path[UUID]("id")).errorOut(err).out(jsonBody[DocumentView]).summary("Document metadata")
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id"))
+      .errorOut(err)
+      .out(jsonBody[DocumentView])
+      .summary("Document metadata")
 
   val downloadEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), PresignResult, Any] =
-    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
-      .in("api" / "documents" / path[UUID]("id") / "download").errorOut(err).out(jsonBody[PresignResult])
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id") / "download")
+      .errorOut(err)
+      .out(jsonBody[PresignResult])
       .summary("A short-lived presigned download URL")
 
   val linkEndpoint: Endpoint[String, (UUID, LinkReq), (StatusCode, ApiError), OkResult, Any] =
-    sttp.tapir.endpoint.post.securityIn(auth.bearer[String]())
-      .in("api" / "documents" / path[UUID]("id") / "links").in(jsonBody[LinkReq]).errorOut(err).out(jsonBody[OkResult])
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id") / "links")
+      .in(jsonBody[LinkReq])
+      .errorOut(err)
+      .out(jsonBody[OkResult])
       .summary("Attach a document to a target (polymorphic)")
 
   val deleteEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), OkResult, Any] =
-    sttp.tapir.endpoint.delete.securityIn(auth.bearer[String]())
-      .in("api" / "documents" / path[UUID]("id")).errorOut(err).out(jsonBody[OkResult])
+    sttp.tapir.endpoint.delete
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id"))
+      .errorOut(err)
+      .out(jsonBody[OkResult])
       .summary("Soft-delete (metadata only; the original is retained)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO], store: ObjectStore): List[ServerEndpoint[Any, IO]] = List(
@@ -192,8 +264,9 @@ object Documents {
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     downloadEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => download(store, xa, p, id)),
     linkEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addLink(xa, p, id, r) }),
-    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => softDelete(xa, p, id)),
+    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => softDelete(xa, p, id))
   )
 
-  val endpoints: List[AnyEndpoint] = List(uploadEndpoint, listEndpoint, detailEndpoint, downloadEndpoint, linkEndpoint, deleteEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(uploadEndpoint, listEndpoint, detailEndpoint, downloadEndpoint, linkEndpoint, deleteEndpoint)
 }

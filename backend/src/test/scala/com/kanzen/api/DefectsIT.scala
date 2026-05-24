@@ -20,14 +20,15 @@ object DefectsIT extends IOSuite {
 
   private val wardian = UUID.fromString("20000000-0000-0000-0000-000000000001")
   private def manager = Principal(UUID.randomUUID(), "m", "lorna@kanzen.local", "manager")
-  private def marcia  = Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "marcia", "marcia@kanzen.local", "staff")
+  private def marcia =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "marcia", "marcia@kanzen.local", "staff")
 
   test("AC5 — staff may raise a defect, but not transition it nor edit a location") { xa =>
     for {
       raised <- Defects.raise(xa, marcia, RaiseReq(wardian, None, "Leaking tap", Some("Kitchen tap drips"), "medium"))
       d = raised.toOption.get
       transition <- Defects.transition(xa, marcia, d.id, "in_progress")
-      editLoc    <- Locations.create(xa, marcia, CreateReq(wardian, None, "room", "Nope", None, None, None))
+      editLoc <- Locations.create(xa, marcia, CreateReq(wardian, None, "room", "Nope", None, None, None))
     } yield expect(d.reportedBy.contains(marcia.userId)) and
       expect(d.status == "open") and
       expect(transition.left.exists(_._1.code == 403)) and // field-level deny on defect.status
@@ -38,10 +39,10 @@ object DefectsIT extends IOSuite {
     val prog = for {
       raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "Cracked tile", None, "low"))
       d = raised.toOption.get
-      _    <- Defects.transition(xa, manager, d.id, "in_progress")
-      _    <- Defects.transition(xa, manager, d.id, "resolved")
+      _ <- Defects.transition(xa, manager, d.id, "in_progress")
+      _ <- Defects.transition(xa, manager, d.id, "resolved")
       resolvedSet <- DefectRepo.resolvedAtSet(d.id).transact(xa)
-      _    <- Defects.transition(xa, manager, d.id, "open") // reopen
+      _ <- Defects.transition(xa, manager, d.id, "open") // reopen
       afterReopen <- DefectRepo.resolvedAtSet(d.id).transact(xa)
       listed <- Defects.list(xa, manager, wardian, Some("open"))
     } yield (d, resolvedSet, afterReopen, listed)
@@ -54,13 +55,15 @@ object DefectsIT extends IOSuite {
   test("an invalid status is rejected (400)") { xa =>
     for {
       raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "X", None, "low"))
-      bad    <- Defects.transition(xa, manager, raised.toOption.get.id, "banana")
+      bad <- Defects.transition(xa, manager, raised.toOption.get.id, "banana")
     } yield expect(bad.left.exists(_._1.code == 400))
   }
 
   test("a scoped staff member cannot raise on an out-of-scope property (404, no leak)") { xa =>
     val siti = Principal(UUID.fromString("10000000-0000-0000-0000-000000000004"), "siti", "siti@kanzen.local", "staff")
-    Defects.raise(xa, siti, RaiseReq(wardian, None, "Sneaky", None, "low")).map(r => expect(r.left.exists(_._1.code == 404)))
+    Defects
+      .raise(xa, siti, RaiseReq(wardian, None, "Sneaky", None, "low"))
+      .map(r => expect(r.left.exists(_._1.code == 404)))
   }
 
   test("manager can edit defect particulars") { xa =>

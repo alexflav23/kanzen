@@ -21,11 +21,11 @@ object LocationDeleteIT extends IOSuite {
 
   test("deleting a location with children is blocked; an empty leaf soft-deletes") { xa =>
     for {
-      parent  <- Locations.create(xa, manager, req(None, "room", "Study")).map(_.toOption.get)
-      child   <- Locations.create(xa, manager, req(Some(parent.id), "shelf", "Shelf")).map(_.toOption.get)
+      parent <- Locations.create(xa, manager, req(None, "room", "Study")).map(_.toOption.get)
+      child <- Locations.create(xa, manager, req(Some(parent.id), "shelf", "Shelf")).map(_.toOption.get)
       blocked <- Locations.delete(xa, manager, parent.id)
-      okLeaf  <- Locations.delete(xa, manager, child.id)
-      tree    <- Locations.tree(xa, manager, wardian).map(_.toOption.get)
+      okLeaf <- Locations.delete(xa, manager, child.id)
+      tree <- Locations.tree(xa, manager, wardian).map(_.toOption.get)
     } yield expect(blocked.left.exists(_._1.code == 400)) and
       expect(okLeaf.isRight) and
       expect(!tree.exists(_.id == child.id)) and

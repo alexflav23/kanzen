@@ -19,18 +19,28 @@ final case class BankTx(
     direction: String,
     description: Option[String],
     merchant: Option[String],
-    reconciliationState: String,
+    reconciliationState: String
 )
-final case class TxIn(providerTxId: String, bookedOn: LocalDate, amountMinor: Long, currency: String, direction: String, description: String)
+final case class TxIn(
+    providerTxId: String,
+    bookedOn: LocalDate,
+    amountMinor: Long,
+    currency: String,
+    direction: String,
+    description: String
+)
 
-/** F12 — bank accounts + idempotent transaction ingestion (dedup by provider tx id).
-  * AIS read-only: Kanzen records reality, it never moves money. */
+/** F12 — bank accounts + idempotent transaction ingestion (dedup by provider tx id). AIS read-only: Kanzen records
+  * reality, it never moves money.
+  */
 object BankRepo {
-  private val txCols = fr"id, provider_tx_id, booked_on, amount_minor, currency, direction, description, merchant, reconciliation_state"
+  private val txCols =
+    fr"id, provider_tx_id, booked_on, amount_minor, currency, direction, description, merchant, reconciliation_state"
 
   def createAccount(name: String, currency: String, kind: Option[String]): ConnectionIO[BankAccount] =
     sql"insert into financial_accounts (name, currency, kind) values ($name, $currency, $kind) returning id, name, currency, kind"
-      .query[BankAccount].unique
+      .query[BankAccount]
+      .unique
 
   def listAccounts: ConnectionIO[List[BankAccount]] =
     sql"select id, name, currency, kind from financial_accounts order by name".query[BankAccount].to[List]
@@ -38,31 +48,39 @@ object BankRepo {
   def accountExists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from financial_accounts where id = $id)".query[Boolean].unique
 
-  /** Ingest a batch; returns the number of NEW rows (re-ingesting the same batch inserts 0).
-    * F37 AC1: the rate-to-base for each tx is captured at ingestion from the snapshot for its
-    * own `booked_on` date and stored permanently — `on conflict do nothing` means a later
-    * sync never overwrites the historical rate with today's. Native amount stays the truth. */
+  /** Ingest a batch; returns the number of NEW rows (re-ingesting the same batch inserts 0). F37 AC1: the rate-to-base
+    * for each tx is captured at ingestion from the snapshot for its own `booked_on` date and stored permanently — `on
+    * conflict do nothing` means a later sync never overwrites the historical rate with today's. Native amount stays the
+    * truth.
+    */
   def ingest(accountId: UUID, txs: List[TxIn]): ConnectionIO[Int] =
-    txs.traverse { t =>
-      FxRepo.toBaseOn(t.currency, t.bookedOn).flatMap { fxRate =>
-        val fxAsOf = fxRate.map(_ => t.bookedOn)
-        sql"""insert into bank_transactions (account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description, fx_rate_to_base, fx_as_of)
+    txs
+      .traverse { t =>
+        FxRepo.toBaseOn(t.currency, t.bookedOn).flatMap { fxRate =>
+          val fxAsOf = fxRate.map(_ => t.bookedOn)
+          sql"""insert into bank_transactions (account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description, fx_rate_to_base, fx_as_of)
               values ($accountId, ${t.providerTxId}, ${t.bookedOn}, ${t.amountMinor}, ${t.currency}, ${t.direction}, ${t.description}, $fxRate, $fxAsOf)
               on conflict (account_id, provider_tx_id) do nothing""".update.run
+        }
       }
-    }.map(_.sum)
+      .map(_.sum)
 
   /** The captured rate-to-base + as-of for a transaction (F37 AC1 — proves it isn't restated). */
   def fxOf(txId: UUID): ConnectionIO[Option[(Option[Double], Option[LocalDate])]] =
     sql"select fx_rate_to_base, fx_as_of from bank_transactions where id = $txId"
-      .query[(Option[Double], Option[LocalDate])].option
+      .query[(Option[Double], Option[LocalDate])]
+      .option
 
   def list(accountId: UUID): ConnectionIO[List[BankTx]] =
-    (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId order by booked_on desc").query[BankTx].to[List]
+    (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId order by booked_on desc")
+      .query[BankTx]
+      .to[List]
 
   def findTx(id: UUID): ConnectionIO[Option[BankTx]] =
     (fr"select" ++ txCols ++ fr"from bank_transactions where id = $id").query[BankTx].option
 
   def unmatched(accountId: UUID): ConnectionIO[List[BankTx]] =
-    (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId and reconciliation_state = 'unmatched' order by booked_on desc").query[BankTx].to[List]
+    (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId and reconciliation_state = 'unmatched' order by booked_on desc")
+      .query[BankTx]
+      .to[List]
 }

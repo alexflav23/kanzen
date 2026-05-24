@@ -8,8 +8,9 @@ import io.circe.Json
 
 import java.util.UUID
 
-/** F34 — the in-app notification record. Insert is idempotent (unique on event_id+user_id),
-  * so a redelivered event never double-notifies. */
+/** F34 — the in-app notification record. Insert is idempotent (unique on event_id+user_id), so a redelivered event
+  * never double-notifies.
+  */
 final case class Notification(
     id: UUID,
     `type`: String,
@@ -19,7 +20,7 @@ final case class Notification(
     subjectId: Option[UUID],
     channelsSent: Json,
     readAt: Option[String],
-    createdAt: String,
+    createdAt: String
 )
 
 object NotificationRepo {
@@ -32,7 +33,7 @@ object NotificationRepo {
       body: Option[String],
       subjectType: Option[String],
       subjectId: Option[UUID],
-      channels: Json,
+      channels: Json
   ): ConnectionIO[Int] =
     sql"""insert into notifications (user_id, owner_id, event_id, type, title, body, subject_type, subject_id, channels_sent)
           values ($userId, $ownerId, $eventId, $typ, $title, $body, $subjectType, $subjectId, $channels)
@@ -41,7 +42,8 @@ object NotificationRepo {
   def forUser(userId: UUID): ConnectionIO[List[Notification]] =
     sql"""select id, type, title, body, subject_type, subject_id, channels_sent, read_at::text, created_at::text
           from notifications where user_id = $userId order by created_at desc limit 100"""
-      .query[Notification].to[List]
+      .query[Notification]
+      .to[List]
 
   def unreadCount(userId: UUID): ConnectionIO[Long] =
     sql"select count(*) from notifications where user_id = $userId and read_at is null".query[Long].unique

@@ -8,8 +8,9 @@ import java.util.UUID
 
 final case class Device(id: UUID, platform: String, token: String, lastSeenAt: String)
 
-/** F34 — push device registry. Re-registering the same token refreshes `last_seen_at`
-  * (token rotation/expiry handling, §8). */
+/** F34 — push device registry. Re-registering the same token refreshes `last_seen_at` (token rotation/expiry handling,
+  * §8).
+  */
 object DeviceRepo {
   def register(userId: UUID, platform: String, token: String): ConnectionIO[UUID] =
     sql"""insert into device_tokens (user_id, platform, token) values ($userId, $platform, $token)

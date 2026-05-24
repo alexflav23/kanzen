@@ -9,14 +9,21 @@ import io.circe.Json
 import java.util.UUID
 
 /** A subscription joined to its user's role (the role drives F02 trimming at fan-out). */
-final case class Subscription(id: UUID, userId: UUID, ownerId: UUID, role: String, pattern: String, channels: Json, active: Boolean)
+final case class Subscription(
+    id: UUID,
+    userId: UUID,
+    ownerId: UUID,
+    role: String,
+    pattern: String,
+    channels: Json,
+    active: Boolean
+)
 
 object SubscriptionRepo {
 
-  /** True if a subscription's glob matches a concrete event type:
-    *   `*`            → everything
-    *   `task.*`       → any `task.…`
-    *   `task.completed` → exact. */
+  /** True if a subscription's glob matches a concrete event type: `*` → everything `task.*` → any `task.…`
+    * `task.completed` → exact.
+    */
   def matches(pattern: String, eventType: String): Boolean =
     pattern == "*" ||
       pattern == eventType ||

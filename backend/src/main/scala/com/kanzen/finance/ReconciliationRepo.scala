@@ -12,12 +12,15 @@ object ReconciliationService {
 }
 
 object ReconciliationRepo {
+
   /** Match a bank transaction to a receipt; marks the transaction reconciled. */
   def matchTxnToReceipt(txnId: UUID, receiptId: UUID, amountMinor: Long): ConnectionIO[UUID] =
     for {
       m <- sql"insert into reconciliation_matches (state) values ('matched') returning id".query[UUID].unique
-      _ <- sql"insert into match_members (match_id, member_type, member_id, amount_minor) values ($m, 'transaction', $txnId, $amountMinor)".update.run
-      _ <- sql"insert into match_members (match_id, member_type, member_id, amount_minor) values ($m, 'receipt', $receiptId, $amountMinor)".update.run
+      _ <-
+        sql"insert into match_members (match_id, member_type, member_id, amount_minor) values ($m, 'transaction', $txnId, $amountMinor)".update.run
+      _ <-
+        sql"insert into match_members (match_id, member_type, member_id, amount_minor) values ($m, 'receipt', $receiptId, $amountMinor)".update.run
       _ <- sql"update bank_transactions set reconciliation_state = 'matched' where id = $txnId".update.run
     } yield m
 

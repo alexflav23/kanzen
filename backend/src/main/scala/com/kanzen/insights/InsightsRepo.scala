@@ -5,6 +5,7 @@ import doobie.implicits._
 
 /** F29 — aggregate reporting (native-currency; cross-currency rollups via F37). */
 object InsightsRepo {
+
   /** Sum of each asset's latest 'market' valuation. */
   def totalMarketValueMinor: ConnectionIO[Long] =
     sql"""select coalesce(sum(v.amount_minor), 0) from (

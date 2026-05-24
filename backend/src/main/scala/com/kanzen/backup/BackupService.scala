@@ -20,7 +20,7 @@ object BackupService {
       "schema_version" -> schemaVersion.asJson,
       "object_counts" -> counts.asJson,
       "checksum_algorithm" -> "sha256".asJson,
-      "counts_checksum" -> checksum(canonical).asJson,
+      "counts_checksum" -> checksum(canonical).asJson
     )
   }
 
@@ -35,25 +35,27 @@ object BackupService {
   /** The full archive manifest: counts + per-section checksums + schema/version. */
   def archiveManifest(sections: Map[String, Json]): Json = {
     val counts = sections.map { case (k, v) => k -> v.asArray.map(_.size.toLong).getOrElse(0L) }
-    val sums   = sectionChecksums(sections)
+    val sums = sectionChecksums(sections)
     Json.obj(
-      "export_version"      -> exportVersion.asJson,
-      "schema_version"      -> schemaVersion.asJson,
-      "checksum_algorithm"  -> "sha256".asJson,
-      "object_counts"       -> counts.asJson,
-      "section_checksums"   -> sums.asJson,
+      "export_version" -> exportVersion.asJson,
+      "schema_version" -> schemaVersion.asJson,
+      "checksum_algorithm" -> "sha256".asJson,
+      "object_counts" -> counts.asJson,
+      "section_checksums" -> sums.asJson
     )
   }
 
   /** Recompute section checksums and compare to the manifest's — itemised mismatches (AC2). */
   def validate(sections: Map[String, Json], manifest: Json, currentSchema: String): (Boolean, List[String]) = {
     val claimed = manifest.hcursor.get[Map[String, String]]("section_checksums").getOrElse(Map.empty)
-    val actual  = sectionChecksums(sections)
+    val actual = sectionChecksums(sections)
     val mismatches = (claimed.keySet ++ actual.keySet).toList.sorted.collect {
       case k if claimed.get(k) != actual.get(k) => s"$k: checksum mismatch (archive tampered or incomplete)"
     }
     val mSchema = manifest.hcursor.get[String]("schema_version").getOrElse("")
-    val schemaNote = if (restoreCompatible(mSchema, currentSchema)) Nil else List(s"schema $mSchema not restorable into $currentSchema")
+    val schemaNote =
+      if (restoreCompatible(mSchema, currentSchema)) Nil
+      else List(s"schema $mSchema not restorable into $currentSchema")
     val errors = mismatches ++ schemaNote
     (errors.isEmpty, errors)
   }

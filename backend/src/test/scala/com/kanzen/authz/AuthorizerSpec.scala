@@ -13,7 +13,7 @@ class AuthorizerSpec extends AnyFreeSpec with Matchers {
       Rule("asset", None, Write),
       Rule("asset", Some("market_value"), Deny),
       Rule("asset_event", None, Write),
-      Rule("ledger", None, Deny),
+      Rule("ledger", None, Deny)
     )
   )
   val maintenance = Authorizer(
@@ -21,7 +21,7 @@ class AuthorizerSpec extends AnyFreeSpec with Matchers {
       Rule("asset", None, Read),
       Rule("asset", Some("acquisition_cost"), Deny),
       Rule("asset", Some("market_value"), Deny),
-      Rule("asset_event", None, Write),
+      Rule("asset_event", None, Write)
     )
   )
 

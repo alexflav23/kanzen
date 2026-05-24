@@ -15,7 +15,13 @@ object ReceiptRepo {
     sql"""insert into receipts (merchant, total_minor, currency) values ($merchant, $totalMinor, $currency)
           returning id, total_minor, currency, status""".query[Receipt].unique
 
-  def addLineItem(receiptId: UUID, lineNo: Int, description: Option[String], totalMinor: Option[Long], suggestedCategory: Option[String]): ConnectionIO[LineItem] =
+  def addLineItem(
+      receiptId: UUID,
+      lineNo: Int,
+      description: Option[String],
+      totalMinor: Option[Long],
+      suggestedCategory: Option[String]
+  ): ConnectionIO[LineItem] =
     sql"""insert into receipt_line_items (receipt_id, line_no, description, total_minor, suggested_category)
           values ($receiptId, $lineNo, $description, $totalMinor, $suggestedCategory)
           returning id, description, confirmed_category, status""".query[LineItem].unique
@@ -25,5 +31,6 @@ object ReceiptRepo {
 
   def lineItems(receiptId: UUID): ConnectionIO[List[LineItem]] =
     sql"select id, description, confirmed_category, status from receipt_line_items where receipt_id = $receiptId order by line_no"
-      .query[LineItem].to[List]
+      .query[LineItem]
+      .to[List]
 }

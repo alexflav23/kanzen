@@ -14,9 +14,23 @@ object ListIT extends IOSuite {
   test("staff proposes an item (needs approval) -> Principal approves -> added; recurring goes straight in") { xa =>
     val prog = for {
       list <- ListRepo.createList(None, "Wardian household supplies", Some("Waitrose"))
-      doveProposed <- ListRepo.addItem(list, "Dove Shower Gel", 2, recurring = false, Some("https://amazon.co.uk/dove"), proposedByStaff = true)
+      doveProposed <- ListRepo.addItem(
+        list,
+        "Dove Shower Gel",
+        2,
+        recurring = false,
+        Some("https://amazon.co.uk/dove"),
+        proposedByStaff = true
+      )
       _ <- ListRepo.approve(doveProposed.id)
-      eggs <- ListRepo.addItem(list, "Eggs (Burford Brown)", 1, recurring = true, Some("https://harrods.com/eggs"), proposedByStaff = true)
+      eggs <- ListRepo.addItem(
+        list,
+        "Eggs (Burford Brown)",
+        1,
+        recurring = true,
+        Some("https://harrods.com/eggs"),
+        proposedByStaff = true
+      )
       items <- ListRepo.items(list)
     } yield (doveProposed, eggs, items)
 

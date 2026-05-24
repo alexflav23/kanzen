@@ -9,14 +9,14 @@ import org.http4s.HttpRoutes
 import sttp.tapir.server.http4s.Http4sServerInterpreter
 import sttp.tapir.swagger.bundle.SwaggerInterpreter
 
-/** Phase 0/1 — assembles the `/api` surface: public health, the secured endpoints,
-  * Swagger/OpenAPI at `/docs`, and (local only) the dev token mint. Every later
-  * feature adds its routes here. */
+/** Phase 0/1 — assembles the `/api` surface: public health, the secured endpoints, Swagger/OpenAPI at `/docs`, and
+  * (local only) the dev token mint. Every later feature adds its routes here.
+  */
 object Api {
   def routes(auth: Auth, xa: Transactor[IO], store: ObjectStore, dev: Option[DevAuth]): HttpRoutes[IO] = {
-    val interp   = Http4sServerInterpreter[IO]()
-    val devEps   = dev.map(Dev.serverEndpoint).toList
-    val secured  = interp.toRoutes(
+    val interp = Http4sServerInterpreter[IO]()
+    val devEps = dev.map(Dev.serverEndpoint).toList
+    val secured = interp.toRoutes(
       List(Me.serverEndpoint(auth)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
         ++ Assets.serverEndpoints(auth, xa) ++ Valuations.serverEndpoints(auth, xa)
@@ -34,13 +34,16 @@ object Api {
         ++ Restructure.serverEndpoints(auth, xa) ++ Calendar.serverEndpoints(auth, xa)
         ++ Agent.serverEndpoints(auth, xa) ++ Search.serverEndpoints(auth, xa) ++ NlQuery.serverEndpoints(auth, xa)
         ++ Backup.serverEndpoints(auth, xa)
-        ++ Wealth.serverEndpoints(auth, xa) ++ Investments.serverEndpoints(auth, xa) ++ devEps)
-    val swagger  = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
+        ++ Wealth.serverEndpoints(auth, xa) ++ Investments.serverEndpoints(auth, xa) ++ devEps
+    )
+    val swagger = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++
-      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ Backup.endpoints ++ Wealth.endpoints ++ Investments.endpoints ++ dev.map(_ => Dev.endpoint).toList
-    val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
+      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ Backup.endpoints ++ Wealth.endpoints ++ Investments.endpoints ++ dev
+        .map(_ => Dev.endpoint)
+        .toList
+    val docs = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }
 }

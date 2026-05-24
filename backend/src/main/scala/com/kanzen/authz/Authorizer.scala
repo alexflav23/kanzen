@@ -7,19 +7,18 @@ object Level {
   case object Write extends Level(2)
   case object Admin extends Level(3)
   def parse(s: String): Level = s.toLowerCase match {
-    case "read"  => Read
+    case "read" => Read
     case "write" => Write
     case "admin" => Admin
-    case _       => Deny
+    case _ => Deny
   }
 }
 
 final case class Rule(resource: String, field: Option[String], level: Level)
 
-/** F02 — resource/field-level RBAC policy engine. Default-deny; **most-specific wins**
-  * (field rule > resource rule > '*' wildcard). Field-level read filtering strips
-  * attributes a principal can't read — e.g. a "maintenance" role services an item
-  * (write `asset_event`) without ever seeing its price (read `asset.acquisition_cost` denied).
+/** F02 — resource/field-level RBAC policy engine. Default-deny; **most-specific wins** (field rule > resource rule >
+  * '*' wildcard). Field-level read filtering strips attributes a principal can't read — e.g. a "maintenance" role
+  * services an item (write `asset_event`) without ever seeing its price (read `asset.acquisition_cost` denied).
   */
 final case class Authorizer(rules: List[Rule]) {
   def level(resource: String, field: Option[String]): Level = {

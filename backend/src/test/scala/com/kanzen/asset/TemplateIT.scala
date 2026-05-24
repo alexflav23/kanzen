@@ -16,7 +16,7 @@ object TemplateIT extends IOSuite {
   test("a stored guitar template validates conforming + non-conforming attributes") { xa =>
     val schema = Json.arr(
       Json.obj("key" -> "maker".asJson, "type" -> "string".asJson, "required" -> true.asJson),
-      Json.obj("key" -> "year".asJson, "type" -> "number".asJson, "required" -> false.asJson),
+      Json.obj("key" -> "year".asJson, "type" -> "number".asJson, "required" -> false.asJson)
     )
     val prog = for {
       _ <- TemplateRepo.create("guitar", Some("Guitar"), schema)

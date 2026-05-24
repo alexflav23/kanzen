@@ -10,19 +10,22 @@ import weaver.IOSuite
 import java.time.LocalDate
 import java.util.UUID
 
-/** F06 — native tasks: operational (Staff/Manager/Principal); completing a recurring
-  * task spawns the next occurrence. */
+/** F06 — native tasks: operational (Staff/Manager/Principal); completing a recurring task spawns the next occurrence.
+  */
 object TasksApiIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  private val marcia = Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
-  private val lorna  = Principal(UUID.randomUUID(), "l", "lorna@kanzen.local", "manager")
+  private val marcia =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
+  private val lorna = Principal(UUID.randomUUID(), "l", "lorna@kanzen.local", "manager")
 
   test("seeded project + tasks are listable; a recurring task spawns its next occurrence on complete") { xa =>
     for {
       proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Test Project", None)).map(_.toOption.get)
-      t    <- Tasks.create(xa, lorna, CreateTaskReq(proj.id, "Recurring chore", Some(LocalDate.now), Some("weekly"))).map(_.toOption.get)
+      t <- Tasks
+        .create(xa, lorna, CreateTaskReq(proj.id, "Recurring chore", Some(LocalDate.now), Some("weekly")))
+        .map(_.toOption.get)
       done <- Tasks.complete(xa, lorna, t.id).map(_.toOption.get)
       list <- Tasks.list(xa, lorna, Some(proj.id)).map(_.toOption.get)
     } yield expect(done.completed == t.id) and
@@ -40,7 +43,7 @@ object TasksApiIT extends IOSuite {
   test("a non-recurring task completes without spawning a next") { xa =>
     for {
       proj <- Tasks.createProject(xa, lorna, CreateProjectReq("One-offs", None)).map(_.toOption.get)
-      t    <- Tasks.create(xa, lorna, CreateTaskReq(proj.id, "Fix the gate", None, None)).map(_.toOption.get)
+      t <- Tasks.create(xa, lorna, CreateTaskReq(proj.id, "Fix the gate", None, None)).map(_.toOption.get)
       done <- Tasks.complete(xa, lorna, t.id).map(_.toOption.get)
     } yield expect(done.nextTaskId.isEmpty)
   }

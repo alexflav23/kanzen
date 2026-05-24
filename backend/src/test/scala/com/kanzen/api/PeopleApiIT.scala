@@ -8,20 +8,25 @@ import weaver.IOSuite
 
 import java.util.UUID
 
-/** F10 — people/HR: manager roster (AC6), staff own-only + 403 for others (AC3),
-  * permit-expiry surfacing (AC1). Records are seeded (V2_28) linked to user accounts. */
+/** F10 — people/HR: manager roster (AC6), staff own-only + 403 for others (AC3), permit-expiry surfacing (AC1). Records
+  * are seeded (V2_28) linked to user accounts.
+  */
 object PeopleApiIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  private val lorna  = Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
-  private val marcia = Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
-  private val siti   = Principal(UUID.fromString("10000000-0000-0000-0000-000000000004"), "s", "siti@kanzen.local", "staff")
+  private val lorna =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
+  private val marcia =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
+  private val siti =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000004"), "s", "siti@kanzen.local", "staff")
   private val sitiRecord = UUID.fromString("50000000-0000-0000-0000-000000000004")
 
   test("AC6 — Manager sees the full roster") { xa =>
     People.list(xa, lorna).map {
-      case Right(rows) => expect(rows.exists(_.name == "Marcia")) and expect(rows.exists(_.name == "Siti")) and expect(rows.size >= 3)
+      case Right(rows) =>
+        expect(rows.exists(_.name == "Marcia")) and expect(rows.exists(_.name == "Siti")) and expect(rows.size >= 3)
       case Left((sc, _)) => failure(s"expected 200, got $sc")
     }
   }
@@ -39,7 +44,7 @@ object PeopleApiIT extends IOSuite {
 
   test("Staff can fetch their own record by id") { xa =>
     for {
-      own  <- People.list(xa, siti).map(_.toOption.get.head)
+      own <- People.list(xa, siti).map(_.toOption.get.head)
       self <- People.detail(xa, siti, own.id)
     } yield expect(self.toOption.exists(_.name == "Siti"))
   }
@@ -53,7 +58,7 @@ object PeopleApiIT extends IOSuite {
 
   test("only a Manager+ can create a person (staff 403)") { xa =>
     for {
-      ok     <- People.create(xa, lorna, People.CreateReq("New Hire", Some("Gardener"), Some("uk"), None, None, None, None))
+      ok <- People.create(xa, lorna, People.CreateReq("New Hire", Some("Gardener"), Some("uk"), None, None, None, None))
       denied <- People.create(xa, marcia, People.CreateReq("Nope", None, None, None, None, None, None))
     } yield expect(ok.isRight) and expect(denied.left.exists(_._1.code == 403))
   }

@@ -16,7 +16,7 @@ object AssetIT extends IOSuite {
     val attrs = Json.obj(
       "serial" -> Json.fromString("AP-12345"),
       "movement" -> Json.fromString("automatic"),
-      "case_mm" -> Json.fromInt(41),
+      "case_mm" -> Json.fromInt(41)
     )
     val prog = for {
       watches <- AssetRepo.createCategory("Watches", None)

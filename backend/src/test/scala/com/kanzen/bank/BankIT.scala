@@ -18,7 +18,7 @@ object BankIT extends IOSuite {
     val batch = List(
       TxIn("gc-1", today, 184000L, "GBP", "debit", "Hudson Sandler"),
       TxIn("gc-2", today, 4200L, "GBP", "debit", "Waitrose"),
-      TxIn("gc-3", today, 5000L, "GBP", "credit", "Refund"),
+      TxIn("gc-3", today, 5000L, "GBP", "credit", "Refund")
     )
     val prog = for {
       a <- BankRepo.createAccount("Coutts current", "GBP", Some("current"))

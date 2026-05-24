@@ -18,11 +18,11 @@ object AgentService {
   }
 
   def proposedActions(category: String): List[String] = category match {
-    case "Delivery"       => List("create_task", "create_event")
+    case "Delivery" => List("create_task", "create_event")
     case "Bill / Invoice" => List("file_document", "reconcile_bill")
-    case "Receipt"        => List("file_document", "create_receipt", "propose_asset")
-    case "Booking"        => List("create_event")
-    case _                => Nil
+    case "Receipt" => List("file_document", "create_receipt", "propose_asset")
+    case "Booking" => List("create_event")
+    case _ => Nil
   }
 }
 
@@ -34,7 +34,9 @@ object AgentRepo {
   }
 
   def propose(emailId: UUID, actionType: String): ConnectionIO[UUID] =
-    sql"insert into agent_actions (email_id, action_type) values ($emailId, $actionType) returning id".query[UUID].unique
+    sql"insert into agent_actions (email_id, action_type) values ($emailId, $actionType) returning id"
+      .query[UUID]
+      .unique
 
   def confirm(actionId: UUID): ConnectionIO[Int] =
     sql"update agent_actions set status = 'executed' where id = $actionId".update.run
@@ -54,4 +56,11 @@ object AgentRepo {
           join incoming_emails e on e.id = a.email_id where a.id = $actionId""".query[(String, String)].option
 }
 
-final case class AgentActionRow(id: UUID, emailId: UUID, actionType: String, status: String, category: Option[String], subject: Option[String])
+final case class AgentActionRow(
+    id: UUID,
+    emailId: UUID,
+    actionType: String,
+    status: String,
+    category: Option[String],
+    subject: Option[String]
+)

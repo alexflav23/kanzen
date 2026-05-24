@@ -13,7 +13,13 @@ object PaymentIT extends IOSuite {
 
   test("a manual payment can be marked paid; an auto payment cannot") { xa =>
     val prog = for {
-      pm <- PaymentRepo.createMethod("bank_account", "Coutts current", Some("1234"), Some("GBP"), Some("1Password: Coutts"))
+      pm <- PaymentRepo.createMethod(
+        "bank_account",
+        "Coutts current",
+        Some("1234"),
+        Some("GBP"),
+        Some("1Password: Coutts")
+      )
       manual <- PaymentRepo.schedule(None, Some(pm.id), 20000L, "GBP", "manual")
       auto <- PaymentRepo.schedule(None, Some(pm.id), 38420L, "GBP", "auto")
       manualMarked <- PaymentRepo.markPaid(manual.id)
