@@ -1,4 +1,6 @@
-# Kanzen local dev stack (F00). Postgres + TigerBeetle + LocalStack.
+# Kanzen local dev stack (F00). Postgres + LocalStack.
+# The general ledger lives in Postgres (ADR-001, specs/02-accounting-ledger-architecture.md) —
+# TigerBeetle was dropped: a family-office GL is Postgres-shaped, not exchange-grade infra.
 services:
   postgres:
     image: postgres:16
@@ -23,17 +25,5 @@ services:
     ports:
       - "4566:4566"
 
-  # TigerBeetle: ledger postings only (F18). Single-node dev cluster.
-  tigerbeetle:
-    image: ghcr.io/tigerbeetle/tigerbeetle:0.16.4
-    command: >
-      sh -c "tigerbeetle format --cluster=0 --replica=0 --replica-count=1 /data/0.tigerbeetle &&
-             tigerbeetle start --addresses=0.0.0.0:3033 /data/0.tigerbeetle"
-    ports:
-      - "3033:3033"
-    volumes:
-      - tbdata:/data
-
 volumes:
   pgdata:
-  tbdata:
