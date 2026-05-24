@@ -1,7 +1,9 @@
 import * as stylex from "@stylexjs/stylex";
 
-// F00 design tokens — warm-paper light theme, single indigo accent (SPEC §16),
-// ported from the prototype's CSS variables. Dark theme via createTheme later.
+// F00 design tokens — the variable *contract*. Default values are the
+// warm-paper LIGHT theme (SPEC §16); the dark theme overrides them via
+// createTheme (src/styles/themes/dark.stylex.ts). Every surface/ink/accent in
+// the app references these, so theming is a single switch.
 export const colors = stylex.defineVars({
   bg: "#faf8f5",
   bgElev: "#ffffff",
@@ -17,6 +19,7 @@ export const colors = stylex.defineVars({
   warn: "#b45309",
   warnSoft: "#fff7ed",
   danger: "#b91c1c",
+  dangerSoft: "#fdecec",
 });
 
 export const radius = stylex.defineVars({

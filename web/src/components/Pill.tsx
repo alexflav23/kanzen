@@ -16,7 +16,7 @@ const styles = stylex.create({
   },
   accent: { backgroundColor: colors.accentSoft, color: colors.accent },
   warn: { backgroundColor: colors.warnSoft, color: colors.warn },
-  danger: { backgroundColor: "#fdecec", color: colors.danger },
+  danger: { backgroundColor: colors.dangerSoft, color: colors.danger },
 });
 
 export type PillTone = "default" | "accent" | "warn" | "danger";

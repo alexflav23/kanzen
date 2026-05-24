@@ -8,6 +8,7 @@ import { Finance } from "./pages/Finance";
 import { Properties } from "./pages/Properties";
 import { PropertyBible } from "./pages/PropertyBible";
 import { People } from "./pages/People";
+import { ThemeToggle } from "./theme/ThemeContext";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
@@ -55,6 +56,7 @@ export function App() {
               ))}
             </div>
           ))}
+          <ThemeToggle />
         </nav>
         <main {...stylex.props(styles.main)}>
           <Routes>
