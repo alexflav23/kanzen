@@ -2,28 +2,52 @@
 
 Implementation lives on the **`build`** branch (the plan + specs are on `spec`). Built strictly to the specs in `specs/` and the conventions in `CLAUDE.md`.
 
-## ✅ All 38 features (F00–F37) implemented & test-backed
-A real, compiling, **fully test-backed** implementation across backend + web + mobile, demonstrating **every test type**. *(External integrations — Cognito, GoCardless, Bedrock, Google, TigerBeetle, S3, Pulsar — are implemented at the data-model + core-logic level with adapters/stubs and Postgres-modelled where a live account is required to run; production wiring needs the `SETUP.md` accounts.)*
+## Honest status — NOT implementation-complete
 
-| Layer | What's built | Tests | Status |
-|---|---|---|---|
-| **Backend app** | Scala 2.13 · cats-effect · http4s Ember · Tapir + Swagger (`/api/health`, `/docs`) | weaver **server** test on the real route | ✅ |
-| **Backend units** | `Health` domain | ScalaTest **FreeSpec** unit tests | ✅ |
-| **Backend DB** | Doobie + Flyway · `V1_0_0__baseline.sql` (extensions + `audit_log_entries`) | weaver **integration** test — real **Postgres 16** via **Testcontainers**, Flyway-migrated, round-trip | ✅ |
-| **Web shell** | Vite · React 19 · **StyleX** tokens + `Pill` + grouped-nav shell (SPEC §5/§16) | **Vitest** UI/unit tests | ✅ |
-| **Web e2e** | the shell in a real browser | **Playwright** (Chromium, StyleX runtime-injected) | ✅ |
+Earlier revisions of this file said "all 38 features complete." That was wrong:
+it counted **tested code modules**, not features a user can actually use. The
+three layers (backend / web / mobile) **do not connect** — nothing flows
+UI → API → DB → integration. Realistic product completion: **~15–20%**,
+concentrated in backend domain logic and the design system.
 
-**Verified locally:** backend **`126/126`** · web **Vitest `14/14`** + **Playwright `20/20`** · mobile **Flutter `6/6`** = **166 tests green**, all 38 features.
+### What is actually real
+- **Design system + theme engine** ✅ — StyleX tokens + `createTheme` light/dark
+  + `ThemeContext` (⌘D, persistence) + **static CSS extraction**. Working.
+- **Backend domain logic** — 48 repo/service files (~37 feature areas) with
+  **126 passing tests** (FreeSpec + weaver + Testcontainers/Postgres 16). Real,
+  but **isolated**: the running server only serves `/api/health` + `/docs`.
+  Only ~2 files define HTTP endpoints; the rest is not wired to anything.
+- **Web** — **5 of 17** nav screens built (Dashboard, Inventory, Finance,
+  Properties, People) + 2 detail views, deepened to the `input/` design. The
+  other **12 are "Coming soon" stubs**. All screens run on **mock data — not
+  connected to the backend.**
+- **Mobile** — a 5-screen Flutter shell on mock data.
 
-**Web UI fidelity:** the five built screens are deepened to the `input/` design prototype — Dashboard (agent/approvals strip, Upcoming, budget bars, expiring, lists, connected systems), Inventory (stats + filter rail + grid/list + asset detail), Finance (4 tabs: bills/pay-queue/expenses/budgets), Properties (cover cards → property "bible" with Overview/Rooms/Utilities/Documents), People. Shared design-system components (Card, Pill, AgentRibbon, Bar, icons).
+### What is NOT done (the bulk of the work)
+- **API layer**: Tapir endpoints for the ~37 feature areas, wired into the
+  server (today only `/health` is served).
+- **Web ↔ backend**: hand-written services + Zod replacing every mock module;
+  auth (Cognito) on the client.
+- **Real integrations**: Cognito, GoCardless, Bedrock, Gmail/Calendar/Drive, S3,
+  TigerBeetle, Pulsar — currently **simulated in logic, no live clients**
+  (operator inputs tracked in `SETUP.md`).
+- **Remaining ~12 web screens** (Inbox, Triage, Calendar, Insights, Collections,
+  Lists, Backup, Vendors, Vehicles, Documents, Tasks, Settings/RBAC matrix).
+- **Mobile**: the capture-first Triage flow + real data.
 
-### All 38 features (F00–F37), tested
-- **Backend (37 features):** F00 foundation · F01 identity · F02 attribute-level RBAC · F03 properties + nested locations · F04 asset registry (**JSONB**) · F05 documents (immutable + links) · F06 native tasks (recurring) · F07 calendar (Google dedup) · F08 lists (propose→approve) · F09 vendors (insurance gating) · F10 people (permit expiry) · F11 maintenance (roll-forward) · F12 bank ingestion (idempotent) · F13 receipts + line items · F14 reconciliation (+ transfer detection) · F15 bills (±15% variance) · F16 pay queue (never moves money) · F17 expenses & approvals (threshold routing) · F18 ledger (double-entry) · F19 lifecycle + lifetime cost · F20 valuation · F21 warranty/insurance · F22 templates (validation) · F23 completeness · F24 restructure (split cost) · F25 agent (classify→propose) · F26 inbox (stream counts) · F27 trust (financial locked) · F28 search (full-text) · F29 insights (aggregates) · F30 backup (manifest+checksum) · F32 NL query (read-only) · F33 extensibility (tags + infinite taxonomies) · F34 event outbox · F35 products/stock · F36 replenishment · F37 currencies/FX.
-- **Web UI:** StyleX shell + routing · **Inventory** · **Finance** approvals · **Properties** · **People** — each with **Vitest UI** + **Playwright** browser e2e.
-- **Mobile (F31):** Flutter app at **feature parity with the web** — Dashboard · Inventory · Finance · Properties · People, sharing the **same seed data + warm-paper tokens**, in a 5-tab nav. Per-feature widget tests + a full-app **audit** (exception guard) = 6/6 green; visually verified via real Flutter-web screenshots.
+### Test counts (real, but they only cover the above)
+backend **126** (domain logic, isolated) · web **Vitest 14** + **Playwright 21**
+(5 mock-data screens + theme) · mobile **Flutter 6** (shell). Green — but green
+≠ shipped; they test the modules that exist, not an end-to-end product.
 
-### Test types — all present & green
-ScalaTest **FreeSpec** units · **weaver** server tests · **Testcontainers** Postgres integration (end-to-end) · **Vitest** UI/unit · **Playwright** browser e2e · **Flutter** widget tests.
+### Backend domain modules with tests (code exists, not served via API)
+F00 foundation · F01 identity · F02 RBAC · F03 properties · F04 assets (JSONB) ·
+F05 documents · F06 tasks · F07 calendar · F08 lists · F09 vendors · F10 people ·
+F11 maintenance · F12 bank ingest · F13 receipts · F14 reconciliation · F15 bills ·
+F16 pay queue · F17 expenses · F18 ledger · F19 lifecycle · F20 valuation ·
+F21 warranty · F22 templates · F23 completeness · F24 restructure · F25 agent ·
+F26 inbox · F27 trust · F28 search · F29 insights · F30 backup · F32 NL query ·
+F33 extensibility · F34 events · F35 products · F36 replenishment · F37 FX.
 
 ## Run it
 ```bash
