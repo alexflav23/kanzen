@@ -44,13 +44,50 @@ Internal only: `postGroup(kind, source, entries)` (idempotent); `deriveBalance(a
 ## 8. Edge cases
 - Re-reconciliation supersede → reversing + new posting. Refund after acquisition. Transfer mis-detected → adjustment. TB unavailable → queue postings + retry (domain write succeeds, posting eventually-consistent, flagged). Currency mismatch. Partial allocation across assets.
 
-## 9. Acceptance criteria
-- **AC1** A confirmed acquisition writes a balanced posting group (debit asset, credit cash/card) in the correct-currency TB ledger.
-- **AC2** Re-running the same source produces no duplicate posting (idempotent).
-- **AC3** A refund creates a reversing group; history shows both, nothing mutated.
-- **AC4** A transfer between own accounts posts without income/expense impact.
-- **AC5** Derived balances feed Insights; **no ledger UI exists**.
-- **AC6** TB downtime queues postings and reconciles when back, without blocking domain writes.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Confirmed acquisition writes balanced double-entry posting**  ‹maps: `LedgerAcquisitionIT`, `BalancedPostingAssertion`›
+- **Given** Toby confirms an asset acquisition linked to a reconciled bank transaction
+- **When** the posting pipeline fires
+- **Then** a `ledger_posting_groups` row (kind=`acquisition`) is created; the associated TB transfers **debit** the asset account and **credit** the cash/card account in the correct-currency ledger (GBP or SGD)
+- **And** debits = credits within the group (double-entry invariant); `ledger_posting_references` maps the domain source to TB transfer IDs.
+
+**AC2 — Idempotent: re-running source produces no duplicate posting**  ‹maps: `LedgerIdempotencyIT`›  *(invariant: postings are immutable — corrections reverse, never overwrite)*
+- **Given** a posting group already written for `(source_type='acquisition', source_id=X)`
+- **When** the posting pipeline is triggered again for the same source
+- **Then** **no new TB transfer is created** — the idempotency check matches on `(source_type, source_id, kind)` and returns the existing transfer IDs
+- **And** the `ledger_posting_references` count for that group remains unchanged.
+
+**AC3 — Refund creates reversing group; history preserved**  ‹maps: `LedgerRefundReversalIT`›
+- **Given** an acquisition posting group already committed
+- **When** a refund is confirmed for that purchase
+- **Then** a new `ledger_posting_groups` row (kind=`refund`) is created with reversing TB transfers (equal and opposite)
+- **And** the original group is **not** mutated, deleted, or superseded — both groups remain queryable; full history preserved.
+
+**AC4 — Transfer between own accounts posts without income/expense impact**  ‹maps: `LedgerTransferPostingIT`›
+- **Given** a transfer detected between Coutts and Revolut (F14)
+- **When** the ledger posting runs
+- **Then** the posting group (kind=`transfer`) moves value between two asset/cash accounts with no income or expense account touched
+- **And** the household's total net worth is unchanged by the posting.
+
+**AC5 — Ledger is hidden from the UI; derived balances reach Insights**  ‹maps: `LedgerNoUiEndpointIT`, web `insights.spec` balances›  *(invariant: TigerBeetle ledger hidden in UI — postings only, never shown)*
+- **Given** a funded ledger with acquisition and cost postings
+- **When** any user (including Toby) opens any screen in the web application
+- **Then** **no ledger entries, TB account IDs, or raw postings are displayed anywhere**
+- **And** `GET /api/insights/lifetime-cost` returns derived totals drawn from TB balances — the ledger's truth surfaces only as aggregates in Insights (F29) and the backup manifest (F30).
+
+**AC6 — TB downtime queues postings without blocking domain writes**  ‹maps: `LedgerDowntimeResilienceIT`›
+- **Given** TigerBeetle is unavailable
+- **When** a domain write (expense confirm, acquisition) completes
+- **Then** the domain Postgres write **succeeds**; the posting is enqueued (outstanding entry flagged in `ledger_posting_groups`)
+- **And** when TB recovers, the queued postings are flushed and confirmed; the unposted-queue depth metric drops to zero.
+
+**AC7 — Manager and Staff have no ledger access (negative)**  ‹maps: `LedgerAuthzIT`›  *(invariant: ledger Principal-private; no UI; no leak)*
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** either attempts to call any internal ledger endpoint or inspect raw postings
+- **Then** both receive **403** (or no such endpoint exists in the public API surface)
+- **And** no TB account balance or transfer ID is included in any API response they can reach — aggregated Insights figures visible to Lorna contain no per-posting or ledger detail.
 
 ## 10. Test plan
 Backend (weaver + **TigerBeetle test container**): balanced double-entry, idempotency, reversing corrections, multi-currency ledgers, queue-on-TB-down, derive-balance correctness. Replay test for backup (F30).

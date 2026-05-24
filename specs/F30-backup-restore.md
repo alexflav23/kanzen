@@ -42,13 +42,50 @@ All domains (export/import), F05/S3 (originals), F18/TigerBeetle (ledger replay)
 ## 8. Edge cases
 Huge archives (binaries inline vs sidecar — §19 open #2); partial/interrupted export (resumable); checksum mismatch on restore (abort); schema-version drift (compat notes + migration); restore into non-empty DB (guard); encryption key loss; ledger replay idempotency; S3 object restore conflicts.
 
-## 9. Acceptance criteria
-- **AC1** A full export produces a self-descriptive archive (manifest + JSONL + S3 originals + ledger history + audit + checksums); optionally `age`-encrypted.
-- **AC2** Validate verifies checksums + schema compatibility.
-- **AC3** A dry-run restore reports the plan without writing; a full restore rebuilds into a fresh install in dependency order with relationships + objects intact.
-- **AC4** Ledger restores consistently (replay/import) and balances match.
-- **AC5** An annual immutable snapshot is created, read-only, and integrity-verified.
-- **AC6** Restore is Principal-only and audited.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Full export produces a self-descriptive, verifiable archive**  ‹maps: `FullExportIT`, web `backup.spec` export-progress›
+- **Given** Toby initiates a full export from the Backup screen
+- **When** the export job completes
+- **Then** the archive contains: the manifest (entity counts, schema version, checksums, restore notes), JSONL entity data, S3 original binaries, replayable ledger history, and audit log
+- **And** the archive is optionally `age`-encrypted; each file has a sha256 checksum recorded in the manifest.
+
+**AC2 — Validate verifies checksums and schema compatibility**  ‹maps: `BackupValidateIT`, web `backup.spec` validate›
+- **Given** a downloaded archive (possibly from a previous application version)
+- **When** Toby triggers Validate
+- **Then** all sha256 checksums are verified; schema compatibility is assessed and any migration notes are surfaced
+- **And** a tampered or incomplete archive fails validation with a clear, itemised error report.
+
+**AC3 — Dry-run restore reports the plan without writing anything**  ‹maps: `RestoreDryRunIT`, web `backup.spec` dry-run›
+- **Given** a validated archive
+- **When** Toby runs **Restore dry-run**
+- **Then** a report is returned listing every entity type and count that would be written, in dependency order
+- **And** no rows are inserted or updated in the database; no S3 objects are written; the dry-run is audited.
+
+**AC4 — Full restore round-trips faithfully into a fresh install**  ‹maps: `FullRestoreRoundTripIT`›  *(invariant: backup/restore must round-trip faithfully)*
+- **Given** a fresh, empty database and the archive from AC1
+- **When** a full restore runs (dependency order: identity → properties → assets → finance → ledger → links)
+- **Then** all entities are recreated with relationships intact; S3 objects are re-created; the restored data matches the original row-for-row
+- **And** the restore is audited with a summary of counts per entity type.
+
+**AC5 — Ledger restores consistently and balances match**  ‹maps: `LedgerRestoreIT`›  *(invariant: backup/restore must round-trip faithfully)*
+- **Given** the exported archive includes the full replayable TigerBeetle posting history
+- **When** the ledger is replayed/imported during restore
+- **Then** all account balances match the original snapshot; the ledger is self-consistent (debits = credits)
+- **And** a mismatch aborts the restore and reports the discrepancy.
+
+**AC6 — Annual immutable snapshot is read-only and integrity-verified**  ‹maps: `AnnualSnapshotIT`, web `backup.spec` snapshots›
+- **Given** an annual snapshot is created (manual or scheduled)
+- **When** Toby views it on the Backup screen
+- **Then** it is listed as read-only (no delete/overwrite); integrity verification passes
+- **And** the snapshot can be downloaded and validated; its schema version and entity counts are displayed.
+
+**AC7 — Backup and restore are Principal-only; Manager/Staff are denied (negative)**  ‹maps: `BackupAuthzIT`›
+- **Given** Lorna (Manager) attempts to initiate an export or restore
+- **When** she calls `POST /api/backup/export` or `POST /api/backup/restore`
+- **Then** she receives a 403; no job is created
+- **And** each denied attempt is audited; Toby sees it in the audit log.
 
 ## 10. Test plan
 Backend (weaver+PG+S3+TB): full export→restore **round-trip into a fresh DB** (the headline catastrophic-recovery test); checksum + schema-compat validation; dry-run plan; ledger replay equivalence; encryption round-trip; annual snapshot immutability. This feature gets **extra test rigor** (NFR §15).

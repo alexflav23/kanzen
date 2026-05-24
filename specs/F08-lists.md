@@ -43,12 +43,50 @@ Per `lists.jsx` + App. E.11: lists rail (needs-approval badge) · list header (v
 ## 8. Edge cases
 - Recurring item declined → stops recurring. Order placed early/late → cycle recalculated. Vendor unset → order task without vendor link. Item edited after approval → re-approval if it crosses the trigger. Multi-currency est. prices.
 
-## 9. Acceptance criteria
-- **AC1** Marcia proposes an above-staple item → it lands in *needs-approval*; the Principal approves → *added*.
-- **AC2** Recurring staples auto-populate the next cycle after "Place order".
-- **AC3** "Place order" rolls the list forward, advances next-order, and creates an order task for the assignee.
-- **AC4** A Singapore-scoped user sees only Singapore lists.
-- **AC5** Declining a recurring item stops it recurring.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Staff propose; Principal/Manager approve**  ‹maps: `ListApprovalIT`, web `lists.spec` approval, mobile `lists_test.dart`›
+- **Given** Marcia is on the Wardian grocery list
+- **When** she proposes a new above-staple item ("Truffle oil, 250ml") with a product/vendor URL and note ("we're out")
+- **Then** the item lands in `needs_approval` and the needs-approval strip is visible with requester/est. price/note
+- **And** when Toby (or Lorna) approves, its status becomes `added` with `approved_by` and `approved_at` set, audited.
+
+**AC2 — Recurring staples auto-populate the next cycle**  ‹maps: `ListRollForwardIT`, web `lists.spec` roll-forward›
+- **Given** a grocery list with recurring items (e.g. milk, coffee) already checked off
+- **When** "Place order" is executed
+- **Then** recurring items carry forward into the new cycle with `checked = false`; one-off items drop
+- **And** `last_order` is set to today, `next_order` advances per the cycle RRULE.
+
+**AC3 — "Place order" creates a native order task (not an integration)**  ‹maps: `ListOrderTaskIT`, web `lists.spec` order-task›
+- **Given** a Wardian grocery list assigned to Marcia
+- **When** Lorna clicks **Place order**
+- **Then** a native task ("Order Ocado — Wardian") is created for the assignee (F06, `source_type = 'list'`) — no external API is called
+- **And** an optional calendar event is created alongside it; the task appears in the Tasks view with the list source flag.
+
+**AC4 — Propose→approve→roll-forward full cycle**  ‹maps: `ListFullCycleIT`, web `lists.spec` e2e, mobile `lists_test.dart`›
+- **Given** a list with both recurring staples and a pending approval item
+- **When** the approval item is approved and then "Place order" is executed
+- **Then** the cycle closes: the approved item is included in the order, recurring items carry over, next-order advances, and the order task is created
+- **And** every state transition (propose/approve/order) is audited.
+
+**AC5 — Declining a recurring item stops it recurring**  ‹maps: `ListDeclineRecurringIT`›
+- **Given** a recurring item on the list (e.g. a specific brand that is being discontinued)
+- **When** Toby declines it
+- **Then** the item's `recurring` flag is cleared and it does not appear in the next cycle
+- **And** the decline is audited with `declined_by`.
+
+**AC6 — Singapore-scoped user sees only Singapore lists (negative)**  ‹maps: `ListScopeIT`, web `lists.spec` scope›
+- **Given** Siti is Singapore-Staff
+- **When** she lists household shopping lists
+- **Then** she sees only Singapore lists
+- **And** a direct request for a Wardian list ID returns **403/404** — existence not leaked; Wardian data is never exposed.
+
+**AC7 — Agent list proposal is proposed, not auto-committed**  ‹maps: `ListAgentProposalIT`›  *(invariant: agent never auto-commits)*
+- **Given** The Agent detects a low-stock condition and proposes a list item
+- **When** the proposal arrives
+- **Then** the item lands in `needs_approval` with `source_type = 'agent'`; it is **not** auto-approved or auto-ordered
+- **And** the needs-approval strip is shown to the Manager/Principal for explicit approval before it joins an order.
 
 ## 10. Test plan
 Backend (weaver+PG): approval triggers, roll-forward + cycle math, recurring carry-over, scope, order-task creation. Web: Vitest list/needs-approval rendering; Playwright propose→approve→order.

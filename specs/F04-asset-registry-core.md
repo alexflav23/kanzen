@@ -70,14 +70,56 @@ Per `assets.jsx` / `asset-detail.jsx` / `collections.jsx` + App. E.5–E.7:
 - Scoped user (Manager on Singapore) listing Inventory → only Singapore-located assets; unplaced assets visible per rule.
 - Large attribute blobs / deeply nested structured sets → bounded.
 
-## 9. Acceptance criteria
-- **AC1** Create a unique asset (a watch), a grouped asset (set of 6 tumblers, ×6), and a structured set (tea set with children); cards badge each correctly.
-- **AC2** Faceted filtering by category (incl. children), property, status, collection and tag returns correct results; search matches title/maker.
-- **AC3** An asset's vertical attributes save to `attributes` JSONB and render in the Specifications tab.
-- **AC4** Setting location/custody writes history rows; moving respects property scope.
-- **AC5** A Manager's `GET /api/assets/:id` omits valuation/insured fields; a Principal's includes them.
-- **AC6** An asset belongs to multiple collections; a collection shows members + per-currency totals.
-- **AC7** Photos attach via the Documents store and a hero photo renders on the card/detail.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Create assets across all three tracking modes**  ‹maps: `AssetTrackingModeIT`, web `assets.spec` create›
+- **Given** Toby is on the Inventory create screen
+- **When** he creates a unique asset (a watch, qty 1), a grouped asset (set of 6 crystal tumblers, `grouped_quantity`), and a structured set (tea service with 4 child cups, `structured_set`)
+- **Then** all three appear in the Inventory and their cards badge correctly: no badge for unique, ×6 for grouped, and the set icon with children for structured
+- **And** the structured set's children have `parent_asset_id` set; a child cannot reference its own ancestor (cycle check enforced).
+
+**AC2 — Faceted filtering and search**  ‹maps: `AssetFilterIT`, web `assets.spec` filter-rail›
+- **Given** a seeded Inventory spanning multiple categories, properties, statuses, collections, and tags
+- **When** Lorna applies the Watches category filter (which should include child categories), then narrows by Wardian property and an "Insured" tag
+- **Then** only assets matching all active filters are returned
+- **And** searching by title fragment or maker name matches the correct results; clearing a filter chip restores the broader set.
+
+**AC3 — Vertical attributes round-trip**  ‹maps: `AssetAttributesIT`, web Vitest specifications-tab›
+- **Given** a guitar asset with a category template that defines typed fields (year, body wood, scale length)
+- **When** Toby saves the asset with attribute values
+- **Then** the values are persisted in the `attributes` JSONB column (GIN-indexed) and render correctly in the Specifications tab per the typed template
+- **And** unknown keys beyond the template are stored but flagged for review.
+
+**AC4 — Location and custody changes write history**  ‹maps: `AssetLocationCustodyIT`, web `assets.spec` move›
+- **Given** a watch asset currently at *Wardian – Study – Cabinet*
+- **When** Lorna moves it to *Wardian – Master Bedroom – Safe* and then records a custody change to `with_repair_shop`
+- **Then** both `asset_location_history` and `asset_custody_history` rows are written with the actor and timestamp
+- **And** the attempted move to a Singapore location is **rejected (403)** because the asset's property scope is Wardian.
+
+**AC5 — Manager field-filtering: valuation fields are stripped server-side**  ‹maps: `AssetFieldFilterIT`›  *(invariant: registry Principal-private; no leak via field)*
+- **Given** a watch asset with `market_value` and `insured_value` populated
+- **When** Lorna (Manager) calls `GET /api/assets/:id`
+- **Then** the response **omits** `market_value`, `insured_value`, and `valuation_snapshots` — they are stripped server-side, not merely hidden in the UI
+- **And** the same request by Toby (Principal) returns all fields.
+
+**AC6 — Staff cannot access the Inventory**  ‹maps: `AssetAuthzIT`›  *(invariant: default-deny; registry Principal-private)*
+- **Given** Marcia (Wardian Staff)
+- **When** she requests `GET /api/assets` or `GET /api/assets/:id`
+- **Then** she receives **403** — her role has no `read` permission on the `asset` resource
+- **And** the Inventory link is absent from her navigation.
+
+**AC7 — Collections with multi-currency totals**  ‹maps: `CollectionIT`, web `collections.spec`›
+- **Given** a collection *Fine Instruments* containing a guitar (GBP) and a Singapore-purchased piece (SGD)
+- **When** Toby views the collection detail
+- **Then** totals are shown **per currency** (GBP sub-total and SGD sub-total, never silently FX-merged)
+- **And** the collection card shows the 4-up collage with member count and the correct lock icon for Principal-private visibility.
+
+**AC8 — Hero photo via Documents store**  ‹maps: `AssetHeroPhotoIT`, web `assets.spec` hero›
+- **Given** a PDF/image document already in the F05 store
+- **When** Toby sets it as the hero photo for an asset via `POST /api/assets/:id/hero-photo`
+- **Then** `hero_document_id` is updated and the asset card and detail header render the image
+- **And** the Documents tab of the asset detail lists the document attached to that asset.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG): tracking-mode invariants (cycle prevention, quantity rules), category-descendant filtering, JSONB attribute round-trip + GIN-indexed filter, location/custody history writes, field-level filtering (Manager vs Principal), scope filtering, collection/group membership.

@@ -43,12 +43,55 @@ F04/F19/F20/F21/F22 (inputs), F13 (embeddings for duplicates/anomalies), F26 (In
 ## 8. Edge cases
 Duplicate false positives (dismiss + learn); legacy assets intentionally incomplete (suppress until reviewed); expensive threshold per currency; anomaly tuning; completeness weighting for Manager (no valuation parts).
 
-## 9. Acceptance criteria
-- **AC1** Each asset shows a completeness % + improve hints; aggregate registry-health renders in Insights.
-- **AC2** Two "Dyson V15" assets created within 24h flag as a suspected duplicate; merging (F24) resolves it.
-- **AC3** An £4,200 invoice 80% above prior flags an anomaly.
-- **AC4** Expensive assets missing proof appear in the Inbox data-quality stream with a fix action.
-- **AC5** Resolving/dismissing a flag updates state + recomputes.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Per-asset completeness score and improve hints**  ‹maps: `CompletenessScoreIT`, web `asset-detail.spec` completeness-bar›
+- **Given** an asset with a photo, category, and location but no proof/receipt and no valuation
+- **When** Toby opens the asset detail
+- **Then** the hero shows a completeness bar (e.g. 55%) and "Improve: add receipt, add valuation"
+- **And** adding a receipt and a valuation snapshot recomputes the score upward on the next scan.
+
+**AC2 — Registry-health aggregate in Insights**  ‹maps: `RegistryHealthIT`, web `insights.spec` registry-health›
+- **Given** a registry with a mix of complete and incomplete assets
+- **When** Toby opens **Insights → Registry health**
+- **Then** he sees bars for photographed %, categorised %, located %, proof %, insured %, appraisal-recency %
+- **And** the Inventory summary shows overall completeness % + "N expensive missing proof".
+
+**AC3 — Suspected-duplicate flag raised and resolved by merge**  ‹maps: `DuplicateDetectionIT`, web `inbox.spec` data-quality›
+- **Given** Lorna creates two assets both titled "Dyson V15" within 24 hours
+- **When** the detection scan runs
+- **Then** a `suspected_duplicate` flag appears in the Inbox data-quality stream referencing both assets
+- **And** performing a merge (F24) on the two assets resolves the flag automatically.
+
+**AC4 — Anomaly: invoice 80% above prior for merchant/category**  ‹maps: `AnomalyDetectionIT`›
+- **Given** prior invoices from a utilities vendor average £2,300
+- **When** a new £4,200 invoice (≈ 83% above) is filed against the same merchant/category
+- **Then** an `anomaly` flag is raised in the Inbox data-quality stream with the deviation detail
+- **And** the flag is dismissible (false positive) and dismissing it does not suppress future anomalies for that category.
+
+**AC5 — Expensive asset missing proof in Inbox with fix action**  ‹maps: `ExpensiveNoProofIT`, web `inbox.spec` data-quality›
+- **Given** an asset valued above the "expensive" threshold with no authenticity documents or receipt
+- **When** the scan runs
+- **Then** an `expensive_no_proof` flag (severity=high) appears in the Inbox with a "Fix: add proof document" action
+- **And** uploading a certificate document resolves the flag and recomputes the asset's completeness score.
+
+**AC6 — Resolve and dismiss flags**  ‹maps: `FlagResolveDismissIT`›
+- **Given** an open `missing_photo` flag for an asset
+- **When** Lorna clicks Resolve after adding a photo, and separately dismisses a `suspected_duplicate` false-positive
+- **Then** the resolved flag status → `resolved` (with `resolved_at`); the dismissed flag status → `dismissed`
+- **And** both transitions are audited and the flag does not reappear on the next scan.
+
+**AC7 — Manager sees operational completeness; valuation-derived parts withheld (negative)**  ‹maps: `CompletenessManagerAuthzIT`›  *(invariant: valuation fields are Principal-private; no leak via totals)*
+- **Given** Lorna (Manager) viewing the Inbox data-quality stream and the Inventory summary
+- **When** completeness scores are rendered for her
+- **Then** the scores omit the valuation-derived weights (insured-value check, appraisal-recency check) — these factors do not appear in her view
+- **And** the Insights registry-health page does not show the "insured %" or "appraisal-recency %" bars to Lorna.
+
+**AC8 — Staff has no access to data-quality stream (negative)**  ‹maps: `DataQualityStaffAuthzIT`›
+- **Given** Marcia (Staff)
+- **When** she requests `GET /api/data-quality?stream`
+- **Then** she receives **403** and no flag data is included in any response she receives.
 
 ## 10. Test plan
 Backend (weaver+PG+pgvector): score computation + weights (Manager vs Principal), each detector (missing/expensive/duplicate/anomaly), recompute triggers. Web: Vitest data-quality stream + completeness bar; Playwright resolve-flow.

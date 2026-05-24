@@ -44,12 +44,50 @@ F35 (products/stock), F13/F12/F14 (purchase history + matching), F08 (reorder �
 ## 8. Edge cases
 Sparse/no history (cold start → no prediction, manual); irregular/seasonal items (flag, widen interval); one-off vs recurring; bulk buys (qty-aware); mis-matched purchase (correctable); product renamed/merged; multi-property cadence; price changes.
 
-## 9. Acceptance criteria
-- **AC1** After several egg purchases, the product shows "~every N days" + a predicted-next date with a confidence.
-- **AC2** As predicted-next approaches, a reorder suggestion appears (Inbox/Dashboard) and pre-fills a Lists buy request (spec + buy link).
-- **AC3** Low-confidence (sparse) products suggest cautiously and never auto-order.
-- **AC4** A staple opted into auto-reorder still produces an approvable order (unless explicitly fully-auto).
-- **AC5** Forecasts are explainable (show the intervals they're based on).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Cadence computed and displayed after purchase history builds**  ‹maps: `ReplenishmentCadenceIT`, web `products.spec` cadence›
+- **Given** several egg purchases have been matched to the "Eggs" product (via F13/F12 line items)
+- **When** the forecast job runs
+- **Then** the product shows "~every N days" (median/EWMA of intervals), a `predicted_next_at` date, and a confidence indicator
+- **And** the `product_consumption` materialised row records `avg_interval_days`, `interval_method`, `sample_size`, and `computed_at`.
+
+**AC2 — Reorder suggestion appears as predicted-next approaches and pre-fills a list item**  ‹maps: `ReplenishmentDueScanIT`, web `replenishment.spec` due-suggestions, mobile `replenishment_test.dart`›
+- **Given** a product whose `predicted_next - lead_days ≤ today`
+- **When** the due-scan job emits `product.replenishment_due` (F34)
+- **Then** a reorder suggestion appears in the **Inbox/Dashboard** with a one-tap action
+- **And** tapping it pre-fills a Lists buy request (preferred spec + buy URL from F35) — the suggestion is **proposed**, not auto-approved.
+
+**AC3 — Replenishment suggestion is proposed, never auto-committed (invariant)**  ‹maps: `ReplenishmentNoAutoCommitIT`›  *(invariant: agent/automation never auto-commits)*
+- **Given** any product with replenishment enabled (including ones opted into auto-reorder)
+- **When** the due-scan triggers a suggestion
+- **Then** the resulting list item has status `needs_approval`, visible to Principal/Manager
+- **And** **no order is placed and no task is created** until a human explicitly approves — the invariant holds regardless of opt-in level.
+
+**AC4 — Low-confidence products suggest cautiously and never auto-order**  ‹maps: `ReplenishmentLowConfidenceIT`›
+- **Given** a product with only 1–2 purchases (sparse history, low `confidence`)
+- **When** the forecast job runs
+- **Then** a `predicted_next_at` may be computed but the confidence indicator is shown as low
+- **And** no automatic suggestion is emitted until confidence exceeds the configured threshold; the product is flagged as "sparse history — suggest manually".
+
+**AC5 — Forecasts are explainable: intervals shown to Principal/Manager**  ‹maps: `ReplenishmentExplainabilityIT`, web `replenishment.spec` forecast-detail›
+- **Given** a product with a computed cadence
+- **When** Toby or Lorna opens the product detail or the consumption API
+- **Then** the forecast shows the underlying intervals (purchase dates + gaps) that produced `avg_interval_days`
+- **And** the method (`median` or `ewma`) is displayed so the forecast is auditable, not a black box.
+
+**AC6 — Staff see "due soon" but not spend-derived prices (negative)**  ‹maps: `ReplenishmentScopeIT`, mobile `replenishment_test.dart`›
+- **Given** Marcia (Wardian-Staff)
+- **When** she views replenishment suggestions for Wardian
+- **Then** she sees "due soon" items for her property but **price/spend data is stripped** (field-level RBAC)
+- **And** a direct request for Singapore replenishment data returns **403/404** — property scope enforced.
+
+**AC7 — Purchase-to-product matching is correctable and improves forecast**  ‹maps: `ReplenishmentMatchingIT`›
+- **Given** a purchase transaction was incorrectly matched to "Eggs" (mis-classification)
+- **When** Toby corrects the match
+- **Then** the `product_purchases` link is updated, the `product_consumption` materialised view is recomputed, and the forecast reflects the corrected history
+- **And** the correction is audited; the updated intervals are visible in the explainability view.
 
 ## 10. Test plan
 Backend (weaver+PG): interval stats (median/EWMA) + prediction; due-scan + event emission; purchase→product matching; confidence/sparse handling; multi-property. Web: Vitest cadence display + due suggestions; Playwright eggs cadence → due → reorder.

@@ -39,11 +39,49 @@ F03 (location/custody), F05 (docs), F09 (parties), F17 (associated cost), F18 (p
 ## 8. Edge cases
 Out-of-order/retroactive events; cost event without a receipt (manual); disposal (sold) closing the asset; condition downgrade; party not yet a vendor (create); event editing (audit, supersede).
 
-## 9. Acceptance criteria
-- **AC1** Logging a "serviced" event with a cost + vendor + doc adds a timeline entry, an associated cost (lifetime cost updates), and a ledger posting.
-- **AC2** A "moved" event writes location history and updates current location.
-- **AC3** A "sold" event sets ownership_status + realised value and closes the asset.
-- **AC4** The timeline renders typed dots with cost/party/value-delta pills; Manager can't log valuation-delta events.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Service event creates timeline entry, associated cost, and ledger posting**  ‹maps: `ServiceEventIT`, web `asset-detail.spec` timeline›
+- **Given** a guitar asset with no events
+- **When** Lorna logs a `serviced` event with a cost (£150 GBP), vendor (a luthier), and an attached receipt document
+- **Then** a timeline entry appears with the correct type dot (cyan), cost pill, and party name
+- **And** an `associated_cost` row (F17) is created, lifetime cost in the asset hero updates, and a ledger posting (F18) is recorded; the attached document is immutable.
+
+**AC2 — "Moved" event writes location history and updates current location**  ‹maps: `MovedEventIT`, web `asset-detail.spec` move›
+- **Given** a watch asset located at *Wardian – Study – Cabinet*
+- **When** Toby logs a `moved` event to *Wardian – Master Bedroom – Safe*
+- **Then** an `asset_location_history` row is written with the old and new location and `moved_by = Toby`
+- **And** the asset's `location_id` is updated and the Timeline tab shows the move entry at the correct chronological position.
+
+**AC3 — "Sold" event closes the asset with realised value**  ‹maps: `SoldEventIT`, web `asset-detail.spec` sold›
+- **Given** an asset with `ownership_status = owned`
+- **When** Toby logs a `sold` event with a realised value and party
+- **Then** `ownership_status` → `sold`, the asset is visually closed in the Inventory, and the realised value is recorded
+- **And** the event is audited and Lifetime Cost (F29) reflects the sale.
+
+**AC4 — Manager cannot log valuation-delta events (negative)**  ‹maps: `EventAuthzIT`›  *(invariant: valuation is Principal-private; default-deny)*
+- **Given** a watch asset
+- **When** Lorna (Manager) attempts to log an `appraised` event with a `valuation_delta_minor` field
+- **Then** the request is **rejected (403)** — valuation-delta events require Principal permission (F02/F20)
+- **And** Lorna can still log operational events (`serviced`, `cleaned`, `moved`) without restriction.
+
+**AC5 — Retroactive event is re-sorted into the timeline**  ‹maps: `RetroactiveEventIT`, web `asset-detail.spec` retroactive›
+- **Given** a guitar asset with a 2025 service event at the top of the timeline
+- **When** Toby logs a backdated `acquired` event with `occurred_at` in 2019
+- **Then** the event is inserted at the correct chronological position in the timeline, not appended at the top
+- **And** lifetime cost correctly accounts for the acquisition in the rollup order.
+
+**AC6 — Custody change event writes custody history**  ‹maps: `CustodyEventIT`›
+- **Given** a watch asset with `custody_status = with_owner`
+- **When** Toby logs a custody-change event with `custody_state = with_repair_shop` and a vendor party
+- **Then** an `asset_custody_history` row is written with the new state, party, and actor
+- **And** the asset detail reflects `custody_status = with_repair_shop`.
+
+**AC7 — Staff cannot access lifecycle events (negative)**  ‹maps: `EventStaffAuthzIT`›  *(invariant: registry Principal-private; default-deny)*
+- **Given** Marcia (Wardian Staff)
+- **When** she attempts `GET /api/assets/:id/timeline` or `POST /api/assets/:id/events`
+- **Then** she receives **403** on both — Staff have no permission on `asset_event`.
 
 ## 10. Test plan
 Backend (weaver+PG): event side-effects (location/custody/associated-cost/valuation/ownership), retroactive ordering, field-level (valuation) permission, lifetime-cost rollup. Web: Vitest TimelineTab + log-event; Playwright service-event→lifetime-cost.

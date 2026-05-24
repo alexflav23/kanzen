@@ -75,14 +75,50 @@ The prototype keeps raw transactions low-key (the ledger is hidden; transactions
 - Revoked at the bank → next sync 401 → mark `revoked`, prompt reconnect.
 - Manager attempts to view a balance or connect a bank → 403.
 
-## 9. Acceptance criteria
-- **AC1** Principal connects **Amex**, **Revolut** and a UK bank via GoCardless; accounts (incl. Revolut per-currency) appear with balances.
-- **AC2** An incremental sync ingests new transactions idempotently (re-running creates no duplicates) and preserves raw payloads.
-- **AC3** A pending transaction becomes booked without duplicating.
-- **AC4** Consent nearing expiry raises an Inbox reminder; **Reconnect** restores syncing.
-- **AC5** CSV import maps and ingests a statement; manual entry creates a transaction.
-- **AC6** Manager can list transactions for reconciliation but cannot see balances or connect/disconnect (403); Staff sees nothing.
-- **AC7** No PIS/payment endpoint exists anywhere in the API surface.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Connect institutions and ingest accounts**  ‹maps: `BankConnectionIT.connectAndFetchAccounts`, web `connections.spec`›
+- **Given** Toby is in **Settings → Connections** with no institutions linked
+- **When** he completes the GoCardless bank-auth flow for **Amex**, **Revolut** and Coutts
+- **Then** each connection appears as `active` with `last_synced_at` set; Revolut creates one `financial_account` per currency sub-account
+- **And** Toby sees balances on each account; **no money is moved** — this is AIS read-only (no PIS endpoint exists).
+
+**AC2 — Idempotent incremental sync preserves raw payloads**  ‹maps: `BankSyncIdempotencyIT`, web `transactions.spec`›
+- **Given** an active connection with existing transactions
+- **When** an incremental sync runs twice over the same window
+- **Then** the transaction count is unchanged (dedup by `provider_transaction_id`/`dedup_hash`); each raw payload is preserved in `bank_transaction_raw_payloads` as **immutable** (no overwrite)
+- **And** a `bank_sync_jobs` record is written for each run showing `status=success` and `ingested` count.
+
+**AC3 — Pending transaction books without duplicating**  ‹maps: `PendingToBookedIT`›
+- **Given** a transaction ingested as `pending=true`
+- **When** the next sync brings the booked version (same `provider_transaction_id`)
+- **Then** the existing row is updated in place (`pending=false`, `booked_at` set) with **no duplicate row** created
+- **And** the FX rate-at-date (`fx_rate_to_base`/`fx_as_of`, F37) captured at initial ingestion is preserved.
+
+**AC4 — Consent expiry → Inbox reminder + reconnect**  ‹maps: `ConsentExpiryIT`, web `connections.spec` expiry›
+- **Given** a connection whose `consent_expires_at` is within the warning window
+- **When** the reminder job runs
+- **Then** an Inbox reminder appears ("Revolut access expires in N days — reconnect") and the Settings card shows an amber **Reconnect** CTA
+- **And** completing reconsent mints a fresh requisition and restores `status=active`.
+
+**AC5 — CSV import and manual entry**  ‹maps: `CsvImportIT`, web `csv-import.spec`›
+- **Given** a bank statement CSV with date/amount/description/currency columns
+- **When** Toby uploads it, maps columns in the preview, and confirms import
+- **Then** transactions are created with `source=csv`, deduped against existing rows, and raw mapping preserved
+- **And** a manually-entered transaction is created with `source=manual`; both are available for reconciliation (F14).
+
+**AC6 — Manager sees transactions but not balances; Staff sees nothing**  ‹maps: `BankIngestAuthzIT`›  *(invariant: AIS read-only; field-level filtering; no leak)*
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** Lorna requests `GET /api/banking/accounts` and `GET /api/banking/transactions`
+- **Then** she receives the transactions list (status 200) but `balance_minor` and `balance_at` are **absent from every account record** (field-stripped server-side); any attempt to `POST /api/banking/connections` returns **403**
+- **And** Marcia's requests to any banking endpoint return **403** with no data leaked.
+
+**AC7 — No PIS endpoint exists anywhere**  ‹maps: `NoPisEndpointAssertionIT`›  *(invariant: Kanzen never moves money)*
+- **Given** the full API route table
+- **When** the test scans for any payment-initiation/funds-transfer endpoint
+- **Then** **no such endpoint exists** — the API surface is AIS-only, confirmed by test assertion
+- **And** all bank data remains read-only; "Mark paid" (F16) records reality, it does not initiate payment.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG; GC mocked/sandbox): requisition→callback→accounts flow; idempotent ingestion (dedup by id and by hash); pending→booked update; multi-currency account creation; consent-expiry transition + reconsent; rate-limit backoff; CSV import mapping; field-level balance denial (Manager).

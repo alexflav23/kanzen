@@ -71,13 +71,56 @@ Per `TasksView` + App. E.13:
 - Agent-created delivery task + calendar event must stay paired (F07) — delete one prompts about the other.
 - Source object deleted (e.g., defect resolved) → task remains with a dangling-source note.
 
-## 9. Acceptance criteria
-- **AC1** Creating a property auto-creates its task project; system projects (Finance/HR/General) exist.
-- **AC2** A recurring "Daikin VRV-IV quarterly service" task generates the next occurrence on completion and reminds the assignee with the configured lead.
-- **AC3** A delivery (from the agent) creates a task assigned to the property's housekeeper with the time window; it carries the agent ribbon.
-- **AC4** Staff (Marcia) sees only Wardian + her assigned tasks; cannot see Singapore tasks.
-- **AC5** Completing a maintenance task writes a MaintenanceLog and rolls the plan (with F11).
-- **AC6** Reminders fire in the property's local timezone via in-app + email (+ push when mobile lands).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Property creation auto-generates projects**  ‹maps: `TaskProjectIT.autoCreate`, web `tasks.spec` projects›
+- **Given** a freshly created property *Wardian, Apt 5206*
+- **When** the property is saved
+- **Then** a `property`-kind task project named *Wardian, Apt 5206* is auto-created and linked via `task_project_id`
+- **And** system projects **Finance**, **HR**, and **General** exist independently of any property.
+
+**AC2 — Recurring task generates next occurrence on completion**  ‹maps: `RecurrenceIT.nextOccurrence`, web `tasks.spec` recurring, mobile `tasks_test.dart`›
+- **Given** a recurring "Daikin VRV-IV quarterly service" task with an RRULE `FREQ=MONTHLY;INTERVAL=3` assigned to Lorna
+- **When** Lorna completes the current occurrence
+- **Then** a new occurrence is created with `recurring_template_id` pointing to the original template and a due date advanced per the RRULE
+- **And** a reminder fires (in-app + SES email) at the configured lead days, respecting the Wardian timezone (Europe/London).
+
+**AC3 — Agent-created delivery task carries the agent ribbon**  ‹maps: `AgentDeliveryTaskIT`, web `tasks.spec` agent-ribbon, mobile `tasks_test.dart`›
+- **Given** The Agent processes a delivery email and creates a delivery task
+- **When** Lorna or Marcia opens the Tasks view
+- **Then** the task carries `source_type = 'agent'` and the **agent ribbon** is visible in the UI
+- **And** the task is assigned to the Wardian housekeeper with the delivery time window; it is paired with the calendar event (F07) so deleting one prompts about the other.
+
+**AC4 — Staff scope: Marcia sees only Wardian tasks (negative)**  ‹maps: `TaskScopeIT`, web `tasks.spec` scope, mobile `tasks_test.dart`›
+- **Given** Marcia is Wardian-Staff and Singapore has its own tasks
+- **When** Marcia lists tasks (`GET /api/tasks`)
+- **Then** she sees only Wardian tasks and tasks assigned to her; no Singapore tasks are returned
+- **And** a direct request for a Singapore task ID returns **403/404** — existence not leaked.
+
+**AC5 — Completing a maintenance task writes a MaintenanceLog and rolls the plan**  ‹maps: `MaintenanceLinkIT`, web `tasks.spec` maintenance-source›
+- **Given** a task with `source_type = 'maintenance_plan'` linked to an active plan
+- **When** Lorna marks it done
+- **Then** a `MaintenanceLog` entry is created with the completion date and any notes/cost provided
+- **And** the plan's `next_due` is rolled forward per its RRULE (F11) and audited.
+
+**AC6 — Reminders fire in property-local timezone**  ‹maps: `ReminderTimezoneIT`, web `tasks.spec` reminders›
+- **Given** a task due at 09:00 local time in Singapore (`Asia/Singapore`)
+- **When** the EventBridge scheduler fires the reminder at the configured lead
+- **Then** the notification is delivered at the correct local time, not UTC
+- **And** the same engine fires in `Europe/London` time for Wardian tasks.
+
+**AC7 — Staff cannot create or manage projects (negative)**  ‹maps: `TaskAuthzIT`›
+- **Given** Marcia (Staff)
+- **When** she attempts to `POST /api/task-projects` or `DELETE /api/task-projects/:id`
+- **Then** she is **denied (403, default-deny)**
+- **And** she can complete her own assigned tasks but cannot see or edit tasks assigned to other users.
+
+**AC8 — Overdue recurring task does not pile occurrences**  ‹maps: `RecurrenceCapIT`›
+- **Given** a weekly recurring task with 3 missed due dates
+- **When** the scheduler materialises occurrences
+- **Then** at most one pending overdue occurrence exists per template (lazy materialisation, capped)
+- **And** no infinite series of back-dated occurrences is created.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG): RRULE expansion + next-occurrence; reminder scheduling (mock EventBridge); source-linkage side-effects (maintenance/defect/list); scope + assignment enforcement; timezone handling; project-delete guard.

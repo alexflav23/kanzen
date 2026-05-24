@@ -51,13 +51,56 @@ Generalises F04 (assets) + F22 (templates); used by F08 (products), F09 (vendors
 ## 8. Edge cases
 Custom field later promoted to a template field (migrate values); taxonomy node deleted with linked entities (reparent/guard); same name across taxonomies; tag merge; very deep trees; a custom field marked sensitive (RBAC); freehand sprawl (data-quality nudges to consolidate); applies_to mismatch (a vendor-taxonomy node on an asset → blocked).
 
-## 9. Acceptance criteria
-- **AC1** A user adds a brand-new taxonomy "Cleaning products" and nests categories several levels deep, then categorises a list item under it — no schema change.
-- **AC2** A custom field ("warranty portal URL") is defined on **vendors**, set on a vendor, and shows on its detail + is searchable.
-- **AC3** Any entity (vendor, list item, person) can be tagged; tags are shared/polymorphic and facetable in search.
-- **AC4** Adding an unknown key to an asset's `attributes` is accepted and flagged for data-quality (promotable to a template field).
-- **AC5** A `sensitive` custom field on a Principal-private asset is hidden from the Manager (F02).
-- **AC6** Porcelain (typed template, F22) and a freehand one-off both work through the same trunk+freehand model.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — New taxonomy created and used with deep nesting, no schema migration**  ‹maps: `TaxonomyCreateIT`, web `settings.spec` taxonomies›
+- **Given** no "Cleaning products" taxonomy exists
+- **When** Toby creates the taxonomy with nodes: Cleaning products → Kitchen → Degreasers → Sprays (four levels deep) and categorises a list item under "Sprays"
+- **Then** the list item shows the "Sprays" taxonomy chip on its detail, the taxonomy tree is navigable in Settings, and no database migration was required
+- **And** the taxonomy creation and link are audited.
+
+**AC2 — Custom field defined on vendors, set, and searchable**  ‹maps: `CustomFieldVendorIT`, web `settings.spec` custom-fields, `search.spec`›
+- **Given** no "warranty portal URL" field exists on vendors
+- **When** Toby defines a `url`-typed custom field "warranty portal URL" for entity_type `vendor`, and Lorna sets it on the Miele vendor record
+- **Then** the field appears in the Miele vendor detail with the URL value
+- **And** searching for the field value (F28) returns the Miele vendor in results.
+
+**AC3 — Polymorphic tags applied to any entity and facetable in search**  ‹maps: `PolymorphicTagIT`, web `search.spec` tags›
+- **Given** the tag "Priority" exists
+- **When** Lorna applies "Priority" to a vendor, a list item, and a document
+- **Then** all three entity types carry the tag and the `entity_tags` rows reflect the correct `entity_type`/`entity_id`
+- **And** filtering by "Priority" in search (F28) returns all three entities.
+
+**AC4 — Unknown key in attributes accepted and flagged for data-quality**  ‹maps: `UnknownKeyFlagIT`, web `asset-detail.spec` custom-fields›
+- **Given** a watch asset with a typed template (F22)
+- **When** Lorna PATCHes the asset with an `attributes` key "restoration_note" not present in the template
+- **Then** the value is stored in `assets.attributes` and displayed on the asset detail
+- **And** a data-quality flag (F23) is raised marking "restoration_note" as an unknown key (promotable to a template field), and the flag is visible in the Inbox.
+
+**AC5 — Sensitive custom field on Principal-private asset hidden from Manager (negative)**  ‹maps: `SensitiveFieldAuthzIT`›  *(invariant: sensitive custom fields inherit host entity permission; no leak)*
+- **Given** a custom field "insurance broker ref" marked `sensitive = true` defined on assets, and set on a watch
+- **When** Lorna (Manager) requests the watch detail
+- **Then** the "insurance broker ref" field is **absent / field-stripped** from the response — she sees other custom fields but not the sensitive one
+- **And** Marcia (Staff) also receives a **403/empty** for that field, and the field value is never included in any aggregate or search result they can access.
+
+**AC6 — Typed template (F22) and freehand field coexist on the same asset**  ‹maps: `TrunkPlusFreehandIT`›
+- **Given** a porcelain asset using the Porcelain category template (typed trunk fields) and a freehand "storage_cabinet" attribute not in the template
+- **When** the Specifications tab and the Custom fields section render
+- **Then** the template-defined fields appear in the Specifications tab (typed, validated) and the freehand "storage_cabinet" appears in the Custom fields section
+- **And** both are stored in `assets.attributes` and both are returned in the asset response.
+
+**AC7 — Taxonomy node deletion guarded when entities are linked**  ‹maps: `TaxonomyNodeDeleteGuardIT`›
+- **Given** the "Sprays" taxonomy node has 3 list items linked to it
+- **When** Toby attempts to delete the "Sprays" node
+- **Then** deletion is **blocked** with a message listing the linked entities
+- **And** once all links are removed, the node can be soft-deleted and the taxonomy tree updates.
+
+**AC8 — Only Principal can define taxonomies and custom-field definitions (negative)**  ‹maps: `ExtensibilityAuthzIT`›
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** Lorna attempts `POST /api/taxonomies` or `POST /api/custom-fields` and Marcia attempts the same
+- **Then** both receive **403**
+- **And** Lorna can still set custom-field values and apply tags to entities within her operational scope.
 
 ## 10. Test plan
 Backend (weaver+PG): polymorphic tags + taxonomy links; infinite-tree CRUD + reparent/delete guards; template validation + unknown-key acceptance/flagging; custom-field sensitivity → RBAC; applies_to enforcement; GIN/trigram facet queries. Web: Vitest custom-fields/tag/taxonomy editors; Playwright add-taxonomy + custom-field-on-vendor + tag-anything.

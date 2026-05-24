@@ -72,14 +72,55 @@ Per `DocumentsView` + App. E.9, and consumed by the Property/Asset Documents tab
 - Scope: a Singapore-scoped user can't see Wardian property documents.
 - Presigned URL leakage → short TTL + per-request authorisation; no public objects.
 
-## 9. Acceptance criteria
-- **AC1** Upload a PDF receipt → stored in S3, `sha256` recorded, immutable original, preview generated, listed with category + source.
-- **AC2** Attach one document to an asset **and** a bank transaction (polymorphic); both detail views show it.
-- **AC3** A Principal-private legal document is invisible to the Manager (not listed, 403 on direct fetch) and visible to the Principal.
-- **AC4** Downloading yields a short-lived presigned URL; the object is never publicly accessible.
-- **AC5** Soft-deleting hides metadata but the S3 original persists; checksum verifies.
-- **AC6** Re-uploading an identical file offers to link the existing document.
-- **AC7** A Singapore-scoped user cannot list Wardian documents.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Upload a receipt: immutable original stored and checksummed**  ‹maps: `DocumentUploadIT`, web `documents.spec` upload›  *(invariant: source documents are sacred — immutable originals)*
+- **Given** Lorna is on the Documents upload screen
+- **When** she uploads a PDF receipt
+- **Then** the original is stored in S3 at the expected key path, `sha256` is recorded, `immutable = true`, and the document is listed with `category = receipt` and `source = manual`
+- **And** any attempt to overwrite the original S3 object is **rejected** — corrections require a new document or derived version.
+
+**AC2 — Polymorphic attachment**  ‹maps: `DocumentLinkIT`, web `documents.spec` attach›
+- **Given** a document already in the store
+- **When** Lorna attaches it to both an asset and a bank transaction via `POST /api/documents/:id/links`
+- **Then** the asset detail Documents tab and the transaction detail both list the document
+- **And** the `document_links` table has two rows with the correct `target_type`/`target_id` combinations.
+
+**AC3 — Principal-private documents invisible to Manager**  ‹maps: `DocumentVisibilityIT`, web `documents.spec` visibility›  *(invariant: server-side scope; no leak)*
+- **Given** Toby uploads a legal document with `visibility = principal_private`
+- **When** Lorna (Manager) calls `GET /api/documents` or `GET /api/documents/:id` for that document
+- **Then** it is **not listed** in Lorna's results and the direct fetch returns **403/404** — existence is not leaked
+- **And** Toby (Principal) can list and download it normally.
+
+**AC4 — Download via short-lived presigned URL**  ‹maps: `DocumentPresignIT`, web `documents.spec` download›  *(invariant: no public S3 objects)*
+- **Given** a document stored in S3
+- **When** Toby requests `GET /api/documents/:id/download`
+- **Then** he receives a short-lived presigned URL (per-request authorisation)
+- **And** the S3 object has no public ACL; the URL expires within the configured TTL.
+
+**AC5 — Soft-delete preserves the original**  ‹maps: `DocumentSoftDeleteIT`›  *(invariant: source documents are sacred)*
+- **Given** a document with `immutable = true`
+- **When** Lorna soft-deletes it via `DELETE /api/documents/:id`
+- **Then** `deleted_at` is set and the document no longer appears in listings
+- **And** the S3 original **still exists**; `sha256` verification against the original still passes; any linked targets show "document removed".
+
+**AC6 — Deduplication: identical sha256 prompts link**  ‹maps: `DocumentDedupIT`›
+- **Given** a document already stored with a known `sha256`
+- **When** Toby uploads a file with the same checksum
+- **Then** the API returns a dedup prompt offering to link the existing document rather than creating a duplicate
+- **And** accepting the prompt creates a `document_link` to the existing document; no second S3 object is created.
+
+**AC7 — Property scope: Singapore user cannot see Wardian documents**  ‹maps: `DocumentScopeIT`, web `documents.spec` scope›  *(invariant: property scope enforced server-side)*
+- **Given** Siti (Singapore Staff)
+- **When** she lists documents or attempts to fetch a Wardian-scoped document by ID
+- **Then** the listing returns **only** her property's documents and the direct fetch returns **403/404** — Wardian document existence is not leaked.
+
+**AC8 — Agent-sourced document recorded with correct provenance**  ‹maps: `DocumentAgentSourceIT`›  *(invariant: agent proposes, source docs immutable)*
+- **Given** The Agent files an email attachment via `POST /api/documents` with `source = agent`
+- **When** the document is stored
+- **Then** `source = agent` is recorded and the agent ribbon appears in the Documents module row
+- **And** the original is immutable and subject to the same visibility/scope rules as any other document.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG + **LocalStack S3**): upload→S3→metadata→sha256; immutability (overwrite rejected); polymorphic link/unlink; visibility filtering (Manager vs Principal); scope filtering; presigned-URL TTL + auth; dedup; soft-delete retains object.

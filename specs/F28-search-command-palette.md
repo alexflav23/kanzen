@@ -46,13 +46,50 @@ Indexes every domain (F03–F27); **pgvector + Bedrock embeddings** (F13 infra) 
 ## 8. Edge cases
 Permission-aware ranking (don't rank by hidden fields); semantic false-positives (blend + threshold); stale index after bulk import; huge corpus pagination; multi-word/typo; scoped user; command vs search ambiguity; entity deleted but indexed (tombstone); embeddings model change (re-embed).
 
-## 9. Acceptance criteria
-- **AC1** ⌘K opens instantly; empty state shows recents + permission-filtered quick actions; typing returns grouped, highlighted results; full keyboard nav works.
-- **AC2** A semantic query ("watches serviced this year") returns relevant assets even without exact keyword match.
-- **AC3** A typo ("Audemar Pigue") still finds "Audemars Piguet" (fuzzy).
-- **AC4** A Manager's results exclude valuations/other-property data; a Staff member's are scope-limited — verified server-side.
-- **AC5** A search can be saved and re-run; recents populate.
-- **AC6** Quick actions are filtered to the actor's permissions; `>` forces command mode.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — ⌘K opens with recents and permission-filtered quick actions; keyboard nav works**  ‹maps: `PaletteOpenIT`, web `search.spec` palette-open`›
+- **Given** Toby is on any page
+- **When** he presses ⌘K
+- **Then** the palette overlay opens instantly (< 150 ms); the empty state shows his recent items and quick actions (Add property, Log expense, Open Triage, Toggle theme)
+- **And** ↑/↓ moves selection, ↵ opens the item, ⌘1–9 jumps groups, ⌘↵ triggers the secondary action, Esc closes.
+
+**AC2 — Semantic query returns relevant results without exact keyword match**  ‹maps: `SemanticSearchIT`, web `search.spec` semantic›
+- **Given** Toby has assets with service events logged under "Rolex Datejust — polished bezel"
+- **When** he types "watches serviced this year" in the palette
+- **Then** the Rolex asset appears in the results despite no literal keyword match
+- **And** the blended ranker's semantic score drives placement; the result is permission-filtered (no results Toby cannot see).
+
+**AC3 — Fuzzy matching recovers from typos**  ‹maps: `FuzzySearchIT`, web `search.spec` fuzzy›
+- **Given** an asset named "Audemars Piguet Royal Oak" in the registry
+- **When** Toby types "Audemar Pigue"
+- **Then** the asset surfaces in results (trigram similarity)
+- **And** the matched segment is highlighted in the result row.
+
+**AC4 — Search and aggregates are permission- and scope-filtered server-side (negative)**  ‹maps: `SearchPermissionIT`, web `search.spec` scope-leak›  *(invariant: search, aggregates and NL queries are permission/scope-filtered server-side — no leak via totals)*
+- **Given** Lorna (Manager) and Marcia (Wardian-Staff) each issue a search
+- **When** Lorna queries for assets with valuations and Marcia queries for any Singapore data
+- **Then** Lorna's results exclude valuation fields (stripped server-side); Marcia's results contain no Singapore entities and no count/aggregate hints their existence
+- **And** the `search_index.sensitivity` + F02 filtering is verified at the query layer, not only in the UI.
+
+**AC5 — Saved searches persist and re-run; recents populate**  ‹maps: `SavedSearchIT`, web `search.spec` saved-search›
+- **Given** Toby runs an Advanced Search for "insurance documents, property=Singapore"
+- **When** he clicks **Save this search**
+- **Then** it appears in the saved-searches rail and can be re-run
+- **And** recently visited assets appear in the palette empty state on next open.
+
+**AC6 — Quick actions are permission-filtered; `>` forces command mode**  ‹maps: `QuickActionAuthzIT`, web `search.spec` quick-actions›
+- **Given** Marcia (Staff) opens ⌘K
+- **When** the empty state renders
+- **Then** "Log expense" and "Add property" are absent from her quick actions (she has no permission)
+- **And** typing `>` switches to command mode (filtered command catalog); typing a plain string returns search results.
+
+**AC7 — Stale-index is surfaced; deleted entities do not appear**  ‹maps: `IndexFreshnessIT`, web `search.spec` stale-index›
+- **Given** an asset is soft-deleted and the index has not yet been refreshed
+- **When** Toby searches for it
+- **Then** the index refresh (outbox trigger) removes the tombstoned entity; the footer "last sync N min ago" is accurate
+- **And** once refreshed, the entity does not appear in any results.
 
 ## 10. Test plan
 Backend (weaver+PG+pgvector): blended ranking (keyword/fuzzy/semantic); **permission-filtered results** (Manager/Staff leak tests — critical); index freshness via outbox; saved searches; performance budget. Web: Vitest palette (recents/quick-actions/grouping/highlight/keyboard); Playwright ⌘K open→navigate→act, semantic + fuzzy queries, scoped-result assertions.

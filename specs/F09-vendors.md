@@ -42,11 +42,49 @@ F11 (maintenance assignment + expiry reminders), F08 (list delivery vendor), F15
 ## 8. Edge cases
 Expired insurance mid-plan (warn, don't auto-cancel); vendor across multiple properties; merging duplicate vendors; deleting a vendor with history (soft-delete, retain links); rating history.
 
-## 9. Acceptance criteria
-- **AC1** A vendor approved for Wardian with valid insurance is selectable for Wardian maintenance; one with expired insurance is blocked with a clear reason.
-- **AC2** NDA/insurance nearing expiry surfaces in Inbox + dashboard; expired flags the vendor.
-- **AC3** A vendor's detail shows its maintenance, bills and asset-role history.
-- **AC4** Staff see only vendors approved for their property.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Vendor with valid insurance is selectable; expired insurance blocks assignment**  ‹maps: `VendorInsuranceBlockIT`, web `vendors.spec` selectability›
+- **Given** two vendors approved for Wardian — one with valid insurance and one with an expired `insurance_until` date
+- **When** Lorna opens the maintenance assignment picker for a Wardian job (F11)
+- **Then** the vendor with valid insurance is selectable
+- **And** the vendor with expired insurance is **blocked** with a clear "Insurance expired" reason — it cannot be assigned.
+
+**AC2 — Compliance expiry surfaces in Inbox and dashboard**  ‹maps: `VendorExpiryReminderIT`, web `vendors.spec` expiry-pills›
+- **Given** a vendor whose NDA expires within 60 days and another whose insurance expires within 60 days
+- **When** the reminder engine runs (F11)
+- **Then** both appear in the Inbox + the dashboard "expiring within 60 days" section with amber pills
+- **And** once the date passes, the vendor row turns red and new maintenance assignment for affected properties is blocked.
+
+**AC3 — Vendor history: maintenance, bills, and asset roles**  ‹maps: `VendorHistoryIT`, web `vendors.spec` detail›
+- **Given** a vendor linked to completed maintenance jobs, billed invoices, and asset provenance roles (dealer, appraiser)
+- **When** Lorna opens the vendor detail
+- **Then** she sees all linked maintenance logs, bills, and asset-role entries in the history panels
+- **And** provenance roles (dealer, auctioneer) are shown as **immutable history** — they cannot be deleted.
+
+**AC4 — Property-scoped approval: Staff see only their property's vendors**  ‹maps: `VendorScopeIT`, web `vendors.spec` scope›  *(invariant: default-deny; property scope enforced server-side)*
+- **Given** Marcia (Wardian Staff) and a vendor approved for Singapore only
+- **When** Marcia lists vendors
+- **Then** she sees only vendors with a `vendor_property_link` to Wardian — the Singapore-only vendor is **not listed**
+- **And** Siti (Singapore Staff) conversely sees only Singapore-approved vendors; neither can see the other's list.
+
+**AC5 — Vendor creation and approval (Manager/Principal write)**  ‹maps: `VendorCreateApproveIT`, web `vendors.spec` create›
+- **Given** Lorna is on the Vendors screen
+- **When** she creates a new vendor (business, trade: plumber) and approves it for Wardian via `POST /api/vendors/:id/properties`
+- **Then** the vendor appears in the Wardian-scoped vendor list with an active status
+- **And** the creation and approval actions are both audited.
+
+**AC6 — Staff cannot create or edit vendors (negative)**  ‹maps: `VendorAuthzIT`›  *(invariant: default-deny)*
+- **Given** Marcia (Wardian Staff)
+- **When** she attempts `POST /api/vendors` or `PATCH /api/vendors/:id`
+- **Then** she receives **403** — Staff have read-only access to approved vendors for their property.
+
+**AC7 — Soft-delete a vendor with history (edge)**  ‹maps: `VendorSoftDeleteIT`›
+- **Given** a vendor with linked maintenance logs and bill references
+- **When** Lorna soft-deletes the vendor
+- **Then** `deleted_at` is set and the vendor no longer appears in active listings
+- **And** all historical links (maintenance, bills, asset roles) are **retained** and remain visible in the audit trail — no orphaned references.
 
 ## 10. Test plan
 Backend: property-scoped selectability, insurance-expiry block, role links, soft-delete with history. Web: Vitest vendor table/compliance pills; Playwright approve-for-property + expiry warning.

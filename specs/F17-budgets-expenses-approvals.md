@@ -50,13 +50,50 @@ F13 (receipt → expense), F14 (transaction → expense/budget spend), F04/F19 (
 ## 8. Edge cases
 Multi-currency thresholds (compare in native currency, no FX); approval of a list item / maintenance cost (polymorphic); associated cost split rounding; budget overspend alert; expense edited after approval (re-approval if it crosses threshold); rejected expense handling; delegation of approval (open Q).
 
-## 9. Acceptance criteria
-- **AC1** Logging a £1,840 expense routes it to the Principal as pending; below-threshold auto-approves.
-- **AC2** The Principal approves/rejects from the Expenses block, the dashboard hero, and mobile; decisions are audited.
-- **AC3** A repair cost attached to a watch appears in that asset's lifetime cost (and Insights).
-- **AC4** A cost split across two assets allocates correctly (allocations sum to total).
-- **AC5** Budget spent vs annual renders per property with the monthly bars; overspend alerts.
-- **AC6** Thresholds compare in native currency (£ vs S$) with no silent FX.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Above-threshold expense routes to Principal; below-threshold auto-approves**  ‹maps: `ExpenseThresholdRoutingIT`, web `expenses.spec` approval-block›
+- **Given** the UK approval threshold is £1,500
+- **When** Lorna logs a £1,840 expense (e.g. a Wardian repair) and submits it
+- **Then** an `approvals` row is created (`status=pending`), the expense enters `status=pending_approval`, and the Principal's dashboard hero shows "1 expense to approve"
+- **And** when Lorna logs a £900 expense the same day, it auto-approves (`status=approved`) with no approval row created.
+
+**AC2 — Principal approves/rejects from all surfaces; decisions audited**  ‹maps: `ApprovalDecisionIT`, web `expenses.spec` approve, mobile `approve.spec`›  *(invariant: Kanzen never moves money — approval records intent, does not pay)*
+- **Given** a pending £1,840 expense
+- **When** Toby approves it from the Expenses block, the dashboard hero strip, or the mobile one-tap view
+- **Then** `approvals.status=approved`, `decided_by=Toby`, `decided_at` is set, and the audit log records the decision
+- **And** rejection sets `status=rejected` with an optional note; both outcomes are audited; no funds are disbursed.
+
+**AC3 — Repair cost appears in asset lifetime cost**  ‹maps: `AssociatedCostLifetimeIT`, web `asset-detail.spec` lifetime-cost›
+- **Given** a confirmed watch asset (F04) and a £350 service expense
+- **When** Lorna creates an `associated_cost` linking the expense to the watch
+- **Then** the watch's lifetime cost (acquisition + operating) increases by £350 and is visible on the asset detail (F19) and Insights (F29)
+- **And** the associated cost is audited.
+
+**AC4 — Cost split across two assets allocates correctly**  ‹maps: `AssociatedCostSplitIT`›
+- **Given** a £600 transport cost to be split between two watches
+- **When** Lorna links it with `allocation_minor=300_00` for each asset
+- **Then** both `associated_cost_asset_link` rows are created; allocations sum exactly to the total (£600); the lifetime cost of each watch increases by £300
+- **And** the engine rejects any split that does not sum to the total cost.
+
+**AC5 — Budget utilisation renders with monthly bars and overspend alert**  ‹maps: `BudgetSpendIT`, web `budgets.spec`›
+- **Given** Wardian has an annual GBP budget with 5 months of approved expenses
+- **When** Toby or Lorna views the Budgets tab
+- **Then** each property shows spent/of/% used with a 5-month bar chart; native currency only (GBP for Wardian, SGD for Singapore)
+- **And** when spend exceeds the budget, an overspend indicator is shown.
+
+**AC6 — Thresholds compare in native currency; no silent FX**  ‹maps: `ThresholdNativeCurrencyIT`›  *(invariant: FX uses transaction-date rate — F37; thresholds stay per-jurisdiction native)*
+- **Given** Wardian threshold is £1,500 and Singapore threshold is S$2,500
+- **When** a S$2,600 Singapore expense is logged
+- **Then** it routes to approval (S$2,600 > S$2,500 native); there is **no FX conversion** applied to the threshold comparison
+- **And** a Wardian £1,400 expense does not trigger approval — each jurisdiction is compared only in its native currency.
+
+**AC7 — Staff cannot access expenses, approvals, or budgets (negative)**  ‹maps: `ExpenseAuthzIT`›  *(invariant: server-side scope; no leak via totals)*
+- **Given** Marcia (Wardian Staff)
+- **When** she requests `GET /api/expenses`, `GET /api/approvals`, or `GET /api/budgets`
+- **Then** she receives **403** on all three — no amounts, categories, or approval statuses are revealed
+- **And** Lorna (Manager) can log and submit expenses and view budgets, but cannot see asset valuations (stripped server-side, F02).
 
 ## 10. Test plan
 Backend (weaver+PG): threshold routing per jurisdiction; polymorphic approvals; associated-cost allocation + lifetime-cost rollup; budget spend derivation; re-approval on edit. Web: Vitest expenses/approval block + budgets bars; Playwright log→approve + associated cost on an asset.

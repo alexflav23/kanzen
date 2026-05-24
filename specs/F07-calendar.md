@@ -64,14 +64,56 @@ Per `calendar.jsx` + App. E.12:
 - Service-account auth revoked → re-auth prompt; calendar read-only until restored.
 - Duplicate event (app create + Google echo) → dedup by `google_event_id`.
 
-## 9. Acceptance criteria
-- **AC1** An event created in Kanzen appears in Google Calendar (and on devices) within sync latency, and vice-versa.
-- **AC2** Week/Month/List render colour-coded events with the legend; agent events show the ribbon/dot.
-- **AC3** An agent delivery creates a paired calendar event + native task.
-- **AC4** A maintenance plan's visit shows on the calendar and re-creates if deleted in Google.
-- **AC5** Native due tasks overlay read-only and toggle off.
-- **AC6** Staff sees only their property's calendar + their leave.
-- **AC7** `syncToken` expiry triggers a clean full resync with no duplicates.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Two-way sync: app→Google and Google→app**  ‹maps: `CalendarSyncIT.roundTrip`, web `calendar.spec` sync›
+- **Given** the Google Calendar API is configured for the Wardian calendar
+- **When** Lorna creates an event in Kanzen
+- **Then** the event appears in Google Calendar (on all linked devices) within sync latency, with the correct title/time/timezone
+- **And** when the event is edited in Google, the incremental `syncToken` pull brings the update back into Kanzen (last-write-wins per etag).
+
+**AC2 — Calendar views render with colour-coded legend and agent ribbon**  ‹maps: `CalendarRenderIT`, web `calendar.spec` views, mobile `calendar_test.dart`›
+- **Given** a calendar with events across all five categories (Delivery/Maintenance/Booking/HR/Finance)
+- **When** Toby opens the Week, Month, and List views
+- **Then** each event is rendered in its category colour and the legend maps correctly
+- **And** agent-created events show the agent ribbon/dot marker.
+
+**AC3 — Agent delivery creates paired calendar event + native task**  ‹maps: `AgentDeliveryPairIT`, web `calendar.spec` agent-delivery›
+- **Given** The Agent processes a delivery email
+- **When** the delivery is ingested
+- **Then** both a `calendar_event_ref` (category `delivery`) and a native task (F06, `source_type='agent'`) are created and cross-linked via `source_id`
+- **And** deleting one prompts about its pair — neither is silently orphaned.
+
+**AC4 — Maintenance plan visit shows on calendar and re-creates if deleted in Google**  ‹maps: `MaintenanceCalendarIT`›
+- **Given** an active maintenance plan (F11) with a calendar event
+- **When** someone deletes the event directly in Google
+- **Then** the app detects the deletion on next sync and **re-creates** the event (the plan is the authoritative source)
+- **And** the event is flagged with `source_type = 'maintenance'` so the guard fires.
+
+**AC5 — Native task overlay is read-only and toggleable**  ‹maps: `TaskOverlayIT`, web `calendar.spec` task-overlay›
+- **Given** tasks with `due_at` values in the current week
+- **When** Lorna opens the Calendar week view with the task overlay enabled
+- **Then** due tasks appear as a distinct read-only layer (no Google write for standard tasks)
+- **And** toggling the overlay off hides all task dots without affecting Google-synced events.
+
+**AC6 — Staff scope: Siti sees only Singapore calendar (negative)**  ‹maps: `CalendarScopeIT`, web `calendar.spec` scope, mobile `calendar_test.dart`›
+- **Given** Siti is Singapore-Staff
+- **When** she opens the Calendar
+- **Then** she sees only Singapore property events and her own leave
+- **And** a direct request for a Wardian calendar or event returns **403/404** — existence not leaked.
+
+**AC7 — syncToken expiry triggers clean full resync with no duplicates**  ‹maps: `CalendarFullResyncIT`›
+- **Given** the stored `syncToken` has expired (Google returns HTTP 410)
+- **When** the next sync runs
+- **Then** a full resync is performed; all events are re-imported by `google_event_id` dedup
+- **And** no duplicate `calendar_event_ref` rows are created and the new `syncToken` is stored.
+
+**AC8 — Service-account auth revocation surfaces a re-auth prompt**  ‹maps: `CalendarAuthErrorIT`, web `calendar.spec` sync-error›
+- **Given** the Google service-account delegation has been revoked
+- **When** a sync is attempted
+- **Then** the calendar shows a **sync-error / re-auth needed** state in the UI (not a silent failure)
+- **And** all pre-existing events remain readable (read-only) until auth is restored.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG; Google Calendar API mocked): push→Google + pull-via-syncToken; conflict/etag resolution; watch-webhook handling; token-expiry full resync; source-pairing (maintenance/delivery/leave); dedup.

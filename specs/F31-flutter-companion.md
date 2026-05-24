@@ -45,12 +45,50 @@ Backend API; **Cognito** (auth, passkeys/biometrics); **FCM + APNs** (push — S
 ## 8. Edge cases
 Offline capture + later sync conflicts; large photo upload on cellular; push token rotation; biometric fallback; role-trimmed tabs; deep-link to a since-resolved item; iOS vs Android parity; app-store review (Sign in with Apple requirement).
 
-## 9. Acceptance criteria
-- **AC1** Sign in (incl. biometric/passkey); the tab bar reflects the user's role.
-- **AC2** Capture a receipt photo → uploads → OCR proposal appears in Triage.
-- **AC3** Confirm/reject an agent proposal and approve/reject an expense from mobile.
-- **AC4** Offline captures queue and sync on reconnect (no duplicates).
-- **AC5** A push reminder deep-links to the right screen; light/dark match web.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Sign in with biometric/passkey; tab bar reflects the user's role**  ‹maps: mobile `AuthBiometricTest`, `TabBarRoleTest`›
+- **Given** Toby and Marcia each open the app on their respective devices
+- **When** each authenticates (Cognito + biometric/passkey where available)
+- **Then** Toby sees all five tabs (Home · Triage · Bibles · Money · Search); Marcia sees only the tabs relevant to her Staff role
+- **And** the design tokens and light/dark theme match the web application.
+
+**AC2 — Receipt photo capture triggers OCR proposal in Triage**  ‹maps: mobile `ReceiptCaptureTest`, `TriageProposeTest`›  *(invariant: asset/financial proposals are never auto-committed)*
+- **Given** Lorna is on the Capture screen
+- **When** she photographs a receipt and submits it
+- **Then** the image uploads to S3 (F05); OCR runs (F13); the extracted line items and proposed actions appear in the Triage stream
+- **And** nothing is committed to the registry until she explicitly confirms in Triage; the source image in S3 is immutable.
+
+**AC3 — Confirm agent proposal from mobile executes and shows result**  ‹maps: mobile `TriageConfirmMobileTest`›
+- **Given** a proposed Triage item is visible on Lorna's Home screen attention cards
+- **When** she taps into Triage detail and taps **Confirm**
+- **Then** the action executes; the item moves to History with `status = confirmed`; a success state is shown
+- **And** financial/asset proposals require explicit individual confirm; bulk-auto is blocked on mobile as on web.
+
+**AC4 — Expense approved/rejected from the Money tab**  ‹maps: mobile `ExpenseApprovalMobileTest`›
+- **Given** a submitted expense is pending Toby's approval
+- **When** Toby opens the **Money** tab and approves or rejects it
+- **Then** the expense state updates accordingly (F17); the result is audited; the pay-queue glance reflects the change
+- **And** Lorna receives an in-app (and push, if subscribed) notification of the outcome (F34).
+
+**AC5 — Offline capture queues and syncs on reconnect without duplicates**  ‹maps: mobile `OfflineCaptureTest`›
+- **Given** Lorna's device goes offline while she captures a quick event (F19)
+- **When** connectivity is restored
+- **Then** the queued capture uploads idempotently; exactly one record is created server-side
+- **And** no duplicate is created if the upload retries; the sync state indicator clears.
+
+**AC6 — Push notification deep-links to the correct screen**  ‹maps: mobile `PushDeepLinkTest`, `PushReminderTest`›
+- **Given** Marcia is registered for push (APNs/FCM) and a task is assigned to her
+- **When** the push notification arrives on her device
+- **Then** tapping it deep-links directly to that task screen (correct property scope)
+- **And** a reminder push similarly deep-links to the relevant reminder (F11); a since-resolved item shows a graceful "already actioned" state.
+
+**AC7 — Role-scoped user cannot access out-of-scope data on mobile (negative)**  ‹maps: mobile `ScopedAccessTest`›
+- **Given** Siti (Singapore-Staff) is using the app
+- **When** she navigates to Bibles or Search
+- **Then** she sees only Singapore data; no Wardian property, assets, or financial data appear in any screen, list, or search result
+- **And** direct API calls for Wardian resources return 403/404 with no data leakage.
 
 ## 10. Test plan
 Flutter widget/integration tests (capture, Triage confirm, approvals, offline queue); device matrix (iOS/Android); API contract tests shared with backend; push delivery test. (CI: GitLab + mobile runners — open Q.)

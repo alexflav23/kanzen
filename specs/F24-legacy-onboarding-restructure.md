@@ -44,12 +44,56 @@ F04 (assets/groups), F19 (events/lineage), F20 (valuation reallocation), F13 (re
 ## 8. Edge cases
 Merge of assets with different currencies/cost bases; split rounding; convert with existing events; reallocate receipt links across merged assets; undo a restructure; bulk import partial failures; duplicate detection (F23) → guided merge.
 
-## 9. Acceptance criteria
-- **AC1** Create a legacy asset with approximate cost, no receipt, and an uncertainty note; it's valid and flagged for completeness.
-- **AC2** Bulk-import a spreadsheet of 50 items → preview → commit as drafts.
-- **AC3** Merge two duplicate "Dyson V15" assets → one asset, both lineages + cost basis preserved, operation audited + reversible.
-- **AC4** Split a "set of 6 tumblers" into 6 individual assets with cost allocated; history explainable.
-- **AC5** No restructure silently deletes data; cost basis/valuation remain attributable.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Create a legacy asset with approximate data and uncertainty note**  ‹maps: `LegacyCreateIT`, web `assets.spec` legacy-form›
+- **Given** Lorna opens the New asset form in legacy mode
+- **When** she submits with an approximate acquisition date (year only), an estimated cost, no receipt, no merchant, and an uncertainty note "Inherited from grandmother c. 1990"
+- **Then** the asset is created as valid in the registry, with `uncertainty_note` populated
+- **And** a `missing_proof` completeness flag is raised (F23) and the asset shows a lower completeness score, but the record itself is not blocked.
+
+**AC2 — Bulk-import 50 items: map → preview → commit as drafts**  ‹maps: `BulkImportIT`, web `assets.spec` bulk-import›
+- **Given** a CSV/spreadsheet with 50 asset rows and mixed columns
+- **When** Lorna uploads it, maps columns to Kanzen fields in the import UI, reviews the preview (showing validation warnings), and commits
+- **Then** 50 draft assets are created in `asset_import_rows` and promoted to `assets` in the committed batch
+- **And** rows with unmappable required fields are listed as errors and skipped, not silently imported.
+
+**AC3 — Merge two duplicate assets: lineage + cost basis preserved, audited + reversible**  ‹maps: `MergeIT`, web `asset-detail.spec` restructure›
+- **Given** two "Dyson V15" assets each with their own cost basis and acquisition events
+- **When** Toby triggers a merge via the Restructure action
+- **Then** one asset remains, both lineages are preserved in `restructured_from`, and the combined cost basis is correctly summed and stored in `restructure_operations`
+- **And** the operation is audited (before/after cost basis), and a reversal restores both originals.
+
+**AC4 — Split a "set of 6 tumblers" into 6 individual assets**  ‹maps: `SplitIT`›
+- **Given** an asset "Set of 6 crystal tumblers" with a cost basis of £600 and an acquisition event
+- **When** Lorna performs a split into 6 children with even cost allocation (£100 each)
+- **Then** 6 new assets are created, each with `parent_asset_id` pointing to the original, and cost basis allocated correctly
+- **And** the original asset is superseded/linked (not deleted), the split is audited, and the 6 children's cost basis sums to £600.
+
+**AC5 — No restructure silently destroys data (invariant)**  ‹maps: `RestructureNonDestructiveIT`›
+- **Given** a regroup operation moving assets between groups
+- **When** the regroup is committed
+- **Then** all original `restructure_operations` records (inputs/outputs/cost_basis_before/cost_basis_after) are retained
+- **And** valuation history and provenance documents remain attributable to the original lineage — no asset row is hard-deleted.
+
+**AC6 — Valuation reallocation on split is Principal-only (negative)**  ‹maps: `RestructureValuationAuthzIT`›  *(invariant: valuation reallocation is Principal-only; no leak)*
+- **Given** a split operation that includes reallocating a valuation snapshot across children
+- **When** Lorna (Manager) attempts to commit the valuation reallocation step
+- **Then** she receives **403** on the reallocation sub-action
+- **And** the non-valuation parts of the restructure (lineage/cost basis) proceed normally if Lorna initiates them within her write permission.
+
+**AC7 — Bulk-import partial failure: errors listed, successes committed**  ‹maps: `BulkImportPartialIT`›
+- **Given** a CSV of 50 rows where 5 rows have a missing required field (e.g. no title)
+- **When** Lorna commits the import
+- **Then** 45 assets are created as drafts; the 5 failing rows are returned as errors with row numbers and field details
+- **And** re-uploading a corrected CSV for only the 5 failed rows is accepted.
+
+**AC8 — Undo a merge restores both originals**  ‹maps: `MergeReversalIT`›
+- **Given** a completed merge operation marked `reversible = true`
+- **When** Toby reverses the merge
+- **Then** both original assets are restored with their pre-merge cost bases, valuations, and events
+- **And** the reversal is audited with `reversed_by` and timestamp set on the `restructure_operations` record.
 
 ## 10. Test plan
 Backend (weaver+PG): legacy relaxed validation; bulk import map/commit; merge/split/regroup/convert/reallocate cost-basis math + lineage preservation + reversibility; audit completeness. Web: Vitest import mapper + restructure preview; Playwright legacy create + merge.

@@ -47,12 +47,50 @@ F06 (task), F07 (event), F09 (vendor), F05 (log documents), F04/F19 (asset + ass
 ## 8. Edge cases
 - Plan completion before/after due → `next_due` recalculated. Vendor insurance lapses before a visit → warn. Task deleted but plan active → regenerate. Asset sold/archived with active plan → pause plan. Reminder snoozed past next due → coalesce. Backup-due reminder with no plan (system-generated). Multi-property scan performance.
 
-## 9. Acceptance criteria
-- **AC1** Creating a plan via the 3-step modal generates a recurring task + calendar event + lead reminders to Lorna.
-- **AC2** Completing the service writes a MaintenanceLog (with cost + docs), rolls next-due, and (for a registry asset) adds an associated cost.
-- **AC3** The Inbox Reminders stream shows maintenance, a lapsed warranty, an appraisal refresh, and a backup-due — from the one engine.
-- **AC4** A vendor with expired insurance can't be selected for a new plan.
-- **AC5** Snoozing/acting on a reminder updates its lifecycle and audit.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — 3-step plan creation generates task + calendar event + reminders**  ‹maps: `MaintenancePlanIT.create`, web `maintenance.spec` add-plan›
+- **Given** Lorna opens the Add-maintenance modal for the Wardian HVAC system
+- **When** she completes all 3 steps (asset/vendor → schedule → review) and saves
+- **Then** a `maintenance_plan` is created, a recurring native task (F06, `source_type = 'maintenance_plan'`) is generated for the assignee, a Google Calendar event (F07) is created, and reminders at `lead_days` are scheduled
+- **And** the review step summarises "reminders go to Lorna, calendar N days before" before saving.
+
+**AC2 — Completing service writes MaintenanceLog and rolls next_due**  ‹maps: `MaintenanceCompleteIT`, web `maintenance.spec` complete›
+- **Given** a scheduled maintenance plan for the Singapore pool filter with `expected_cost`
+- **When** Lorna marks the service complete (cost, notes, and document uploaded)
+- **Then** a `MaintenanceLog` is created with `performed_at`, `vendor_id`, cost, and linked `document_ids`; `next_due` rolls forward per the RRULE
+- **And** an `associated_cost` entry is written to the asset (F19) for lifetime-cost tracking, audited.
+
+**AC3 — Cross-domain reminder engine surfaces all kinds in the Inbox**  ‹maps: `ReminderEngineIT.multiKind`, web `reminders.spec` inbox›
+- **Given** the system has a due maintenance plan, a lapsed warranty (F19/F21), an upcoming appraisal (F21), and a backup-due reminder (F30)
+- **When** the EventBridge scan job runs
+- **Then** all four appear in the **Inbox → Reminders stream** with correct `kind`, `due_at`, and status (`scheduled`/`due`)
+- **And** each originates from the **one shared reminder engine** (single scan, single `reminders` table).
+
+**AC4 — Vendor with expired insurance cannot be selected (negative)**  ‹maps: `VendorInsuranceGuardIT`, web `maintenance.spec` vendor-guard›
+- **Given** a vendor whose insurance has lapsed (F09)
+- **When** Lorna opens the Add-maintenance modal and searches for that vendor
+- **Then** the vendor is **not available** for selection (blocked with a clear warning)
+- **And** existing plans referencing that vendor show an insurance-expired warning.
+
+**AC5 — Snooze/act/done reminder lifecycle is tracked and audited**  ‹maps: `ReminderLifecycleIT`, web `reminders.spec` snooze›
+- **Given** a maintenance reminder in `scheduled` state
+- **When** Lorna snoozes it, then later acts on it, then marks it done
+- **Then** each transition is reflected: `snoozed → scheduled → sent → done`, with `snooze_until` set and cleared
+- **And** each state change is audited; snoozed-past-next-due coalesces rather than accumulating duplicates.
+
+**AC6 — Staff can read plans but cannot create or modify them (negative)**  ‹maps: `MaintenanceAuthzIT`›
+- **Given** Marcia (Wardian-Staff)
+- **When** she attempts `POST /api/maintenance/plans` or `PATCH /api/maintenance/plans/:id`
+- **Then** she is **denied (403, default-deny)**
+- **And** she can view her property's maintenance plan list and complete a "be-present" task assigned to her, but cannot create or edit plans.
+
+**AC7 — Recurring task regenerated if deleted while plan remains active**  ‹maps: `MaintenanceTaskRegenerateIT`›
+- **Given** a maintenance plan with `creates_task = true` whose linked task was manually deleted
+- **When** the next materialisation cycle runs (or the plan is next accessed)
+- **Then** a new recurring task is generated for the plan — the plan is never silently left without a task
+- **And** the regeneration is audited with a note indicating the prior task was absent.
 
 ## 10. Test plan
 Backend (weaver+PG; mock EventBridge): plan→task/event/reminder generation; completion→log+roll+associated-cost; multi-kind reminder scan + fan-out; vendor guard; RRULE rolling; snooze coalescing. Web: Vitest add-maintenance stepper + reminders stream; Playwright create-plan→complete.

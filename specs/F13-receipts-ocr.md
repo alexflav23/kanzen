@@ -64,14 +64,50 @@ Receipts surface mostly through the **Inbox** (agent receipt proposals + reconci
 - Re-parse after a model upgrade → new version; prior confirmations preserved.
 - Embedding model change → re-embed memory (migration job).
 
-## 9. Acceptance criteria
-- **AC1** Uploading a receipt photo produces structured line items via Claude, stored as a versioned parse run; the original is immutable.
-- **AC2** After confirming "Drake's tie → Clothing/`bespoke`" once, a later Drake's tie line item is **auto-suggested** the same category/tags with a high confidence and source=`history`.
-- **AC3** A novel item with no rule/history gets a Claude suggestion (source=`claude`) at lower confidence, flagged for review.
-- **AC4** Confirming a line item writes to `line_item_memory`; re-running suggestion for a similar item now hits history.
-- **AC5** A "6 tumblers" line item proposes one grouped asset (×6), confirmed by a human.
-- **AC6** Re-parse creates a new version without altering the original or losing prior confirmations.
-- **AC7** All inference runs on Bedrock in eu-west-1 (no external calls).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Receipt photo produces immutable original + versioned parse run**  ‹maps: `ReceiptParseIT.uploadAndParse`, web `receipt-detail.spec`›
+- **Given** Toby uploads a JPEG photo of a retail receipt
+- **When** the parse job completes
+- **Then** structured line items are created (header: merchant, date, total; per-line: description, qty, amount, currency) stored as `receipt_parse_runs` version 1
+- **And** the original document (`document_id`) is **immutable** — the raw S3 object is never modified (F05 invariant).
+
+**AC2 — Learned categorisation from confirmed history**  ‹maps: `LearnedSuggestionIT`, web `receipt-detail.spec` suggestion-chip›
+- **Given** Toby previously confirmed "Drake's silk tie → Clothing/`bespoke`" on an earlier receipt
+- **When** a new Drake's receipt arrives with a similar tie line item
+- **Then** the line item shows `suggested_category=Clothing`, `suggested_tags=['bespoke']`, `suggestion_source=history`, with a high `suggestion_confidence`
+- **And** the **suggestion chip** in the UI displays "history" as source, no manual re-entry needed.
+
+**AC3 — Novel item routed to Claude at lower confidence**  ‹maps: `ColdStartSuggestionIT`›
+- **Given** a line item for a merchant/description never seen before (no matching rule or history)
+- **When** the categorisation pipeline runs
+- **Then** the suggestion has `suggestion_source=claude`, `suggestion_confidence` below the auto-apply threshold, and the receipt enters `status=needs_review`
+- **And** the low-confidence line is **highlighted** in the review UI for human confirmation.
+
+**AC4 — Confirmation writes to memory; next retrieval hits history**  ‹maps: `MemoryWriteIT`, web `receipt-detail.spec` confirm›
+- **Given** a line item in `status=suggested`
+- **When** Lorna (or Toby) confirms its category/tags
+- **Then** a `line_item_memory` row is written with the embedding, confirmed category and tags; the confirmation is audited
+- **And** re-running the suggestion pipeline for a semantically similar item now returns `suggestion_source=history` with higher confidence.
+
+**AC5 — Line item proposes grouped asset; human confirms**  ‹maps: `LineItemToAssetProposalIT`›  *(invariant: financial/asset creation proposed, never auto-committed)*
+- **Given** a line item "6 crystal tumblers — £240"
+- **When** the parse pipeline and agent process it
+- **Then** the system **proposes** one grouped asset (quantity=6) — status `proposed`, not committed
+- **And** Toby must explicitly confirm before the asset record is created in F04; no asset is written without confirmation.
+
+**AC6 — Re-parse creates new version without destroying prior work**  ‹maps: `ReparseVersioningIT`›
+- **Given** receipt with version-1 parse run and some confirmed line items
+- **When** Toby triggers a re-parse (e.g. after model upgrade)
+- **Then** a new `receipt_parse_runs` row with `version=2` and `status=success` is created; the prior run is `status=superseded`
+- **And** the original document is unchanged; all prior line-item confirmations are preserved and visible.
+
+**AC7 — Staff cannot access receipts (negative)**  ‹maps: `ReceiptAuthzIT`›  *(invariant: Principal-private with Manager carve-out; no leak)*
+- **Given** Marcia (Wardian Staff)
+- **When** she requests `GET /api/receipts`
+- **Then** she is **denied (403)** — no receipt data, no total amounts, no existence leaked
+- **And** Lorna (Manager) can upload and confirm receipts; she sees confirmed amounts but not downstream asset valuations (stripped server-side, F02).
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG **with pgvector**; Bedrock mocked): schema-validated extraction parsing; the three-layer suggestion engine (rule vs history vs Claude precedence + confidence); learning loop (confirm → memory → subsequent retrieval hit); versioned re-parse; line-item→asset proposal; multi-currency/tax math; dedup.

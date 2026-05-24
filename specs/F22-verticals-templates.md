@@ -44,12 +44,62 @@ F04 (attributes/categories), F11 (vehicle date reminders), F23 (template-complet
 ## 8. Edge cases
 Adding a brand-new vertical = add a template (no migration); template field removed (keep historical values); enum value retired; vehicle MOT/tax reminders; multi-vertical asset (rare → primary category).
 
-## 9. Acceptance criteria
-- **AC1** The canonical category tree + 8 templates seed; an asset's Specifications tab renders typed per-vertical fields.
-- **AC2** Creating a guitar shows maker/model/year/serial/pickups…; a watch shows movement/serial/box-&-papers.
-- **AC3** Attribute values validate against the template (required/type/enum).
-- **AC4** Vehicles appear as a saved Inventory view with MOT/tax/insurance, and their dates raise reminders.
-- **AC5** A new vertical is added by creating a template, with no schema migration.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Canonical tree + 8 templates seed and render**  ‹maps: `TemplateSeedIT`, web `specs-tab.spec`›
+- **Given** a freshly migrated system
+- **When** Toby opens **Settings → Categories & templates**
+- **Then** the canonical top-level categories are present (Watches & Jewellery, Art, Instruments, Furniture, Clothing & Shoes, Porcelain, Glassware, Vehicles, …) with all 8 vertical templates seeded
+- **And** each template's fields, types, and required flags match the Appendix C definitions.
+
+**AC2 — Guitar vertical renders the correct typed fields**  ‹maps: `GuitarTemplateIT`, web `specs-tab.spec` guitar›
+- **Given** Toby creates a new asset under the Guitar category
+- **When** the create-asset form loads the category template
+- **Then** fields for maker, model, year, serial, pickups (enum), and other App. C guitar fields appear with correct input types and required markers
+- **And** submitting without a required field is blocked with an inline validation error.
+
+**AC3 — Watch vertical shows movement/serial/box-and-papers**  ‹maps: `WatchTemplateIT`, web `specs-tab.spec` watch›
+- **Given** an existing watch asset
+- **When** the Specifications tab renders
+- **Then** movement type (enum), serial, box-&-papers (bool), and other watch fields are shown with their stored values
+- **And** editing and saving an enum field validates against the allowed values.
+
+**AC4 — Attribute validation: wrong type and invalid enum blocked**  ‹maps: `AttributeValidationIT`›
+- **Given** a porcelain asset with a template that has a `year` (number) and a `condition` (enum: mint/good/fair/poor)
+- **When** Lorna submits `year = "abc"` or `condition = "excellent"` (not in enum)
+- **Then** both submissions are rejected (422) with per-field error details
+- **And** a valid submission persists and appears correctly on the Specifications tab.
+
+**AC5 — Vehicle saved view with MOT/tax/insurance and date reminders**  ‹maps: `VehicleViewIT`, `VehicleReminderIT`, web `inventory.spec` vehicles›
+- **Given** a vehicle asset with registration, MOT expiry, road-tax expiry, and insurance renewal dates
+- **When** the Vehicles saved Inventory view loads
+- **Then** the view shows the vehicle-specific columns (reg/VIN/MOT/tax/insurance) for all vehicle-category assets
+- **And** dates within the reminder window raise F11 reminders in the Inbox.
+
+**AC6 — New vertical created by adding a template, no schema migration**  ‹maps: `NewVerticalNoMigrationIT`›
+- **Given** no existing "Wine" category template
+- **When** Toby creates a Wine category node and a corresponding template (fields: vintage year, region, varietal, bottle count)
+- **Then** a new Wine asset can be created with those typed fields immediately
+- **And** the database schema has not changed — values are stored in `assets.attributes` JSONB.
+
+**AC7 — Template versioning: existing assets preserve values after schema change**  ‹maps: `TemplateVersioningIT`›
+- **Given** 10 guitar assets with a populated `serial` field, and template version 1
+- **When** Toby adds a new optional field `finish` to the guitar template (bumping to version 2)
+- **Then** all 10 existing assets retain their `serial` values and the Specifications tab renders correctly
+- **And** the template record shows `version = 2`; existing assets show `finish` as blank/unset.
+
+**AC8 — Wear/use counts in clothing template**  ‹maps: `WearCountIT`›
+- **Given** a clothing asset using the Clothing & Shoes template
+- **When** the `wear_count` field is incremented and saved
+- **Then** the updated count is stored in `assets.attributes` and displayed on the Specifications tab
+- **And** `dry_cleaning_history` entries are accepted as the template defines.
+
+**AC9 — Principal edits templates; Manager/Staff cannot (negative)**  ‹maps: `TemplateAuthzIT`›
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** either attempts to create or edit a category template via `POST /api/category-templates`
+- **Then** both receive **403**
+- **And** Lorna can still use templates when creating/editing assets.
 
 ## 10. Test plan
 Backend (weaver+PG): tree seed, template validation (required/type/enum), versioning, vehicle reminders, GIN attribute filtering. Web: Vitest SpecsTab template render + create-asset form; Playwright add-guitar/watch.

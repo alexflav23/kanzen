@@ -43,12 +43,44 @@ F12 (transactions), F13 (receipts/line items), F27 (match rules), F18 (matched g
 ## 8. Edge cases
 Partial payment / installments (one receipt ↔ many transactions); a card statement line ↔ many receipts; refund reversing a prior match; transfer vs expense; duplicate suggestions; superseded chain; currency mismatch; pending transaction matched then re-booked.
 
-## 9. Acceptance criteria
-- **AC1** A transaction auto-suggests its receipt match with a confidence; confirming sets both to `matched`.
-- **AC2** One receipt reconciles against two installment transactions (1:N, partial allocations summing correctly).
-- **AC3** A transfer between own accounts is detected and excluded from spend.
-- **AC4** A refund reverses a prior match without mutating history (superseded chain).
-- **AC5** Manager can reconcile but sees no balances; Staff sees nothing.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Auto-suggested match confirmed by Manager**  ‹maps: `ReconciliationSuggestIT`, web `reconciliation.spec` suggest-confirm›
+- **Given** a bank transaction and a confirmed receipt with matching merchant, amount, and date (within tolerance)
+- **When** the suggestion engine runs
+- **Then** a `reconciliation_matches` row is created with `state=suggested` and a `confidence` score; the Inbox shows the pair with a **Confirm** CTA
+- **And** when Lorna confirms, both the transaction and receipt move to `state=matched`; the match is audited.
+
+**AC2 — 1:N partial allocations sum correctly**  ‹maps: `PartialAllocationIT`›
+- **Given** one receipt for £600 and two installment transactions of £300 each
+- **When** Lorna links both transactions to the receipt with `amount_allocated_minor=300_00` each
+- **Then** the match is created with `state=partially_matched` → `matched` when both are present; `match_members` allocations sum exactly to the receipt total
+- **And** the engine rejects any allocation set that does not sum to the total (validation error).
+
+**AC3 — Transfer between own accounts excluded from spend**  ‹maps: `TransferDetectionIT`›
+- **Given** a debit transaction on Coutts and a matching credit on Revolut for the same amount and date
+- **When** the transfer-detection pass runs
+- **Then** both transactions are marked `internal_status=transfer` and excluded from spend aggregates
+- **And** no income/expense posting is generated in the ledger (F18 invariant) — only a transfer posting.
+
+**AC4 — Refund reverses prior match without mutation**  ‹maps: `RefundReversalIT`›
+- **Given** a confirmed match between a transaction and receipt
+- **When** a refund transaction arrives and Toby links it as a refund reversal
+- **Then** the original match is set `superseded_by` the new reversal group; history shows **both** (original + reversal) with nothing deleted or mutated
+- **And** the net spend effect is zero; prior match remains queryable.
+
+**AC5 — Suggested match is never silently committed**  ‹maps: `ReconciliationProposedNotCommittedIT`›  *(invariant: financial records proposed-not-auto-committed)*
+- **Given** a high-confidence auto-suggestion
+- **When** the engine creates it
+- **Then** its `state` is `suggested`, **never** `matched` without an explicit human confirm action
+- **And** the Inbox presents the suggestion with Confirm/Reject; no match is finalised without a user action.
+
+**AC6 — Manager reconciles; no balances; Staff denied**  ‹maps: `ReconciliationAuthzIT`›  *(invariant: server-side scope; no leak via totals)*
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** Lorna calls `GET /api/reconciliation?stream=needs` and `POST /api/reconciliation/matches`
+- **Then** she receives the reconciliation queue (200) and can confirm matches; `financial_account.balance_minor` is **absent** from any account data returned
+- **And** Marcia's request to any reconciliation endpoint returns **403** — no transaction, receipt, or total amount is revealed.
 
 ## 10. Test plan
 Backend (weaver+PG): cardinality + partial allocation math; transfer/refund detection; supersede-not-mutate; suggestion heuristics + threshold; currency. Web: Vitest reconciliation stream; Playwright suggest→confirm + a 1:N match.

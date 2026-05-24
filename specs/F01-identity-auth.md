@@ -78,14 +78,56 @@ Custom, built to §16 (the prototype has no login screen — this is new but in-
 - Suspended mid-session → immediate effective logout.
 - Concurrent role change while user active → next token (or `/me`) reflects new role; no stale-permission writes (F02 enforces server-side per request).
 
-## 9. Acceptance criteria
-- **AC1** A new user invited by the Principal receives an SES invite, sets a credential (password or passkey), enrols TOTP, signs in, and `GET /api/me` returns their canonical profile with role + scope.
-- **AC2** Each of the four methods signs in successfully through the **custom** UI; Google/Apple via federated redirect; passkey via WebAuthn; email/password via SRP with a TOTP challenge.
-- **AC3** Signing in with Google using an email that already exists as a native user links to the **same** `users` row (no duplicate).
-- **AC4** A passkey sign-in does **not** additionally prompt for TOTP; an email/password sign-in **does**.
-- **AC5** Session list shows active sessions; revoking one invalidates that refresh token; "Sign out everywhere" ends all; sessions auto-expire at 4h idle.
-- **AC6** A suspended user is rejected even with an unexpired JWT.
-- **AC7** Non-Principal cannot call any `/api/users*` admin endpoint (403).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Invite-only provisioning & first sign-in**  ‹maps: `InviteActivationIT`, web `signin.spec`›
+- **Given** Toby (Principal) sends an invite to a new user's email address via `POST /api/users`
+- **When** the invitee clicks the SES invite link, sets a credential (password or passkey), and enrols TOTP
+- **Then** their `users` status transitions `invited → active`, a `login_identity` row is created, and `GET /api/me` returns the canonical profile with correct role and property scope
+- **And** the invite flow is audited (invite + activation events in `audit_log_entries`).
+
+**AC2 — Email/password + TOTP sign-in**  ‹maps: `NativeAuthIT`, web `signin.spec` totp-path›
+- **Given** Lorna has an active `cognito_native` identity
+- **When** she signs in with email + password through the custom UI
+- **Then** Cognito issues a TOTP challenge; after a valid 6-digit code she receives JWTs and `GET /api/me` resolves her Manager profile
+- **And** the sign-in is audited with method `cognito_native`.
+
+**AC3 — Passkey satisfies MFA — no TOTP prompt**  ‹maps: `PasskeyMfaIT`, web `signin.spec` passkey-path›
+- **Given** Toby has a registered passkey on his device
+- **When** he signs in using "Use a passkey" (WebAuthn `USER_AUTH`)
+- **Then** authentication succeeds with **no separate TOTP prompt** — the passkey is accepted as a phishing-resistant second factor
+- **And** `GET /api/me` returns his Principal profile.
+
+**AC4 — Federated identity links to existing user (no duplicate)**  ‹maps: `FederatedLinkIT`›
+- **Given** Lorna already exists as a `cognito_native` user with email `lorna@example.com`
+- **When** she signs in via "Continue with Google" using the same verified email
+- **Then** a second `login_identity` row is linked to her **existing** `users` row — no duplicate person created
+- **And** `GET /api/me` returns her canonical profile; the link event is audited.
+
+**AC5 — Session management: revoke and auto-expire**  ‹maps: `SessionRevocationIT`, web `settings.spec` sessions›
+- **Given** Toby has two active sessions (two devices)
+- **When** he revokes one session from Settings → Account → Active sessions
+- **Then** that session's `revoked_at` is set and the Cognito refresh token is invalidated; the next API call on that device gets **401**
+- **And** "Sign out everywhere" revokes all sessions; an idle session older than 4 hours is rejected server-side regardless of JWT validity.
+
+**AC6 — Suspended user rejected despite valid JWT (negative)**  ‹maps: `SuspendedUserIT`›
+- **Given** Marcia holds a valid, unexpired JWT
+- **When** Toby suspends her account via `POST /api/users/:id/suspend`
+- **Then** Marcia's next request to any authenticated endpoint is **rejected (401/403)**, her sessions are revoked, and she cannot proceed until reactivated
+- **And** the suspension and session revocations are audited.
+
+**AC7 — Non-Principal blocked from user-management endpoints (negative)**  ‹maps: `UserAdminAuthzIT`›
+- **Given** Lorna (Manager) and Marcia (Staff) are signed in
+- **When** either calls `POST /api/users`, `PATCH /api/users/:id`, or `POST /api/users/:id/suspend`
+- **Then** both receive **403** — user management is Principal-only
+- **And** no user record is created or mutated.
+
+**AC8 — Last-identity guard**  ‹maps: `LastIdentityGuardIT`›
+- **Given** Siti has exactly one `login_identity` (her Cognito native credential)
+- **When** she attempts to delete it via `DELETE /api/me/identities/:id`
+- **Then** the request is **rejected** with a clear error — a user must always retain at least one identity
+- **And** no `login_identity` row is deleted.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG, Cognito mocked/local): JWT validation (valid/expired/wrong-aud/wrong-iss) reusing F00 middleware; lazy-provision link-by-email; last-identity guard; suspended-user rejection; admin-only guard on `/api/users`; session revoke marks `revoked_at` and calls Cognito; preference update.

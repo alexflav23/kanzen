@@ -44,12 +44,50 @@ F25 (agent routing), F13 (categorisation engine + memory), F14 (match suggestion
 ## 8. Edge cases
 Attempt to set a financial category to auto (rejected). Conflicting rules (priority resolution). Rule that would mis-route money (guarded). Learned suggestion conflicting with a rule (rule wins as Layer 1, but low-confidence rule vs high-confidence history → surface both). Threshold too aggressive → more auto-applies (tune). Cold start.
 
-## 9. Acceptance criteria
-- **AC1** A non-financial category can be set to `auto`; **Bill/Invoice and asset categories cannot** (UI disabled + server-enforced).
-- **AC2** A merchant→category rule auto-suggests correctly and is overridable; testing the rule against history previews matches.
-- **AC3** Raising a category's confidence threshold changes how often suggestions auto-apply (non-financial only).
-- **AC4** Every trust/rule change and auto-applied suggestion is audited.
-- **AC5** Learned suggestions (F13) respect rules as Layer 1 and never auto-create financial/asset records.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Non-financial category can be set to auto; financial/asset categories cannot**  ‹maps: `TrustLockIT`, web `trust.spec` lock-enforcement›  *(invariant: financial/asset creation never auto-commits)*
+- **Given** Toby views Trust settings
+- **When** he tries to set the `invoice` category to `auto`
+- **Then** the UI row is disabled and the PUT is rejected server-side (financial/asset `locked = true` enforced regardless of payload)
+- **And** he can successfully set a non-financial category (e.g. `delivery`) to `auto`; both changes are audited.
+
+**AC2 — Merchant→category rule suggests correctly and is overridable**  ‹maps: `MerchantRuleIT`, web `rules.spec` rule-suggest›
+- **Given** a `merchant_category` rule mapping Amazon to category `delivery`
+- **When** The Agent processes an email from Amazon
+- **Then** the suggested category is `delivery` (rule Layer 1); Lorna can override the suggestion in-flow without deleting the rule
+- **And** the override is logged as a learning signal (F13).
+
+**AC3 — Rule test dry-run previews matches against history**  ‹maps: `RuleDryRunIT`, web `rules.spec` test-rule›
+- **Given** a newly created rule before it is activated
+- **When** Toby clicks **Test** against the last 30 days of history
+- **Then** the results panel shows the emails that would have matched, with the inferred action — without executing anything
+- **And** no `agent_actions` are created; no domain changes occur.
+
+**AC4 — Confidence threshold gates auto-apply for non-financial categories**  ‹maps: `ConfidenceThresholdIT`, web `rules.spec` threshold-slider›  *(invariant: never auto-applies for financial/asset)*
+- **Given** the `delivery` category has a confidence threshold of 0.85
+- **When** a delivery suggestion scores 0.70
+- **Then** it is routed to `proposed` (below threshold); the action is not auto-executed
+- **And** when the same suggestion scores 0.90, it auto-executes; the financial categories' thresholds are inert (always proposed).
+
+**AC5 — Learned suggestions respect rules as Layer 1 and never auto-create financial records**  ‹maps: `LearnedLayerIT`›  *(invariant: financial/asset creation never auto-commits)*
+- **Given** a high-confidence learned suggestion (pgvector history + Claude) for a `propose_asset` action
+- **When** the suggestion engine runs
+- **Then** the asset is placed in the Inbox as `proposed`, never auto-executed
+- **And** where a deterministic rule also fires for the same input, the rule result takes precedence (Layer 1).
+
+**AC6 — All trust/rule/threshold changes and auto-applied suggestions are audited**  ‹maps: `TrustAuditIT`, web `trust.spec` audit-trail›
+- **Given** Toby changes a trust setting, creates a rule, and adjusts a threshold
+- **When** each write completes
+- **Then** an `audit_log_entry` is created for each change, recording actor, field, old and new value
+- **And** every auto-applied suggestion likewise has an audit entry with `confidence` and `source`.
+
+**AC7 — Conflicting rules resolve by priority; conflicts are surfaced (negative)**  ‹maps: `RuleConflictIT`, web `rules.spec` conflict-warning›
+- **Given** two active rules that match the same email with different category assignments
+- **When** The Agent evaluates the rules
+- **Then** the higher-priority rule wins; the UI surfaces a conflict warning on the rules list
+- **And** Toby can adjust priority or deactivate one; no money-routing conflict is silently accepted.
 
 ## 10. Test plan
 Backend (weaver+PG): financial-lock enforcement; rule precedence/conflict; rule dry-run; threshold→auto-apply behaviour; rule-vs-learned precedence; audit. Web: Vitest trust settings (locked rows) + rules editor; Playwright set-auto (allowed/blocked) + test-a-rule.

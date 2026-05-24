@@ -85,13 +85,48 @@ F00 delivers the **design system** and the **shells**, not features. The prototy
 - TigerBeetle/S3 down at boot → log + degrade (don't crash the API for skeleton phase); surface in `/health` detail.
 - Dark/light flash on first paint → theme resolved from `localStorage` before first render.
 
-## 9. Acceptance criteria
-- **AC1** `git clone` + `direnv allow` + `docker-compose up` + `sbt run` boots the backend: migrations applied, `GET :9990/health` = 200, `GET :8080/api/health` returns version+sha, `/docs` serves OpenAPI, `:9464` exposes metrics.
-- **AC2** `GET /api/whoami` rejects no/invalid token (401) and returns the principal for a valid Cognito (or dev-mode) token.
-- **AC3** `cd web && npm run dev` renders the grouped nav + top bar; **⌘D** toggles light/dark with no flash; every nav route shows a styled `EmptyState`; the component library renders in a `/dev/components` gallery.
-- **AC4** The Flutter shell builds and shows the 5-tab bar in light/dark.
-- **AC5** `.gitlab-ci.yml` pipeline is green (lint, compile, test, package, web build/test); `terraform plan` succeeds for the `staging` workspace.
-- **AC6** Money values render via dinero.js in native currency (£/S$) with tabular figures.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Local stack boots clean**  ‹maps: `FoundationBootIT`, backend `HealthSpec`›
+- **Given** a freshly cloned repo
+- **When** a developer runs `direnv allow && docker-compose up && sbt run`
+- **Then** Flyway migrations apply without error, `GET :9990/health` returns 200, `GET :8080/api/health` returns `{status, version, gitSha}`, `/docs` serves the OpenAPI contract, and `:9464` exposes Prometheus metrics
+- **And** the boot log records all config keys resolved; no key is missing.
+
+**AC2 — Auth middleware: valid and invalid tokens**  ‹maps: `JwtMiddlewareSpec`, web `auth.spec`›
+- **Given** the backend is running with the dev-mode JWT issuer
+- **When** Toby calls `GET /api/whoami` with a valid dev-mode token
+- **Then** the response contains his decoded Cognito principal (userId, role, scope)
+- **And** calls with no token, an expired token, or a wrong-audience token receive **401** — the request is rejected before reaching any handler.
+
+**AC3 — Config fails fast with all missing keys**  ‹maps: `ConfigLoadSpec`›
+- **Given** the application is started with several required env vars unset (`DATABASE_URL`, `COGNITO_POOL_ID`, `S3_BUCKET`)
+- **When** the process boots
+- **Then** it **exits non-zero** and the log lists **every** missing key in a single error, not just the first
+- **And** no partial initialisation (no migration, no server port bound).
+
+**AC4 — Web shell: design system & light/dark**  ‹maps: web `shell.spec` (Playwright), `ThemeContext.test` (Vitest)›
+- **Given** `npm run dev` on the web project
+- **When** Toby loads the app
+- **Then** the grouped left nav (Dashboard · Inbox / INVENTORY / OPERATIONS / RECORDS / FINANCE & SYSTEM), the top bar with the 完 mark, and the ⌘K command-palette trigger all render in warm-paper light
+- **And** pressing **⌘D** toggles to dark with no flash (theme resolved from `localStorage` before first paint); every stub route shows a styled `EmptyState`; the `/dev/components` gallery renders every library component.
+
+**AC5 — Money renders correctly via dinero.js (negative: no floats)**  ‹maps: `MoneyHelperSpec` (Vitest)›
+- **Given** a money value stored as integer minor units (e.g. `125050` GBP pence, `980000` SGD cents)
+- **When** a component renders it using the dinero.js helper
+- **Then** it displays as `£1,250.50` and `S$9,800.00` with tabular figures
+- **And** no floating-point arithmetic is performed at any layer — the helper test asserts integer-only operations.
+
+**AC6 — Flutter shell builds with light/dark and tab bar**  ‹maps: `flutter test` widget test `shell_test.dart`›
+- **Given** `flutter run` on the mobile project
+- **When** the app launches
+- **Then** the 5-tab bar (Home · Triage · Bibles · Money · Search) renders in both light and dark themes; each tab shows a placeholder screen; the Cognito auth flow screen is reachable.
+
+**AC7 — CI pipeline is green**  ‹maps: `.gitlab-ci.yml` pipeline jobs›
+- **Given** a commit to the main branch
+- **When** the GitLab CI pipeline runs
+- **Then** `terraform-lint`, `compile-backend`, `test-backend`, `web-build`, and `web-test` all pass; `Universal/packageXzTarball` produces an artifact; `terraform plan` for the `staging` workspace exits 0.
 
 ## 10. Test plan
 - **Backend**: weaver-cats + **testcontainers-postgresql** — boot test (migrations run clean against a fresh PG16), `/api/health` + `:9990/health` tests, config-loading test (asserts all-missing-keys accumulation), auth-middleware test (valid/expired/wrong-aud JWT against a test JWKS), a sample Tapir endpoint round-trip (Circe encode/decode).

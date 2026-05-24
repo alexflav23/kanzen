@@ -45,13 +45,50 @@ F08 (auto list item / order), F09 (preferred vendors + links), F33 (categorise/a
 ## 8. Edge cases
 Out twice before ordering (dedup); preferred vendor untracked (free-text "Harrods" + URL); multi-property products; par-level automation vs manual; price drift on the buy link; product later promoted to a tracked asset (rare); seasonal items.
 
-## 9. Acceptance criteria
-- **AC1** Create product "Eggs" with preferred spec "Burford Brown, large" and a preferred vendor "Harrods" + buy URL.
-- **AC2** A staff member marks Eggs **out** → a Lists buy request appears pre-filled with the spec + Harrods link → Principal approves → order task created.
-- **AC3** Marking out twice doesn't duplicate the pending list item.
-- **AC4** Products are categorised via a user-defined taxonomy (F33) and carry custom fields/tags.
-- **AC5** Stock status + history render; restock resets to in-stock.
-- **AC6** Staff act only on their property's products.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Create product with preferred spec and vendor buy link**  ‹maps: `ProductCatalogueIT.create`, web `products.spec` create›
+- **Given** Lorna is managing the Wardian supply catalogue
+- **When** she creates product "Eggs" with preferred spec "Burford Brown, large", preferred vendor "Harrods" (free-text), and a buy URL
+- **Then** the product is saved with `preferred_spec`, a `product_vendors` row with `preferred = true`, and the buy URL
+- **And** the product is categorised via an F33 taxonomy (e.g. Groceries › Eggs) and carries custom attributes via `attributes jsonb`.
+
+**AC2 — Staff marks out → Lists buy request auto-proposed (not auto-committed)**  ‹maps: `StockOutListProposalIT`, web `products.spec` mark-out, mobile `products_test.dart`›  *(invariant: agent/automation never auto-commits)*
+- **Given** Marcia notices the eggs are gone and the product is `in_stock`
+- **When** she taps **Mark out of stock**
+- **Then** `stock_status` becomes `out`, a `product_stock_events` row is written, and a `product.out_of_stock` F34 event is emitted
+- **And** a Lists item is **proposed** (status `needs_approval`) on the Wardian supplies list, pre-filled with the preferred spec and Harrods buy URL — it is **not** auto-approved or auto-ordered.
+
+**AC3 — Marking out twice does not duplicate the pending list item**  ‹maps: `StockOutDedupIT`›
+- **Given** a product already has a `needs_approval` list item pending
+- **When** the stock is marked out a second time (e.g. by another staff member)
+- **Then** no duplicate list item is created (dedup check on pending items)
+- **And** the second stock event is still recorded in `product_stock_events`.
+
+**AC4 — Approve → order task closes the buy-request cycle**  ‹maps: `ProductOrderCycleIT`, web `products.spec` e2e›
+- **Given** a `needs_approval` list item was proposed from an out-of-stock event
+- **When** Toby approves the list item and Lorna places the order
+- **Then** a native order task (F06) is created for the assignee; the list item moves to `added` then the order cycle completes
+- **And** restocking the product (marking `in_stock`) resets `stock_status` and is recorded in history.
+
+**AC5 — Stock status and history render correctly**  ‹maps: `ProductStockHistoryIT`, web `products.spec` history›
+- **Given** a product that has cycled through `in_stock → low → out → in_stock`
+- **When** Toby opens the product detail
+- **Then** the stock chip reflects the current status (in-stock/amber-low/red-out)
+- **And** the full stock history (all `product_stock_events` rows) is visible with timestamps and actors.
+
+**AC6 — Staff act only on their property's products (negative)**  ‹maps: `ProductScopeIT`, web `products.spec` scope, mobile `products_test.dart`›
+- **Given** Marcia is Wardian-Staff and Singapore has its own product catalogue
+- **When** she lists products
+- **Then** she sees only Wardian products
+- **And** a direct request for a Singapore product ID returns **403/404** — existence not leaked; she cannot create or delete products (only mark out/low).
+
+**AC7 — Preferred vendor buy link drives auto-suggest**  ‹maps: `ProductPreferredVendorIT`›
+- **Given** a product with two vendors — one preferred, one alternative
+- **When** an out-of-stock event triggers a list item proposal
+- **Then** the proposal uses the **preferred** vendor's `buy_url`
+- **And** the alternative vendor's link is visible in the product detail as a secondary option.
 
 ## 10. Test plan
 Backend (weaver+PG): stock transitions + event emission; out→list-item auto-propose + dedup; preferred-vendor buy-link selection; par-level trigger; scope. Web: Vitest products view + stock chips + mark-out; Playwright eggs end-to-end (out → list → approve → task).

@@ -43,12 +43,44 @@ Reads F06/F07/F08/F11 (dashboard ops), F17/F18 (spend/ledger), F20/F21 (value/in
 ## 8. Edge cases
 Manager aggregate must not reveal hidden valuations (test); mixed-currency household; new/empty household; scoped dashboards; materialised-view staleness; very large histories (incremental refresh); widget personalisation.
 
-## 9. Acceptance criteria
-- **AC1** The Principal's Dashboard shows the hero strip, upcoming, spend-by-property, agent activity, expiring items, lists, and connected-systems health.
-- **AC2** A Manager's Dashboard/Insights omit valuations/ledger/balances; a Staff dashboard shows only their property's tasks/lists.
-- **AC3** Insights renders lifetime spend by category, top assets by value, acquisition-vs-operating lifetime cost, and registry-health.
-- **AC4** Multi-currency totals show per-currency (no silent FX).
-- **AC5** Aggregates don't leak hidden data (verified server-side).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Principal's Dashboard shows full widget set**  ‹maps: `DashboardPrincipalIT`, web `dashboard.spec` principal›
+- **Given** a seeded household with pending approvals, upcoming events, and connected institutions
+- **When** Toby opens the Dashboard
+- **Then** he sees: the hero attention strip (Triage count + approvals count + amounts), Upcoming 14-day list, This-month spend vs budget per property, Agent activity ribbon, Expiring-within-60-days, This-week's-lists, and Connected-systems health
+- **And** Registry health (photographed/categorised/insured completeness) is visible — a Principal-only tile.
+
+**AC2 — Manager's Dashboard omits valuations and ledger; Staff sees only their scope**  ‹maps: `DashboardRoleFilterIT`, web `dashboard.spec` manager, web `dashboard.spec` staff›  *(invariant: aggregates must not leak hidden data)*
+- **Given** Lorna (Manager) and Marcia (Wardian Staff)
+- **When** each opens their Dashboard
+- **Then** Lorna sees operational widgets (approvals, pay queue, upcoming, spend) but **no valuation tiles, no ledger-derived balances, no balance figures** — field-stripped server-side
+- **And** Marcia sees only her property's tasks and lists; she cannot see Lorna's operational finance widgets nor any Singapore data.
+
+**AC3 — Insights renders all four Principal views**  ‹maps: `InsightsTilesIT`, web `insights.spec`›
+- **Given** a household with assets, expenses, and associated costs
+- **When** Toby opens Insights
+- **Then** the page renders: (1) lifetime spend by category (stacked bar), (2) top assets by value, (3) acquisition vs operating lifetime cost split, and (4) registry-health percentage bars
+- **And** all figures are sourced from the materialised views; a "as of" timestamp is shown.
+
+**AC4 — Multi-currency totals show per-currency; no silent FX**  ‹maps: `InsightsCurrencyIT`, web `insights.spec` currency-tiles›  *(invariant: FX uses transaction-date rate — F37; no silent blending)*
+- **Given** Wardian GBP and Singapore SGD costs in the household
+- **When** Toby views the inventory value or spend totals in Insights
+- **Then** totals are displayed as **separate per-currency figures** (GBP and SGD) by default; no silent FX blending occurs
+- **And** any cross-currency rollup is clearly **labelled as a dated estimate** (per F37) with the per-currency breakdown expandable.
+
+**AC5 — Manager Insights aggregate does not leak valuations via totals**  ‹maps: `InsightsLeakIT`›  *(invariant: server-side scope; no leak via totals)*
+- **Given** assets with non-zero valuations in the system
+- **When** Lorna requests `GET /api/insights/inventory-value` or `GET /api/insights/top-assets`
+- **Then** the response **omits** valuation figures entirely (not zero-filled — absent); no total or subtotal can be reverse-engineered to infer a hidden valuation
+- **And** the backend test asserts that each Insights endpoint's Manager-scoped response contains no valuation, balance, or ledger field.
+
+**AC6 — Staff dashboard shows only their property's scope**  ‹maps: `DashboardStaffScopeIT`›  *(invariant: property-scope enforced)*
+- **Given** Siti (Singapore Staff)
+- **When** she opens the Dashboard
+- **Then** she sees only Singapore-scoped tasks and lists; no Wardian data appears in any widget
+- **And** requests for Wardian-scoped data return **403/404** — existence not leaked.
 
 ## 10. Test plan
 Backend (weaver+PG): aggregate correctness; **permission/scope-filtered aggregates (leak tests)**; per-currency; materialised-view refresh. Web: Vitest dashboard widgets + insights charts (role-trimmed); Playwright Principal vs Manager vs Staff dashboards.

@@ -76,15 +76,62 @@ Extends the prototype's `PermissionsMatrix` (Settings → Permissions):
 - **Last administrator** → cannot be demoted/suspended (guard + clear error).
 - **New resource/field added by a later feature** → defaults to `none` for all non-Principal roles until a rule is added (safe-by-default); migration adds the catalog entry.
 
-## 9. Acceptance criteria
-- **AC1** A Manager calling `GET /api/assets/:id` receives the asset **without** `market_value`, `insured_value`, or `valuation_snapshots`; a Principal receives them.
-- **AC1b** A "Maintenance" role can `write` an `asset_event` (log a service) on an item but its `GET /api/assets/:id` **omits `acquisition_cost`/price/valuation** — services without seeing cost; a `sensitive` JSONB custom field is likewise stripped.
-- **AC2** A Manager is denied (`403`) on `GET /api/ledger/*`, bank balances, and `settings.permissions`.
-- **AC3** The Principal creates a custom role "Singapore Lead", grants it Manager-like rules scoped to the Singapore property, assigns Siti's future replacement; that user sees only Singapore data.
-- **AC4** A Staff user (Marcia) can create a Wardian list item and a task, but `GET /api/inventory` returns `403`.
-- **AC5** Editing a rule takes effect on the target user's next request (no re-login needed).
-- **AC6** Attempting to remove the last admin grant is rejected.
-- **AC7** `GET /api/me/permissions` returns an effective set the web app uses to hide the Inventory/Finance nav for Staff.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Field-level strip: Manager never sees valuations**  ‹maps: `FieldStripAuthzIT`, web `permissions.spec` valuation-hidden›
+- **Given** an asset with `market_value`, `insured_value`, and `valuation_snapshots` set
+- **When** Lorna (Manager) calls `GET /api/assets/:id`
+- **Then** the response **omits** `market_value`, `insured_value`, and `valuation_snapshots` — those fields are stripped server-side before the response is sent
+- **And** Toby (Principal) calling the same endpoint receives all fields including valuations.
+
+**AC2 — Maintenance role: write asset events without seeing cost**  ‹maps: `MaintenanceRoleFieldStripIT`›
+- **Given** Toby creates a custom "Maintenance" role with `write` on `asset` and `asset_event` but `none` on `asset.acquisition_cost`, `asset.market_value`, and `asset.insured_value`
+- **When** the Maintenance-role user logs a service event via `POST /api/asset-events`
+- **Then** the write succeeds and a `sensitive` JSONB custom field is likewise absent from the GET response
+- **And** the effective permission set enforces this without a re-login.
+
+**AC3 — Manager denied ledger, bank balances, and permissions settings (negative)**  ‹maps: `ManagerDenyIT`›  *(invariant: ledger hidden in UI; no leak via totals)*
+- **Given** Lorna (Manager) is authenticated
+- **When** she calls `GET /api/ledger/*`, any bank-balance endpoint, or `GET /api/permissions/roles`
+- **Then** all requests return **403**
+- **And** no ledger postings or balance figures are included in any aggregate or Insights response visible to her (no leak via totals).
+
+**AC4 — Staff default-deny on Inventory and Finance (negative)**  ‹maps: `StaffDenyIT`, web `permissions.spec` nav-hidden›
+- **Given** Marcia (Wardian Staff)
+- **When** she calls `GET /api/inventory` or any Finance endpoint
+- **Then** she receives **403** on both
+- **And** `GET /api/me/permissions` returns a permission set the web app uses to hide the Inventory and Finance nav sections entirely — she never sees those routes.
+
+**AC5 — Staff can raise tasks and list items within their scope**  ‹maps: `StaffWriteAllowedIT`›
+- **Given** Marcia (Wardian Staff)
+- **When** she creates a list item and a task both scoped to Wardian
+- **Then** both are created successfully
+- **And** her attempt to perform the same write for Singapore is **denied (403)** — property scope is enforced independently.
+
+**AC6 — Custom role with property scope — Singapore Lead**  ‹maps: `CustomRoleScopeIT`›
+- **Given** Toby creates a custom role "Singapore Lead", grants it Manager-like rules, and assigns it to Siti with `property_scope = scoped` (Singapore only)
+- **When** Siti calls `GET /api/properties` and `GET /api/assets`
+- **Then** she sees **only** Singapore-scoped records
+- **And** her request for Wardian data returns **403/404** — existence of Wardian is not leaked.
+
+**AC7 — Rule change takes effect without re-login**  ‹maps: `RuleHotReloadIT`›
+- **Given** Lorna's current role grants `read` on `budget`
+- **When** Toby revokes that grant via `PUT /api/permissions/rules`
+- **Then** Lorna's very **next request** to `GET /api/budgets` is **denied (403)** — no re-login required; the rule cache invalidates within the configured TTL
+- **And** the rule change is audited with before/after state.
+
+**AC8 — Self-lockout guard: cannot remove the last admin**  ‹maps: `LastAdminGuardIT`›
+- **Given** Toby is the only user with `admin` on `settings.permissions`
+- **When** he attempts to demote himself or delete the last `admin` grant on `settings.permissions`
+- **Then** the request is **rejected** with a clear error — the guard prevents a no-administrator state
+- **And** no `permission_rules` row is mutated.
+
+**AC9 — Agent principal follows the same Authorizer path**  ‹maps: `AgentAuthzIT`›
+- **Given** The Agent acts as a `system` principal with an Agent role (seeded)
+- **When** it attempts a financial auto-execute action (e.g. directly writing a ledger posting)
+- **Then** the `Authorizer` denies it — the Agent role does not have `write` on `ledger`
+- **And** the Agent's proposals go through the same server-side permission check as any human principal; no bypass path exists.
 
 ## 10. Test plan
 - **Backend** (weaver + testcontainers-PG): the `Authorizer` truth table (resource/field/level/scope/owner combinations); field-strip serializer (asset for Manager vs Principal); scope filtering (Singapore-scoped user can't read Wardian); default-deny for an unknown resource; precedence/conflict resolution; self-lockout guard; agent-principal path.

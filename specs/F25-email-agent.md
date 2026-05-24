@@ -46,13 +46,56 @@ Feeds **Inbox → Agent proposals / Triage** (F26, App. E.3): per-item email exc
 ## 8. Edge cases
 Ambiguous/multi-intent email (multiple actions); duplicate emails/threads; non-English; spam/phishing (scan + low-trust); attachment-less receipts; mailbox auth lapse (re-auth prompt); Gmail rate limits; partial extraction (low confidence → human); reprocess after a model upgrade; agent action whose target was deleted.
 
-## 9. Acceptance criteria
-- **AC1** A delivery email auto-creates (if trusted) or proposes a task + calendar event, linked to the source email, with the agent ribbon.
-- **AC2** A receipt email files the original to S3, runs OCR (F13), and proposes line items + an asset — **never auto-committed**.
-- **AC3** An invoice reconciles against the bill schedule and flags a ±15% variance in the Inbox.
-- **AC4** Rejecting a proposal dismisses it and feeds sender learning; nothing is silently executed for financial categories.
-- **AC5** All classification/extraction runs on Bedrock in eu-west-1; attachments are malware-scanned.
-- **AC6** Processing is idempotent per `message_id`.
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Delivery email auto-executes (trusted) and shows the agent ribbon**  ‹maps: `DeliveryEmailPipelineIT`, web `triage.spec` ribbon›
+- **Given** a delivery email arrives at `deliveries@` and the delivery category is set to `auto` (trusted, F27)
+- **When** The Agent processes it
+- **Then** a task + calendar event are created, both linked to the source email via `agent_action_result_link`
+- **And** the agent ribbon appears on the created records in the UI, and the action is audited with `status = auto_executed`.
+
+**AC2 — Receipt files to S3 and proposes — never auto-commits — asset + line items**  ‹maps: `ReceiptPipelineIT`, web `triage.spec` proposed-asset›  *(invariant: financial/asset creation never auto-commits; agent files to S3, never Drive)*
+- **Given** a receipt email with a PDF attachment arrives at `accounts@`
+- **When** The Agent ingests it
+- **Then** the raw email and attachment are stored in S3 (not Drive); OCR runs (F13); extracted line items + an asset creation are **proposed** in the Inbox with `status = proposed`
+- **And** nothing is written to the asset registry until a human confirms in Triage; the source document in S3 is immutable.
+
+**AC3 — Invoice flags variance against the bill schedule**  ‹maps: `InvoiceVarianceIT`, web `triage.spec` variance-pill›
+- **Given** a recurring bill of £100/month and an invoice email arriving for £118
+- **When** The Agent reconciles the invoice against the bill schedule (F15)
+- **Then** the action is placed in the Inbox with a variance flag (±15%) and `mode = review`
+- **And** the bill is not marked paid; no money is moved.
+
+**AC4 — Financial and asset proposals are never auto-executed regardless of trust settings**  ‹maps: `FinancialLockIT`, web `triage.spec` financial-lock›  *(invariant: financial/asset creation never auto-commits)*
+- **Given** a `propose_asset` action resulting from a receipt email, even if trust is misconfigured
+- **When** The Agent's trust router evaluates it
+- **Then** the action is routed to `proposed` regardless of any trust setting — the lock is enforced server-side (F27)
+- **And** no asset row is created; `agent_actions.status = proposed`.
+
+**AC5 — Rejection dismisses and feeds sender learning**  ‹maps: `RejectLearningIT`, web `triage.spec` reject›
+- **Given** a proposed action in the Inbox
+- **When** Toby rejects it
+- **Then** `agent_actions.status = rejected`; a sender-learning signal is recorded (F27); the Inbox item disappears from the queue
+- **And** the source email and original S3 artefact remain immutable.
+
+**AC6 — Idempotency: duplicate email is not re-processed**  ‹maps: `IngestIdempotencyIT`›
+- **Given** the same email (identical `message_id`) arrives at the same mailbox twice
+- **When** the ingest pipeline runs
+- **Then** only one `incoming_emails` row exists and the second delivery is silently skipped
+- **And** no duplicate actions or documents are created.
+
+**AC7 — Attachment malware scan blocks unsafe files**  ‹maps: `MalwareScanIT`›
+- **Given** a malicious attachment is detected by the scan step
+- **When** the pipeline processes the email
+- **Then** the attachment is not filed to S3; `incoming_emails.status = error`; an alert is audited
+- **And** no downstream actions are proposed or executed.
+
+**AC8 — Agent scope: no financial actions outside authz path (negative)**  ‹maps: `AgentAuthzIT`›
+- **Given** The Agent's system principal has no `admin` permission
+- **When** an action mapping attempts to directly create a financial record (e.g. bill) without going through the Authorizer
+- **Then** the Authorizer denies it (403); nothing is committed; the action is flagged `failed` with an audit entry
+- **And** Toby sees the failure in the Inbox history.
 
 ## 10. Test plan
 Backend (weaver+PG; Gmail + Bedrock mocked): ingest idempotency; per-category extraction schema; action mapping; trust routing (financial always propose); attachment→document+scan; provenance back-links; reprocess versioning. Integration with F13/F15.

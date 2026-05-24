@@ -39,11 +39,44 @@ F11 (lead reminders + roll-forward schedule), F16 (pay queue + payment method), 
 ## 8. Edge cases
 Frequency change mid-schedule; variance flag ack vs persistent; payee/vendor change; first-seen (no prev to compare); seasonal bills; agent proposes a new bill (not in schedule) → review.
 
-## 9. Acceptance criteria
-- **AC1** A bill rolls forward on its frequency and raises a 5-day-lead reminder.
-- **AC2** An inbound SP Group invoice +59% vs prior updates next-due/amount and raises a **variance flag** with the detail card.
-- **AC3** Bills show due-this-month totals split by currency.
-- **AC4** A bill marked `auto` (Direct Debit) flows into the Pay queue as scheduled (F16).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Bill rolls forward and raises a lead reminder**  ‹maps: `BillRollForwardIT`, web `bills.spec` schedule›
+- **Given** a monthly Wardian electricity bill with `next_due` today
+- **When** the roll-forward job runs
+- **Then** `next_due` advances by one month and a 5-day-lead reminder is scheduled via F11
+- **And** the bill row is audited (roll event) and the countdown in the Utilities tab updates.
+
+**AC2 — Agent-reconciled invoice raises variance flag**  ‹maps: `BillVarianceIT`, web `bills.spec` variance-card›
+- **Given** the SP Group bill with `prev_seen_minor` = historical amount
+- **When** The Agent processes an inbound SP Group invoice email with an amount 59.6% higher
+- **Then** `last_seen_minor` and `amount_minor` are updated, `variance_flag=true` is set, and the variance is surfaced in the Inbox + the variance detail card (including the agent ribbon)
+- **And** the variance was **not** silently applied — it surfaces for Toby or Lorna to acknowledge; flagged because the change exceeds the ±15% threshold.
+
+**AC3 — Bills show due-this-month totals split by currency**  ‹maps: `BillCurrencyTotalsIT`, web `bills.spec` summary-strip›
+- **Given** Wardian bills in GBP and Singapore bills in SGD due this month
+- **When** Toby (or Lorna) views the Recurring bills summary strip
+- **Then** totals are shown as **two separate figures** (GBP and SGD) — no silent FX conversion
+- **And** the per-bill table shows each bill in its native currency.
+
+**AC4 — Auto bill materialises in Pay queue as Scheduled**  ‹maps: `AutoBillPayQueueIT`›  *(invariant: Kanzen never moves money)*
+- **Given** a bill with `auto=true` linked to a Direct Debit payment method
+- **When** the pay-queue materialisation job runs for the next 30-day window
+- **Then** a `bill_payment` row is created with `mode=auto` and `state=scheduled`; it appears in Lorna's Pay queue under the **Auto / Scheduled** classification
+- **And** Kanzen does not initiate any payment — the DD settles externally; "Mark paid" (F16) records reality only.
+
+**AC5 — Agent proposes new bill; human must confirm**  ‹maps: `AgentNewBillProposalIT`›  *(invariant: financial creation proposed-not-auto-committed)*
+- **Given** an inbound invoice email for a service not yet in the bill schedule
+- **When** The Agent processes it
+- **Then** the agent **proposes** a new bill entry (status `proposed`) in the Inbox — it does **not** create the bill record automatically
+- **And** Toby or Lorna must confirm before the bill is added to the schedule.
+
+**AC6 — Staff cannot access bills (negative)**  ‹maps: `BillAuthzIT`›  *(invariant: server-side scope; no leak)*
+- **Given** Marcia (Wardian Staff) and Siti (Singapore Staff)
+- **When** either requests `GET /api/bills`
+- **Then** both receive **403** — no bill amounts, due dates, or variance data are revealed
+- **And** Marcia cannot see Singapore bills even if she guesses a bill ID (scope enforced per row, existence not leaked).
 
 ## 10. Test plan
 Backend (weaver+PG): roll-forward math, variance threshold, agent-reconcile update path, reminder scheduling. Web: Vitest schedule table + variance card; Playwright add-bill + variance flow.

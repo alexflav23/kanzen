@@ -40,11 +40,50 @@ F19 (appraisal/sale events → snapshots), F05 (appraisal docs), F29 (aggregate 
 ## 8. Edge cases
 Conflicting same-day snapshots; downward revaluation; currency; appraisal vs market gap; group/collection rollup with mixed currencies.
 
-## 9. Acceptance criteria
-- **AC1** Adding a market valuation updates current value + change-since-acquisition; history retained.
-- **AC2** Manager cannot see/add valuations (403/field-stripped); Principal can.
-- **AC3** Collection/category value aggregates per currency.
-- **AC4** A stale appraisal (>24mo) surfaces in data-quality (F23).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Add a market valuation and verify current value + history**  ‹maps: `ValuationSnapshotIT`, web `asset-detail.spec` valuation-tab›
+- **Given** Toby has an asset (a watch) with only an acquisition-cost valuation
+- **When** he adds a new `market` valuation snapshot (amount, date, source, rationale)
+- **Then** the Valuation tab shows the updated current market value and a change-since-acquisition figure (absolute + %)
+- **And** the previous snapshot remains in the history list, and the new snapshot is audited.
+
+**AC2 — Multiple snapshot kinds tracked independently**  ‹maps: `ValuationLatestByKindIT`›
+- **Given** an asset with separate `acquisition`, `insured`, and `appraisal` snapshots
+- **When** Toby adds a newer `market` snapshot
+- **Then** only `market` current value updates; `insured` and `appraisal` remain at their prior amounts
+- **And** every kind is shown in the Valuation tab's history list with its source and confidence.
+
+**AC3 — Collection/category aggregate per currency (no silent FX)**  ‹maps: `ValuationAggregateIT`, web inventory Vitest›
+- **Given** a collection with assets valued in GBP and SGD
+- **When** Toby requests `GET /api/valuations/summary?scope=collection`
+- **Then** the response returns separate GBP and SGD totals — no cross-currency rollup is silently applied
+- **And** the Inventory summary "Estimated/Insured value" shows per-currency rows.
+
+**AC4 — Stale appraisal surfaces in data-quality**  ‹maps: `AppraisalRecencyIT`, web `completeness.spec`›
+- **Given** an asset whose last `appraisal` snapshot is more than 24 months old
+- **When** the data-quality (F23) scan runs
+- **Then** the asset is flagged with an "appraisal recency" issue visible in the Inbox data-quality stream
+- **And** adding a fresh `appraisal` snapshot resolves the flag and updates the appraisal-recency bar in Insights.
+
+**AC5 — Realised value set on disposal**  ‹maps: `RealisedValuationIT`›
+- **Given** a sold-asset event is recorded via F19
+- **When** the disposal event is committed
+- **Then** a `realised` valuation snapshot is created with the sale amount and date, and no further snapshots of other kinds can be added
+- **And** the operation is audited.
+
+**AC6 — Manager and Staff cannot see or add valuations (negative)**  ‹maps: `ValuationAuthzIT`, web `asset-detail.spec` manager-denied›  *(invariant: valuation fields are Principal-private; no leak via totals)*
+- **Given** Lorna (Manager) and Marcia (Staff)
+- **When** either requests `GET /api/assets/:id/valuations` or attempts `POST /api/assets/:id/valuations`
+- **Then** both receive **403** — the Valuation tab is not rendered, valuation amounts are field-stripped from all asset responses, and **aggregate totals do not expose individual valuations**
+- **And** Marcia's asset list response contains no `market_value`, `insured_value`, or valuation-derived fields.
+
+**AC7 — Same-day conflicting snapshots handled**  ‹maps: `ConflictingSnapshotIT`›
+- **Given** two `market` snapshots added for the same asset on the same date
+- **When** current value is derived
+- **Then** the later-created snapshot wins as "current" for that kind
+- **And** both remain in history, each audited.
 
 ## 10. Test plan
 Backend (weaver+PG): latest-by-kind derivation, aggregate rollups per currency, field-level permission, appraisal-recency flag. Web: Vitest ValuationTab; Playwright add-valuation (Principal) + Manager-denied.

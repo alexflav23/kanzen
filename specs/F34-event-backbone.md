@@ -51,13 +51,50 @@ System-level infrastructure. Users manage their **notification subscriptions** +
 ## 8. Edge cases
 Outbox relay crash (resume from unpublished); duplicate delivery (consumer dedup); ordering across aggregates (per-key only); Pulsar down (outbox buffers, backpressure); push token expiry/rotation; notification storms (batch/coalesce + quiet hours); schema evolution (versioned); backfill/replay for a new consumer; permission change between emit and deliver (re-check at delivery).
 
-## 9. Acceptance criteria
-- **AC1** Completing a task emits `task.completed`; the Principal (subscribed) gets an in-app + push notification; a staff member is **APNs-pushed** when assigned/commented.
-- **AC2** A comment emits `task.comment.added` → watchers notified; the event is serialized in the unified envelope.
-- **AC3** Marking a product out emits `product.out_of_stock` → a Lists buy request appears (F35/F08).
-- **AC4** The domain write + outbox row commit atomically; killing the relay mid-flight loses no event (resumes).
-- **AC5** A consumer failure retries and dead-letters without blocking others; events are idempotent.
-- **AC6** A notification never includes data the recipient can't see (F02-trimmed).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Task completion triggers in-app + push notification to the Principal**  ‹maps: `TaskCompletedEventIT`, web `notifications.spec` in-app-bell›
+- **Given** Toby is subscribed to `task.completed` (in-app + push) and Marcia has an assigned task at Wardian
+- **When** Marcia completes the task
+- **Then** a `task.completed` event is emitted in the unified envelope; Toby receives an in-app notification (bell count +1) and a push notification (APNs)
+- **And** the push deep-links to the completed task in the web/mobile app.
+
+**AC2 — Staff member is APNs-pushed on task assignment and comment**  ‹maps: `TaskAssignPushIT`, mobile `PushAssignTest`›
+- **Given** Marcia's device is registered and she is subscribed to `task.assigned` and `task.comment.added`
+- **When** Lorna assigns a task to Marcia and later adds a comment
+- **Then** Marcia receives two APNs pushes (one per event), each with the correct deep-link
+- **And** the unified event envelope for each contains the correct `actor`, `subject`, `owner_id`, and `property_id`.
+
+**AC3 — Outbox atomicity: domain write and outbox row commit together; relay resumes after crash**  ‹maps: `OutboxAtomicityIT`›
+- **Given** the relay is killed mid-flight after the domain write commits but before Pulsar receives the event
+- **When** the relay restarts
+- **Then** it resumes from the unpublished outbox row and publishes the event exactly once (at-least-once + consumer dedup)
+- **And** no event is lost; the domain row and its outbox row are always in sync.
+
+**AC4 — Consumer failure retries and dead-letters without blocking other consumers**  ‹maps: `ConsumerRetryDLQIT`›
+- **Given** the SearchIndexer consumer throws on a specific event
+- **When** the retry limit is exhausted
+- **Then** the event is moved to the DLQ; other consumers (NotificationFanout, AuditWriter) continue processing normally
+- **And** the failing event is idempotent — replaying it from the DLQ does not create duplicates.
+
+**AC5 — Notifications are F02-trimmed; recipients never see data they cannot access (negative)**  ‹maps: `NotificationPermissionIT`, mobile `NotificationTrimTest`›
+- **Given** a `bill.variance_flagged` event that includes financial details
+- **When** the NotificationFanout consumer fans out to Marcia (Staff — no finance visibility)
+- **Then** Marcia receives no notification for this event (filtered by subscription + F02)
+- **And** if a notification is sent to a Manager, the content excludes Principal-private fields (valuations stripped).
+
+**AC6 — product.out_of_stock event triggers a Lists buy request**  ‹maps: `ProductOutOfStockIT`, web `lists.spec` buy-request›
+- **Given** a product in Wardian's Lists (F08) is marked out of stock
+- **When** `product.out_of_stock` is emitted and the Lists consumer processes it
+- **Then** a buy request appears in the Wardian shopping list (F08)
+- **And** the event is idempotent — a second `out_of_stock` event does not create a duplicate buy request.
+
+**AC7 — Notification preferences and quiet hours are respected**  ‹maps: `NotificationPrefsIT`, web `notifications.spec` quiet-hours›
+- **Given** Toby has configured quiet hours (23:00–07:00) and disabled email for `task.completed`
+- **When** a task completes during quiet hours
+- **Then** the in-app notification is queued but no push or email is sent during the quiet window
+- **And** the notification is delivered after quiet hours end; the subscription record is audited on change.
 
 ## 10. Test plan
 Backend (weaver + testcontainers-PG **+ Pulsar**): transactional-outbox atomicity + relay resume; per-aggregate ordering; consumer idempotency + retry/DLQ; notification fan-out across channels + **permission-trimming**; push token handling (APNs/FCM mocked); schema-version tolerance; replay/backfill.

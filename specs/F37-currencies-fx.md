@@ -50,13 +50,44 @@ Resource `currency`/`fx` — system-fetched rates; **Principal** sets the **disp
 ## 8. Edge cases
 Missing rate for a date (nearest-prior + flag); exotic/inactive currency; provider downtime (use last snapshot); rate revision; very old historical conversion; rounding drift across many conversions; net-worth across 5 currencies (breakdown + estimate); base-currency choice (default GBP).
 
-## 9. Acceptance criteria
-- **AC1** A USD guitar purchase keeps its native USD value; its acquisition stores the USD→GBP rate-at-time.
-- **AC2** Inventory value / net worth renders in the chosen display currency, **labelled as a dated estimate**, with a per-currency breakdown.
-- **AC3** Switching display currency reconverts views; individual records still show native.
-- **AC4** Approval thresholds compare in **native** per jurisdiction (no FX); budgets stay per-property currency.
-- **AC5** A missing rate falls back to the nearest prior snapshot and is flagged.
-- **AC6** A converted total never reveals amounts the viewer can't see (field-RBAC honoured).
+## 9. Acceptance scenarios (UAT)
+Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10).
+
+**AC1 — Native amount preserved; rate-at-date captured at ingestion**  ‹maps: `FxRateAtIngestionIT`, web `transactions.spec` native-amount›
+- **Given** a USD guitar purchase ingested from GoCardless on a known date
+- **When** the transaction is stored
+- **Then** `amount_minor` and `currency=USD` are the authoritative values (never mutated); `fx_rate_to_base` (USD→GBP) and `fx_as_of` are captured from the `fx_rates` snapshot for that `booked_at` date
+- **And** re-running a later sync does **not** overwrite `fx_rate_to_base` with today's rate — the historical rate is preserved.
+
+**AC2 — Inventory value renders in chosen display currency, labelled as a dated estimate**  ‹maps: `FxRollupLabelledIT`, web `insights.spec` display-currency›
+- **Given** assets and transactions in USD, SGD, and CHF
+- **When** Toby selects **GBP** as his display currency in Insights
+- **Then** the inventory value / net-worth tile shows the GBP equivalent **labelled as a dated estimate** (e.g. "≈ £X at 22 May rate") alongside a **per-currency breakdown** (USD / SGD / CHF subtotals)
+- **And** the per-currency breakdown is expandable and shows native amounts as the primary truth.
+
+**AC3 — Switching display currency reconverts views; individual records show native**  ‹maps: `FxDisplayCurrencySwitchIT`, web `insights.spec` toggle›
+- **Given** Toby is viewing Insights in GBP display mode
+- **When** he switches display currency to SGD
+- **Then** all aggregates reconvert using stored `fx_rate_to_base` values (not today's live rate); the "as of" label updates to reflect the stated basis
+- **And** individual transaction and expense records continue to show their **native** currency first; the display-currency hint is secondary.
+
+**AC4 — Approval thresholds and budgets stay per-jurisdiction native; no FX conversion**  ‹maps: `ThresholdNativeFxIT`›  *(invariant: thresholds compare in native per jurisdiction — F17)*
+- **Given** Wardian threshold £1,500 and Singapore threshold S$2,500
+- **When** a S$3,000 Singapore expense and a £1,200 Wardian expense are submitted
+- **Then** the S$3,000 expense routes to approval (S$3,000 > S$2,500 native); the £1,200 expense auto-approves
+- **And** no FX conversion is applied at any point in the threshold comparison; budgets remain in their property's native currency.
+
+**AC5 — Missing rate falls back to nearest prior snapshot and is flagged**  ‹maps: `FxMissingRateFallbackIT`›
+- **Given** a weekend date or a gap in the rate history for a currency pair
+- **When** a conversion for that date is requested
+- **Then** the system uses the **nearest prior** `fx_rates` snapshot (not today's rate) and the response / UI flags the fallback clearly (e.g. "using 21 May rate — weekend")
+- **And** no conversion silently uses a stale or incorrect rate without surfacing it.
+
+**AC6 — Converted total never leaks amounts the viewer cannot see**  ‹maps: `FxPermissionSafeConversionIT`›  *(invariant: field-RBAC honoured; no leak via totals — F02)*
+- **Given** assets with valuations that Lorna (Manager) cannot see
+- **When** Lorna requests `GET /api/insights/inventory-value?currency=GBP`
+- **Then** the converted total **omits** valuation-derived figures; the GBP rollup reflects only amounts within her permission scope
+- **And** the backend test asserts that the Manager-scoped converted total differs from Toby's and does not disclose any valuation through arithmetic inference.
 
 ## 10. Test plan
 Backend (weaver+PG; FX provider mocked): rate snapshot fetch + storage; rate-at-time capture; conversion (historical vs latest) + labelling; rollup per target currency + per-currency breakdown; threshold-stays-native; missing-rate fallback; permission-safe conversions. Web: Vitest currency selector + labelled estimates; Playwright multi-currency net-worth.
