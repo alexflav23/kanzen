@@ -11,13 +11,16 @@ object MigrationsIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  test("baseline migration creates an empty audit_log_entries table") { xa =>
-    sql"select count(*) from audit_log_entries".query[Long].unique.transact(xa).map(n => expect(n == 0L))
-  }
-
-  test("an audit entry can be written and read back") { xa =>
+  // One sequential test: the two tests previously shared a transactor and weaver runs a
+  // suite's tests in parallel, so the insert below could race ahead of an emptiness count.
+  test("baseline migration creates an empty audit_log_entries table that can be written and read back") { xa =>
+    val empty  = sql"select count(*) from audit_log_entries".query[Long].unique
     val insert = sql"insert into audit_log_entries (actor_type, action) values ('system', 'boot')".update.run
-    val count = sql"select count(*) from audit_log_entries".query[Long].unique
-    (insert *> count).transact(xa).map(n => expect(n == 1L))
+    val count  = sql"select count(*) from audit_log_entries".query[Long].unique
+    (for {
+      before <- empty
+      _      <- insert
+      after  <- count
+    } yield expect(before == 0L) and expect(after == 1L)).transact(xa)
   }
 }

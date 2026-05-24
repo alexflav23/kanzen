@@ -19,6 +19,16 @@ object ProductRepo {
     sql"""insert into products (name, preferred_spec) values ($name, $preferredSpec)
           returning id, name, stock_status, preferred_spec""".query[Product].unique
 
+  def insertOwned(ownerId: UUID, name: String, preferredSpec: Option[String], unit: Option[String]): ConnectionIO[Product] =
+    sql"""insert into products (owner_id, name, preferred_spec, unit) values ($ownerId, $name, $preferredSpec, $unit)
+          returning id, name, stock_status, preferred_spec""".query[Product].unique
+
+  def list: ConnectionIO[List[Product]] =
+    sql"select id, name, stock_status, preferred_spec from products where deleted_at is null order by name".query[Product].to[List]
+
+  def exists(id: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from products where id = $id and deleted_at is null)".query[Boolean].unique
+
   def addVendor(productId: UUID, vendorName: Option[String], buyUrl: Option[String], preferred: Boolean): ConnectionIO[Int] =
     sql"insert into product_vendors (product_id, vendor_name, buy_url, preferred) values ($productId, $vendorName, $buyUrl, $preferred)".update.run
 
