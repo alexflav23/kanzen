@@ -44,7 +44,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
 | F33 | Custom fields, tags & taxonomies | B | F02, F04, F22 | ✅ | ⬜ |
 | F23 | Completeness scoring & data quality | B | F04, F19–F22 | ✅ | ⬜ |
-| F19 | Lifecycle events & timeline | B | F04 | ✅ | ⬜ |
+| F19 | Lifecycle events & timeline | B | F04 | ✅ | ✔️ Done (sandbox) — backend (log event + timeline + lifetime cost, authz) + web AssetDetail Lifecycle card + e2e; custody/location-history events deferred |
 | F20 | Valuation snapshots | B | F04 | ✅ | ✔️ Done (sandbox) — backend (record/list latest-by-kind, Principal-only) + field-level stripping for Manager (closes F04 AC5) + web detail; aggregate valuation summary deferred |
 | F21 | Warranty / provenance / insurance | B | F04 | ✅ | ⬜ |
 | F24 | Legacy onboarding & restructure | B | F04, F19, F20 | ✅ | ⬜ |
