@@ -48,5 +48,16 @@ lazy val root = (project in file("."))
       "com.dimafeng" %% "testcontainers-scala-postgresql" % V.tc % Test
     ),
     testFrameworks += new TestFramework("weaver.framework.CatsEffect"),
-    Compile / mainClass := Some("com.kanzen.Main")
+    Compile / mainClass := Some("com.kanzen.Main"),
+    // Fat JAR for the Docker runner: a single, predictably-named artifact.
+    assembly / mainClass := Some("com.kanzen.Main"),
+    assembly / assemblyJarName := "kanzen-backend.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _*)                              => MergeStrategy.concat
+      case "reference.conf" | "application.conf"                             => MergeStrategy.concat
+      case PathList("META-INF", "MANIFEST.MF")                               => MergeStrategy.discard
+      case x if x.endsWith("module-info.class")                              => MergeStrategy.discard
+      case x if x.endsWith(".SF") || x.endsWith(".DSA") || x.endsWith(".RSA") => MergeStrategy.discard
+      case _                                                                 => MergeStrategy.first
+    }
   )

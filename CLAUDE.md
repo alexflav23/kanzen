@@ -66,7 +66,8 @@ Warm-paper light + dark (⌘D), single indigo accent, 完 mark, tabular money, g
 
 ## Common commands (fill in exact targets during F00)
 ```
-direnv allow && docker-compose up          # local stack (PG16, LocalStack)
+docker compose up                           # FULL runner: web :3020 · api :8080 · pg :5432 · s3 (internal)
+docker compose up -d postgres localstack    # just the deps, for host-side sbt run / npm run dev
 cd backend && sbt run                       # backend (:8080 api, :9990 health, :9464 metrics)
 cd backend && sbt scalafmtAll test          # format + test (weaver + testcontainers)
 cd web && npm run dev | build | test        # Vite + StyleX web

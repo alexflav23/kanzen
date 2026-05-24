@@ -1,6 +1,16 @@
-# Kanzen local dev stack (F00). Postgres + LocalStack.
+# Kanzen full local stack. `docker compose up` brings up the whole app:
+#   web  → http://localhost:3020   (React SPA, nginx)
+#   api  → http://localhost:8080   (/api + /docs) · health :9990 · metrics :9464
+#   db   → localhost:5432          (Postgres 16, seeded via Flyway on backend boot)
+#   s3   → localhost:4566          (LocalStack; the blob store is in-memory until S3 lands)
+#
 # The general ledger lives in Postgres (ADR-001, specs/02-accounting-ledger-architecture.md) —
 # TigerBeetle was dropped: a family-office GL is Postgres-shaped, not exchange-grade infra.
+#
+# Just the dev dependencies (Postgres + LocalStack) for `sbt run` / `npm run dev` on the host:
+#   docker compose up -d postgres localstack
+name: kanzen
+
 services:
   postgres:
     image: postgres:16
@@ -22,8 +32,47 @@ services:
     image: localstack/localstack:3
     environment:
       SERVICES: s3
+    # Network-internal only (the backend reaches it at localstack:4566). Not published to the
+    # host — the blob store is in-memory until S3 lands, and this avoids clashing with another
+    # project's LocalStack on :4566. Publish a host port here when wiring host-side S3 dev.
+    expose:
+      - "4566"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      KANZEN_ENV: local
+      PORT: "8080"
+      ADMIN_PORT: "9990"
+      METRICS_PORT: "9464"
+      # Flyway migrates + seeds the household (incl. the Flavian principal) on boot.
+      DATABASE_URL: jdbc:postgresql://postgres:5432/kanzen
+      DB_USER: kanzen
+      DB_PASSWORD: kanzen
     ports:
-      - "4566:4566"
+      - "8080:8080"
+      - "9990:9990"
+      - "9464:9464"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9990/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: ./web
+      # The browser hits the backend's host-mapped port; CORS is allow-all.
+      args:
+        VITE_API_URL: http://localhost:8080
+    ports:
+      - "3020:3020"
+    depends_on:
+      - backend
 
 volumes:
   pgdata:
