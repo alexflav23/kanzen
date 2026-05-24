@@ -44,3 +44,25 @@ export const listExpenses = (token: string | null, status?: string | null) => {
 };
 export const approveExpense = (id: string, token: string | null) => api(`/api/expenses/${id}/approve`, ExpenseSchema, { method: "POST", token });
 export const rejectExpense = (id: string, token: string | null) => api(`/api/expenses/${id}/reject`, ExpenseSchema, { method: "POST", token });
+
+/** F38 — UK income-tax estimate (estimate only; Kanzen never files). */
+export const IncomeEstimateSchema = z.object({
+  grossMinor: z.number(),
+  estimatedTaxMinor: z.number(),
+  takeHomeMinor: z.number(),
+  effectiveRatePct: z.number(),
+});
+export type IncomeEstimate = z.infer<typeof IncomeEstimateSchema>;
+
+/** F38 — deductible + VAT-reclaimable totals across approved expenses. */
+export const DeductibleReportSchema = z.object({
+  deductibleTotalMinor: z.number(),
+  vatReclaimableTotalMinor: z.number(),
+  deductibleCount: z.number(),
+});
+export type DeductibleReport = z.infer<typeof DeductibleReportSchema>;
+
+export const getIncomeEstimate = (token: string | null, incomeMinor: number) =>
+  api(`/api/tax/income-estimate?income=${incomeMinor}`, IncomeEstimateSchema, { token });
+export const getDeductibleReport = (token: string | null) =>
+  api("/api/tax/deductible-report", DeductibleReportSchema, { token });

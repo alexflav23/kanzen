@@ -18,6 +18,8 @@ vi.mock("../services/finance", () => ({
   listExpenses: async (_t: string | null, status?: string | null) => (status === "pending_approval" ? h.pending : []),
   approveExpense: async (id: string) => { h.pending = h.pending.filter((e) => e.id !== id); return { id, payee: "x", amountMinor: 0, currency: "GBP", status: "approved", deductible: false, vatReclaimable: false }; },
   rejectExpense: async (id: string) => { h.pending = h.pending.filter((e) => e.id !== id); return { id, payee: "x", amountMinor: 0, currency: "GBP", status: "rejected", deductible: false, vatReclaimable: false }; },
+  getIncomeEstimate: async (_t: string | null, incomeMinor: number) => ({ grossMinor: incomeMinor, estimatedTaxMinor: 5212600, takeHomeMinor: incomeMinor - 5212600, effectiveRatePct: 35 }),
+  getDeductibleReport: async () => ({ deductibleTotalMinor: 184000, vatReclaimableTotalMinor: 30667, deductibleCount: 1 }),
 }));
 
 import { Finance } from "../pages/Finance";
@@ -58,5 +60,15 @@ describe("Finance", () => {
     await screen.findAllByTestId("pending-row");
     fireEvent.click(screen.getAllByRole("button", { name: /Approve/ })[0]);
     await waitFor(() => expect(screen.getAllByTestId("pending-row")).toHaveLength(1));
+  });
+
+  it("the Tax tab shows the income estimate and deductible report (F38)", async () => {
+    renderFinance();
+    await screen.findByText("Recurring schedule · 2");
+    fireEvent.click(screen.getByRole("button", { name: "Tax" }));
+    expect(await screen.findByTestId("estimate")).toBeInTheDocument();
+    expect(screen.getByText("35%")).toBeInTheDocument(); // effective rate
+    expect(screen.getByTestId("deductible")).toBeInTheDocument();
+    expect(screen.getByText("estimate only")).toBeInTheDocument(); // never files
   });
 });

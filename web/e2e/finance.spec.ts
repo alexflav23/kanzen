@@ -29,6 +29,17 @@ test("the expenses tab shows the approval queue", async ({ page }) => {
   await expect(page.getByText(/All expenses/)).toBeVisible();
 });
 
+test("the tax tab estimates UK income tax and shows the deductible report (F38)", async ({ page }) => {
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Tax" }).click();
+  await expect(page.getByTestId("estimate")).toBeVisible(); // wait for the estimate query
+  await expect(page.getByText("Effective rate")).toBeVisible();
+  await expect(page.getByText("estimate only")).toBeVisible(); // Kanzen never files
+  await expect(page.getByTestId("deductible")).toBeVisible();
+  await page.getByLabel("Gross income").fill("250000"); // re-estimates
+  await expect(page.getByTestId("estimate")).toBeVisible();
+});
+
 test("the budgets tab notes the deferral", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Budgets" }).click();

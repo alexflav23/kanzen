@@ -8,9 +8,9 @@ import { Check, X } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { approveExpense, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { approveExpense, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
 
-type Tab = "bills" | "pay" | "expenses" | "budgets";
+type Tab = "bills" | "pay" | "expenses" | "budgets" | "tax";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -33,6 +33,7 @@ const styles = stylex.create({
   approve: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
   amount: { fontWeight: 600, fontVariantNumeric: "tabular-nums" },
   note: { padding: "16px 18px", fontSize: "13px", color: colors.ink3 },
+  input: { width: "140px", padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink, fontSize: "13.5px", textAlign: "right", fontVariantNumeric: "tabular-nums" },
 });
 
 const statusTone = (s: string): "default" | "warn" | "danger" =>
@@ -47,6 +48,9 @@ export function Finance() {
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
   const pending  = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval") });
   const allExp   = useQuery({ queryKey: ["expenses", "all", token], queryFn: () => listExpenses(token, null) });
+  const [incomeGbp, setIncomeGbp] = useState(150000); // gross income in whole £ (F38 estimate)
+  const deductible = useQuery({ queryKey: ["tax", "deductible", token], queryFn: () => getDeductibleReport(token) });
+  const estimate   = useQuery({ queryKey: ["tax", "estimate", token, incomeGbp], queryFn: () => getIncomeEstimate(token, incomeGbp * 100) });
 
   const invalidateExpenses = () => qc.invalidateQueries({ queryKey: ["expenses"] });
   const approve = useMutation({ mutationFn: (id: string) => approveExpense(id, token), onSuccess: invalidateExpenses });
@@ -62,7 +66,7 @@ export function Finance() {
       </header>
 
       <div {...stylex.props(styles.tabs)} role="tablist">
-        {([["bills", "Recurring"], ["pay", "Pay queue"], ["expenses", "Expenses"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
+        {([["bills", "Recurring"], ["pay", "Pay queue"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>{label}</button>
         ))}
       </div>
@@ -143,6 +147,42 @@ export function Finance() {
                   </tbody>
                 </table>
               )}
+          </Card>
+        </div>
+      )}
+
+      {tab === "tax" && (
+        <div data-testid="tax-tab">
+          <Card>
+            <CardHeader><CardTitle>UK income-tax estimate</CardTitle><Pill>estimate only</Pill></CardHeader>
+            <div {...stylex.props(styles.row)}>
+              <label htmlFor="gross" {...stylex.props(styles.grow)}>Gross income (£)</label>
+              <input id="gross" type="number" aria-label="Gross income" value={incomeGbp} min={0} step={1000}
+                onChange={(e) => setIncomeGbp(Math.max(0, Number(e.target.value) || 0))}
+                {...stylex.props(styles.input)} />
+            </div>
+            {estimate.isPending ? <Loading /> : estimate.isError ? <ErrorState error={estimate.error} /> : (
+              <table {...stylex.props(styles.table)} data-testid="estimate">
+                <tbody>
+                  <tr><td {...stylex.props(styles.td)}>Estimated tax</td><td {...stylex.props(styles.td, styles.tdR)}>{fmtMoney(estimate.data.estimatedTaxMinor, "GBP")}</td></tr>
+                  <tr><td {...stylex.props(styles.td)}>Take-home</td><td {...stylex.props(styles.td, styles.tdR)}>{fmtMoney(estimate.data.takeHomeMinor, "GBP")}</td></tr>
+                  <tr><td {...stylex.props(styles.td, styles.bold)}>Effective rate</td><td {...stylex.props(styles.td, styles.tdR)}>{estimate.data.effectiveRatePct}%</td></tr>
+                </tbody>
+              </table>
+            )}
+            <div {...stylex.props(styles.note)}>Kanzen never files — this is guidance only.</div>
+          </Card>
+          <div style={{ height: "24px" }} />
+          <Card>
+            <CardHeader><CardTitle>Deductible &amp; VAT-reclaimable</CardTitle></CardHeader>
+            {deductible.isPending ? <Loading /> : deductible.isError ? <ErrorState error={deductible.error} /> : (
+              <table {...stylex.props(styles.table)} data-testid="deductible">
+                <tbody>
+                  <tr><td {...stylex.props(styles.td)}>Deductible total ({deductible.data.deductibleCount})</td><td {...stylex.props(styles.td, styles.tdR)}>{fmtMoney(deductible.data.deductibleTotalMinor, "GBP")}</td></tr>
+                  <tr><td {...stylex.props(styles.td)}>VAT reclaimable</td><td {...stylex.props(styles.td, styles.tdR)}>{fmtMoney(deductible.data.vatReclaimableTotalMinor, "GBP")}</td></tr>
+                </tbody>
+              </table>
+            )}
           </Card>
         </div>
       )}
