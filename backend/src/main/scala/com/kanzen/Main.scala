@@ -7,6 +7,7 @@ import com.kanzen.api.{Admin, Api}
 import com.kanzen.auth.{Auth, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
+import doobie.util.transactor.Transactor
 import org.http4s.HttpApp
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.implicits._
@@ -23,9 +24,9 @@ object Main extends IOApp.Simple {
   implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
   private val log = loggerFactory.getLogger
 
-  private def primaryApp(auth: Auth): HttpApp[IO] =
+  private def primaryApp(auth: Auth, xa: Transactor[IO]): HttpApp[IO] =
     Logger.httpApp[IO](logHeaders = true, logBody = false)(
-      CORS.policy.withAllowOriginAll(Api.routes(auth).orNotFound)
+      CORS.policy.withAllowOriginAll(Api.routes(auth, xa).orNotFound)
     )
 
   private def server(h: Host, p: Port, app: HttpApp[IO]) =
@@ -46,7 +47,10 @@ object Main extends IOApp.Simple {
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
-          _ <- (server(host"0.0.0.0", p, primaryApp(auth)), server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
+          _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
+                 (server(host"0.0.0.0", p, primaryApp(auth, xa)),
+                  server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
+               }
         } yield ()
     }
 }
