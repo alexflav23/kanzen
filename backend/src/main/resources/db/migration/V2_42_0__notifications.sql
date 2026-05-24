@@ -54,9 +54,9 @@ insert into permission_rules (role_name, resource, field, level) values
 on conflict (role_name, resource, field) do nothing;
 
 -- Seed subscriptions that exercise the fan-out + F02 trimming acceptance scenarios:
---  • Toby (Principal) is pinged in-app + push when a task completes and when stock runs out.
+--  • Flavian (Principal) is pinged in-app + push when a task completes and when stock runs out.
 --  • Marcia (Staff) is pushed when a task is assigned to her.
---  • bill.variance_flagged is finance: Toby + Lorna subscribe; Marcia subscribes too but F02
+--  • bill.variance_flagged is finance: Flavian + Lorna subscribe; Marcia subscribes too but F02
 --    strips her (Staff have no finance visibility) — she must receive nothing (AC5).
 insert into notification_subscriptions (owner_id, user_id, event_type_pattern, channels) values
   ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'task.completed',        '["in_app","push"]'::jsonb),

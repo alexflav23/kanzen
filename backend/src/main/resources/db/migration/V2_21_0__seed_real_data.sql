@@ -4,9 +4,9 @@
 -- Emails are placeholders on the kanzen.local household domain; update in place when real.
 -- Deterministic UUIDs let later seeds + specs reference these rows by id.
 
--- The people. owner_id is set to the Principal (Toby) below, after the rows exist.
+-- The people. owner_id is set to the Principal (Flavian) below, after the rows exist.
 insert into users (id, display_name, email, role, status) values
-  ('10000000-0000-0000-0000-000000000001', 'Toby',   'toby@kanzen.local',   'principal', 'active'),
+  ('10000000-0000-0000-0000-000000000001', 'Flavian',   'flavian@kanzen.local',   'principal', 'active'),
   ('10000000-0000-0000-0000-000000000002', 'Lorna',  'lorna@kanzen.local',  'manager',   'active'),
   ('10000000-0000-0000-0000-000000000003', 'Marcia', 'marcia@kanzen.local', 'staff',     'active'),
   ('10000000-0000-0000-0000-000000000004', 'Siti',   'siti@kanzen.local',   'staff',     'active')

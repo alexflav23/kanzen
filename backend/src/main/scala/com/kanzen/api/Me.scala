@@ -4,6 +4,7 @@ import cats.effect.IO
 import com.kanzen.auth.Auth
 import com.kanzen.authz.{Level, PermissionRepo}
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.generic.auto._
 import sttp.model.StatusCode
@@ -21,6 +22,7 @@ object Me {
   final case class Perm(resource: String, field: Option[String], level: String)
   final case class MeResponse(
       userId: String,
+      name: String,
       email: String,
       role: String,
       permissions: List[Perm],
@@ -39,16 +41,20 @@ object Me {
     endpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p =>
-        (_: Unit) =>
-          PermissionRepo
-            .rulesFor(p.role)
-            .map(_.map(r => Perm(r.resource, r.field, Level.label(r.level))))
-            .transact(xa)
-            .map(perms =>
-              Right(MeResponse(p.userId.toString, p.email, p.role, perms, p.impersonatedBy.map(_.toString))): Either[
-                (StatusCode, ApiError),
-                MeResponse
-              ]
-            )
+        (_: Unit) => {
+          val tx = for {
+            rules <- PermissionRepo.rulesFor(p.role)
+            // display name so the web can greet whoever is effectively signed in (incl. the impersonated user)
+            name <- sql"select display_name from users where id = ${p.userId}".query[String].option
+          } yield MeResponse(
+            p.userId.toString,
+            name.getOrElse(p.email),
+            p.email,
+            p.role,
+            rules.map(r => Perm(r.resource, r.field, Level.label(r.level))),
+            p.impersonatedBy.map(_.toString)
+          )
+          tx.transact(xa).map(Right(_): Either[(StatusCode, ApiError), MeResponse])
+        }
       )
 }

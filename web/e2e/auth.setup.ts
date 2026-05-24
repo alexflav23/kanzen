@@ -6,9 +6,9 @@ import fs from "node:fs";
 // Requires the backend (:8080, env=local) + seeded Postgres to be running.
 const authFile = "e2e/.auth/principal.json";
 
-setup("authenticate as Toby (Principal)", async ({ request }) => {
+setup("authenticate as Flavian (Principal)", async ({ request }) => {
   const res = await request.post("http://localhost:8080/api/dev/token", {
-    data: { email: "toby@kanzen.local", role: "principal" },
+    data: { email: "flavian@kanzen.local", role: "principal" },
   });
   if (!res.ok()) throw new Error(`dev token mint failed (${res.status()}) — is the backend running?`);
   const { token } = (await res.json()) as { token: string };
@@ -20,7 +20,7 @@ setup("authenticate as Toby (Principal)", async ({ request }) => {
         origin: "http://localhost:3020",
         localStorage: [
           { name: "kanzen.token", value: token },
-          { name: "kanzen.persona", value: JSON.stringify({ name: "Toby", email: "toby@kanzen.local", role: "principal" }) },
+          { name: "kanzen.persona", value: JSON.stringify({ name: "Flavian", email: "flavian@kanzen.local", role: "principal" }) },
         ],
       },
     ],

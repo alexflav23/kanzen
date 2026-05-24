@@ -1,4 +1,4 @@
--- Wave G demo seed — give the Toby (Individual) entity a small book so the Wealth web surface
+-- Wave G demo seed — give the Flavian (Individual) entity a small book so the Wealth web surface
 -- renders real figures: an opening cash balance (double-entry) + a VWRL holding (priced in V2_50).
 -- (WealthApiIT/AuthzFuzzIT scope to their own freshly-created entities, so this seed can't affect
 -- them; no audit rows are written, so MigrationsIT stays clean.)

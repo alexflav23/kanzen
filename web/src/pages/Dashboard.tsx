@@ -71,7 +71,8 @@ const glance = stylex.create({
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, me } = useAuth();
+  const firstName = me?.name?.split(" ")[0]; // greet whoever is effectively signed in (incl. the impersonated user)
   const summary = useQuery({ queryKey: ["dashboard", token], queryFn: () => getSummary(token) });
   const pending = EXPENSES.filter((e) => e.status === "pending");
   const s = summary.data;
@@ -81,7 +82,7 @@ export function Dashboard() {
       <header {...stylex.props(styles.header)}>
         <div>
           <div {...stylex.props(styles.eyebrow)}>{TODAY_EYEBROW}</div>
-          <h1 {...stylex.props(styles.display)}>Good morning, Toby.</h1>
+          <h1 {...stylex.props(styles.display)}>Good morning{firstName ? `, ${firstName}` : ""}.</h1>
           <div {...stylex.props(styles.sub)}>
             {TRIAGE_COUNT} items awaiting your review, {pending.length} expenses for approval.
           </div>

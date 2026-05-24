@@ -73,7 +73,7 @@ on conflict (role_name, resource, field) do nothing;
 
 -- Seed two entities + a security with a price (exercises consolidation + holdings).
 insert into wealth_entities (id, owner_id, name, kind, jurisdiction, base_currency) values
-  ('40000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Toby (Individual)', 'individual', 'UK', 'GBP'),
+  ('40000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Flavian (Individual)', 'individual', 'UK', 'GBP'),
   ('40000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'Wardian Family Trust', 'trust', 'UK', 'GBP')
 on conflict (id) do nothing;
 

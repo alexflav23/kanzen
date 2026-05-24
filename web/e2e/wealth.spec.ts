@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-// Browser e2e (Playwright) — the Private Wealth surface vs the REAL backend (seeded Toby book:
+// Browser e2e (Playwright) — the Private Wealth surface vs the REAL backend (seeded Flavian book:
 // £5,000 opening cash + a VWRL lot). Read-only: net-worth GET only persists a snapshot.
 test("wealth shows consolidated net worth, holdings and a balanced sheet", async ({ page }) => {
   await page.goto("/wealth");
@@ -21,6 +21,6 @@ test("wealth shows consolidated net worth, holdings and a balanced sheet", async
 
 test("switching to an entity scope reconverts the view", async ({ page }) => {
   await page.goto("/wealth");
-  await page.getByRole("button", { name: "Toby (Individual)" }).click();
+  await page.getByRole("button", { name: "Flavian (Individual)" }).click();
   await expect(page.getByTestId("networth-net")).toBeVisible(); // recomputed for the entity
 });

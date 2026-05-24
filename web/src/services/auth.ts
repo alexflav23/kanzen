@@ -7,7 +7,7 @@ export type Persona = { name: string; email: string; role: Role };
 /** The real household personas (mirror the V2_21 seed). Used by the dev sign-in until
   * the Cognito hosted UI lands; the role flows into the backend's default-deny Authorizer. */
 export const PERSONAS: Persona[] = [
-  { name: "Toby", email: "toby@kanzen.local", role: "principal" },
+  { name: "Flavian", email: "flavian@kanzen.local", role: "principal" },
   { name: "Lorna", email: "lorna@kanzen.local", role: "manager" },
   { name: "Marcia", email: "marcia@kanzen.local", role: "staff" },
   { name: "Siti", email: "siti@kanzen.local", role: "staff" },
@@ -28,6 +28,7 @@ export type Perm = z.infer<typeof PermSchema>;
 /** F01/F02 — the authenticated principal + its effective permission set + impersonation state. */
 export const MeSchema = z.object({
   userId: z.string(),
+  name: z.string(),
   email: z.string(),
   role: z.string(),
   permissions: z.array(PermSchema),

@@ -5,7 +5,7 @@ import { AuthProvider } from "../state/AuthContext";
 
 vi.mock("../services/wealth", () => ({
   listEntities: async () => [
-    { id: "e1", name: "Toby (Individual)", kind: "individual", jurisdiction: "UK", baseCurrency: "GBP", parentEntityId: null },
+    { id: "e1", name: "Flavian (Individual)", kind: "individual", jurisdiction: "UK", baseCurrency: "GBP", parentEntityId: null },
   ],
   getNetWorth: async () => ({ entityId: null, cashAndOtherMinor: 500000, investmentsMinor: 98000, assetsMinor: 598000, liabilitiesMinor: 0, netMinor: 598000 }),
   getBalanceSheet: async () => ({ entityId: null, assetsMinor: 598000, liabilitiesMinor: 0, equityMinor: 598000, balances: true }),

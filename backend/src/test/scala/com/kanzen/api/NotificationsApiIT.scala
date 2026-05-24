@@ -19,7 +19,7 @@ object NotificationsApiIT extends IOSuite {
   override def sharedResource = TestDb.transactor
 
   private val toby =
-    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "toby@kanzen.local", "principal")
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "flavian@kanzen.local", "principal")
   private val marcia =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
 

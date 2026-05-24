@@ -20,7 +20,7 @@ object ImpersonateApiIT extends IOSuite {
   override def sharedResource = TestDb.transactor
 
   private val tobyId = UUID.fromString("10000000-0000-0000-0000-000000000001")
-  private val toby = Principal(tobyId, "t", "toby@kanzen.local", "principal")
+  private val toby = Principal(tobyId, "t", "flavian@kanzen.local", "principal")
   private val marcia =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
 
@@ -46,7 +46,7 @@ object ImpersonateApiIT extends IOSuite {
   test("a non-admin cannot impersonate (403)") { xa =>
     for {
       dev <- DevAuth.generate("", "")
-      res <- Impersonate.start(xa, Some(dev), marcia, ImpersonateReq("toby@kanzen.local"))
+      res <- Impersonate.start(xa, Some(dev), marcia, ImpersonateReq("flavian@kanzen.local"))
     } yield expect(res.left.exists(_._1.code == 403))
   }
 

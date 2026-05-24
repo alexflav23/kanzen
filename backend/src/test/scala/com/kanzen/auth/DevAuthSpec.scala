@@ -6,9 +6,9 @@ import weaver.SimpleIOSuite
 object DevAuthSpec extends SimpleIOSuite {
   test("mint → verify round-trips with email + role") {
     DevAuth.generate("", "").flatMap { dev =>
-      val token = dev.mint("toby@kanzen.local", "principal")
+      val token = dev.mint("flavian@kanzen.local", "principal")
       JwtVerifier.verify(token, dev.jwks, "", "").map {
-        case Right(c) => expect(c.email == "toby@kanzen.local") and expect(c.role == "principal")
+        case Right(c) => expect(c.email == "flavian@kanzen.local") and expect(c.role == "principal")
         case Left(e) => failure(s"expected valid claims, got: $e")
       }
     }

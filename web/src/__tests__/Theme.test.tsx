@@ -8,7 +8,7 @@ import { AuthProvider } from "../state/AuthContext";
 // The theme toggle lives in the (auth-gated) shell, so seed a session each test.
 const seedSession = () => {
   localStorage.setItem("kanzen.token", "dev.token");
-  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Toby", email: "toby@kanzen.local", role: "principal" }));
+  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Flavian", email: "flavian@kanzen.local", role: "principal" }));
 };
 
 const renderApp = () =>

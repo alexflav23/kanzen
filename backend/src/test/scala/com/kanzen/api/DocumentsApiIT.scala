@@ -20,7 +20,7 @@ object DocumentsApiIT extends IOSuite {
     TestDb.transactor.flatMap(xa => cats.effect.Resource.eval(ObjectStore.inMemory).map((xa, _)))
 
   private val toby =
-    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "toby", "toby@kanzen.local", "principal")
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "toby", "flavian@kanzen.local", "principal")
   private val lorna = Principal(UUID.randomUUID(), "lorna", "lorna@kanzen.local", "manager")
   private val siti =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000004"), "siti", "siti@kanzen.local", "staff")

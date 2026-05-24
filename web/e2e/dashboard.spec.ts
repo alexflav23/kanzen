@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 // Browser e2e (Playwright): the deepened Dashboard (design parity).
 test("dashboard shows the hero strip, upcoming, budgets and side panels", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Good morning, Flavian." })).toBeVisible();
   await expect(page.getByText("5 items awaiting your review, 2 expenses for approval.")).toBeVisible();
 
   // Attention strip

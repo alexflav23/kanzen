@@ -20,7 +20,7 @@ const me = (permissions: { resource: string; field: string | null; level: string
 
 beforeEach(() => {
   localStorage.setItem("kanzen.token", "dev.token");
-  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Toby", email: "toby@kanzen.local", role: "principal" }));
+  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Flavian", email: "flavian@kanzen.local", role: "principal" }));
   (getMe as Mock).mockReset();
 });
 
@@ -39,7 +39,7 @@ describe("App shell", () => {
     renderApp();
     expect(screen.getByText("Kanzen")).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "Primary" }));
-    expect(nav.getByText("Toby")).toBeInTheDocument();
+    expect(nav.getByText("Flavian")).toBeInTheDocument();
     expect(nav.getByText("Sign out")).toBeInTheDocument();
   });
 

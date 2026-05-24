@@ -17,11 +17,11 @@ object PrincipalsIT extends IOSuite {
 
   test("resolves a seeded user by email; the DB role is authoritative") { xa =>
     // The claim says "staff", but Toby is "principal" in the DB — DB wins.
-    Principals.resolve(Claims("some-sub", "toby@kanzen.local", "staff")).transact(xa).map {
+    Principals.resolve(Claims("some-sub", "flavian@kanzen.local", "staff")).transact(xa).map {
       case Some(p) =>
         expect(p.role == "principal") and
           expect(p.userId == UUID.fromString("10000000-0000-0000-0000-000000000001")) and
-          expect(p.email == "toby@kanzen.local")
+          expect(p.email == "flavian@kanzen.local")
       case None => failure("expected to resolve Toby")
     }
   }

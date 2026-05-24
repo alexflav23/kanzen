@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-// Uses the default stored Principal (Toby/admin) session. Drives the impersonation engine
+// Uses the default stored Principal (Flavian/admin) session. Drives the impersonation engine
 // against the REAL backend: act-as a user → the whole UI recalibrates to them + a banner shows
 // who's really driving → Stop restores the admin view.
 test("an admin impersonates a user → banner + recalibrated nav → Stop restores admin", async ({ page }) => {

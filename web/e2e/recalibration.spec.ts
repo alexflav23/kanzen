@@ -17,10 +17,10 @@ test("the nav recalibrates to the signed-in persona's permissions (Staff vs Prin
   await expect(nav.getByRole("link", { name: "Wealth", exact: true })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Backup", exact: true })).toHaveCount(0);
 
-  // Sign out, then in as Toby (Principal): the same nav recalibrates to show everything.
+  // Sign out, then in as Flavian (Principal): the same nav recalibrates to show everything.
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByTestId("dev-login")).toBeVisible();
-  await page.getByRole("button", { name: /Toby/ }).click();
+  await page.getByRole("button", { name: /Flavian/ }).click();
   await expect(nav.getByRole("link", { name: "Inventory", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Finance", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Wealth", exact: true })).toBeVisible();

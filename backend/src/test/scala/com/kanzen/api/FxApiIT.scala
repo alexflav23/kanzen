@@ -18,7 +18,7 @@ object FxApiIT extends IOSuite {
   override def sharedResource = TestDb.transactor
 
   private val toby =
-    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "toby@kanzen.local", "principal")
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "flavian@kanzen.local", "principal")
   private val on = LocalDate.of(2026, 3, 15) // nearest-prior snapshot is 2026-01-01
 
   test("currencies lists the active registry") { xa =>

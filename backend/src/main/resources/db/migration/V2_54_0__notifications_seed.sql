@@ -1,4 +1,4 @@
--- F34 demo seed — a couple of in-app notifications for Toby (Principal) so the notification
+-- F34 demo seed — a couple of in-app notifications for Flavian (Principal) so the notification
 -- centre renders real unread items. In production these are written by the NotificationFanout
 -- consumer when events are relayed; seeded directly here (event_id null) for the sandbox.
 -- (NotificationsApiIT/NotificationFanoutIT scope to their own emitted events, so this seed

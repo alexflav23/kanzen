@@ -25,7 +25,7 @@ const renderLists = () =>
 
 beforeEach(() => {
   localStorage.setItem("kanzen.token", "t");
-  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Toby", email: "toby@kanzen.local", role: "principal" }));
+  localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Flavian", email: "flavian@kanzen.local", role: "principal" }));
 });
 
 describe("Lists", () => {

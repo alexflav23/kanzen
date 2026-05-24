@@ -30,9 +30,9 @@ object AuthSpec extends SimpleIOSuite {
   }
 
   test("a valid RS256 token → trusted claims") {
-    val token = sign("""{"email":"toby@kanzen.local","custom:role":"principal"}""")
+    val token = sign("""{"email":"flavian@kanzen.local","custom:role":"principal"}""")
     JwtVerifier.verify(token, jwks, issuer, audience).map { r =>
-      expect(r == Right(Claims("toby-sub", "toby@kanzen.local", "principal")))
+      expect(r == Right(Claims("toby-sub", "flavian@kanzen.local", "principal")))
     }
   }
 
