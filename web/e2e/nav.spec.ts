@@ -5,6 +5,7 @@ import { expect, test } from "./fixtures";
 const BUILT: [string, RegExp][] = [
   ["Dashboard", /Good morning, Toby\./],
   ["Inbox", /Inbox/],
+  ["Notifications", /Notifications/],
   ["Inventory", /Inventory/],
   ["Properties", /Properties/],
   ["People", /People/],

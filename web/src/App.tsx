@@ -18,6 +18,7 @@ import { Inbox } from "./pages/Inbox";
 import { Calendar } from "./pages/Calendar";
 import { Insights } from "./pages/Insights";
 import { Backup } from "./pages/Backup";
+import { Notifications } from "./pages/Notifications";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
@@ -25,7 +26,7 @@ import { DevLogin } from "./auth/DevLogin";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
-  { group: null, items: ["Dashboard", "Inbox"] },
+  { group: null, items: ["Dashboard", "Inbox", "Notifications"] },
   { group: "INVENTORY", items: ["Inventory", "Collections", "Insights"] },
   { group: "OPERATIONS", items: ["Properties", "Tasks", "Calendar", "Lists", "Maintenance"] },
   { group: "RECORDS", items: ["People", "Vendors", "Vehicles", "Documents"] },
@@ -35,6 +36,7 @@ const NAV: { group: string | null; items: string[] }[] = [
 function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inbox") return "/inbox";
+  if (item === "Notifications") return "/notifications";
   if (item === "Inventory") return "/inventory";
   if (item === "Insights") return "/insights";
   if (item === "Finance") return "/finance";
@@ -98,6 +100,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inbox" element={<Inbox />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/insights" element={<Insights />} />
