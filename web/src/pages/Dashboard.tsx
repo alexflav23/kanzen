@@ -1,5 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "../state/AuthContext";
+import { getSummary } from "../services/dashboard";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { AgentRibbon } from "../components/AgentRibbon";
@@ -58,9 +61,19 @@ const styles = stylex.create({
   tiny: { fontSize: "11px" },
 });
 
+const glance = stylex.create({
+  card: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, display: "grid", gridTemplateColumns: "repeat(4,1fr)", marginBottom: "32px" },
+  cell: { padding: "18px 22px", borderRight: `1px solid ${colors.line}` },
+  label: { fontSize: "12px", color: colors.ink3 },
+  num: { fontSize: "26px", fontWeight: 600, letterSpacing: "-0.02em", marginTop: "4px", fontVariantNumeric: "tabular-nums" },
+});
+
 export function Dashboard() {
   const navigate = useNavigate();
+  const { token } = useAuth();
+  const summary = useQuery({ queryKey: ["dashboard", token], queryFn: () => getSummary(token) });
   const pending = EXPENSES.filter((e) => e.status === "pending");
+  const s = summary.data;
 
   return (
     <div>
@@ -76,6 +89,21 @@ export function Dashboard() {
           <Plus size={14} /> Quick add
         </button>
       </header>
+
+      {/* F29 — live At-a-glance summary (real counts from /api/dashboard) */}
+      <div {...stylex.props(glance.card)} data-testid="glance">
+        {([
+          ["Properties", s?.properties],
+          ["Assets", s?.assets],
+          ["To approve", s?.pendingApprovals],
+          ["Permits expiring", s?.expiringPermits],
+        ] as const).map(([label, n]) => (
+          <div key={label} {...stylex.props(glance.cell)}>
+            <div {...stylex.props(glance.label)}>{label}</div>
+            <div {...stylex.props(glance.num)} data-testid="glance-num">{n ?? "—"}</div>
+          </div>
+        ))}
+      </div>
 
       {/* Attention strip */}
       <Card style={styles.heroCard}>

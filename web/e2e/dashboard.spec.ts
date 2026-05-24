@@ -24,6 +24,15 @@ test("dashboard shows the hero strip, upcoming, budgets and side panels", async 
   await expect(page.getByText("Todoist")).toBeVisible();
 });
 
+test("the live at-a-glance summary shows real counts (F29)", async ({ page }) => {
+  await page.goto("/");
+  const glance = page.getByTestId("glance");
+  await expect(glance).toBeVisible();
+  await expect(glance.getByText("Properties")).toBeVisible();
+  await expect(glance.getByText("To approve")).toBeVisible();
+  await expect(page.getByTestId("glance-num").first()).toBeVisible(); // a real count rendered
+});
+
 test("the approvals card navigates to Finance", async ({ page }) => {
   await page.goto("/");
   await page.getByText("2 expenses to approve").click();
