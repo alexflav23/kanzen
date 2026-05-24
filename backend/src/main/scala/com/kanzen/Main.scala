@@ -7,6 +7,7 @@ import com.kanzen.api.{Admin, Api}
 import com.kanzen.auth.{Auth, DevAuth, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
+import com.kanzen.identity.Principals
 import doobie.util.transactor.Transactor
 import org.http4s.HttpApp
 import org.http4s.ember.server.EmberServerBuilder
@@ -47,11 +48,12 @@ object Main extends IOApp.Simple {
                     DevAuth.generate(cfg.cognito.issuer, cfg.cognito.audience).map(Some(_))
                   else IO.pure(None)
           _ <- dev.traverse_(_ => log.warn("DEV AUTH ENABLED — POST /api/dev/token mints local JWTs (env=local, no Cognito pool)"))
-          auth = Auth(dev.map(_.jwks).getOrElse(Jwks.empty), cfg.cognito.issuer, cfg.cognito.audience)
+          jwks = dev.map(_.jwks).getOrElse(Jwks.empty)
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
+                 val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
                  (server(host"0.0.0.0", p, primaryApp(auth, xa, dev)),
                   server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
                }

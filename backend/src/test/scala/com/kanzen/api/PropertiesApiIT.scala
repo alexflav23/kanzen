@@ -13,7 +13,8 @@ object PropertiesApiIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  private def principal(role: String) = Principal(subject = s"sub-$role", email = s"$role@kanzen.local", role = role)
+  private def principal(role: String) =
+    Principal(userId = java.util.UUID.randomUUID(), subject = s"sub-$role", email = s"$role@kanzen.local", role = role)
 
   test("principal sees the two seeded properties") { xa =>
     Properties.list(xa, principal("principal")).map {

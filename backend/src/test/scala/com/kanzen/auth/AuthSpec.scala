@@ -1,11 +1,13 @@
 package com.kanzen.auth
 
+import cats.effect.IO
 import pdi.jwt.{JwtAlgorithm, JwtCirce, JwtClaim, JwtHeader}
 import weaver.SimpleIOSuite
 
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPublicKey
 import java.time.Clock
+import java.util.UUID
 
 /** F01/Phase 0 — proves the JWKS auth core against a **local test-JWKS** (a generated
   * RSA keypair), so CI validates real RS256 verification without a live Cognito pool. */
@@ -64,10 +66,21 @@ object AuthSpec extends SimpleIOSuite {
     JwtVerifier.verify("not.a.jwt", jwks, issuer, audience).map(r => expect(r.isLeft))
   }
 
+  // A trivial resolver — the bad-token paths fail before resolution is reached.
+  private val resolveAny: Claims => IO[Option[Principal]] =
+    c => IO.pure(Some(Principal(UUID.randomUUID(), c.subject, c.email, c.role)))
+
   test("Auth maps a bad token to a 401 ApiError") {
-    val a = Auth(jwks, issuer, audience)
+    val a = Auth(jwks, issuer, audience, resolveAny)
     a.securityLogic("garbage").map { r =>
       expect(r.isLeft) && expect(r.left.exists(_._1.code == 401))
+    }
+  }
+
+  test("Auth maps a valid token with no matching account to a 403") {
+    val a = Auth(jwks, issuer, audience, _ => IO.pure(None))
+    a.securityLogic(sign("""{"email":"ghost@kanzen.local"}""")).map { r =>
+      expect(r.left.exists(_._1.code == 403)) && expect(r.left.exists(_._2.code == "no_account"))
     }
   }
 }

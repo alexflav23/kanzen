@@ -12,7 +12,7 @@ import sttp.tapir.server.ServerEndpoint
 /** Phase 0 — `GET /api/me`: the authenticated principal. Proves the Cognito JWKS
   * auth stack end-to-end (bearer → validated `Principal` → response, or 401). */
 object Me {
-  final case class MeResponse(subject: String, email: String, role: String)
+  final case class MeResponse(userId: String, email: String, role: String)
 
   val endpoint: Endpoint[String, Unit, (StatusCode, ApiError), MeResponse, Any] =
     sttp.tapir.endpoint.get
@@ -25,5 +25,5 @@ object Me {
   def serverEndpoint(a: Auth): ServerEndpoint[Any, IO] =
     endpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => (_: Unit) => IO.pure(Right(MeResponse(p.subject, p.email, p.role)): Either[(StatusCode, ApiError), MeResponse]))
+      .serverLogic(p => (_: Unit) => IO.pure(Right(MeResponse(p.userId.toString, p.email, p.role)): Either[(StatusCode, ApiError), MeResponse]))
 }
