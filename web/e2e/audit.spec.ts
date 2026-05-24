@@ -48,17 +48,18 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
   await shot("01-dashboard");
 
-  // 2. Inventory + filter rail + reset
+  // 2. Inventory + filter rail + reset (live, seeded registry)
   where.v = "inventory";
   await page.getByRole("link", { name: "Inventory" }).click();
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
-  await expect(page.getByTestId("asset-card")).toHaveCount(8);
+  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
   await shot("02-inventory-all");
   await page.getByRole("button", { name: /^Watches/ }).click();
-  await expect(page.getByTestId("asset-card")).toHaveCount(2);
+  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
+  await expect(page.getByText("1959 Les Paul Standard")).toHaveCount(0);
   await shot("03-inventory-watches");
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await expect(page.getByTestId("asset-card")).toHaveCount(8);
+  await expect(page.getByText("1959 Les Paul Standard")).toBeVisible();
 
   // 3. Finance + approve + reject
   where.v = "finance";
@@ -74,7 +75,8 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   where.v = "properties";
   await page.getByRole("link", { name: "Properties" }).click();
   await expect(page.getByRole("heading", { name: "Properties" })).toBeVisible();
-  await expect(page.getByTestId("property-card")).toHaveCount(2);
+  await expect(page.getByText("Wardian — Apt 5206")).toBeVisible();
+  await expect(page.getByText("Singapore Residence")).toBeVisible();
   await shot("06-properties");
 
   // 5. People

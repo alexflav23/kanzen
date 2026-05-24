@@ -14,8 +14,8 @@ test("lists the two seeded properties from the database", async ({ page }) => {
 
 test("shows real per-property currency from the API", async ({ page }) => {
   await page.goto("/properties");
-  await expect(page.getByText("GBP")).toBeVisible();
-  await expect(page.getByText("SGD")).toBeVisible();
+  await expect(page.getByText("GBP").first()).toBeVisible();
+  await expect(page.getByText("SGD")).toBeVisible(); // Singapore only
 });
 
 test("opening a property shows its Bible (overview, rooms, defects) from the API", async ({ page }) => {

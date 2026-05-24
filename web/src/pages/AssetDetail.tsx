@@ -1,126 +1,88 @@
 import * as stylex from "@stylexjs/stylex";
 import { useNavigate, useParams } from "react-router-dom";
-import { colors, radius } from "../styles/tokens.stylex";
-import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
+import { useQuery } from "@tanstack/react-query";
+import { colors } from "../styles/tokens.stylex";
+import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { ChevronRight, Pin } from "../components/icons";
-import { ASSETS, categoryName, propName, fmtMoneyShort } from "../data/mockInventory";
+import { getAsset } from "../services/assets";
+import { listCategories } from "../services/categories";
+import { useAuth } from "../state/AuthContext";
+import { Loading, EmptyState, ErrorState } from "../components/states";
 
 const styles = stylex.create({
   page: { maxWidth: "1100px" },
-  backWrap: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px" },
+  back: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px" },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "6px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
-  pills: { display: "flex", gap: "6px", marginTop: "10px" },
-  hero: { display: "flex", alignItems: "flex-end", gap: "24px", marginTop: "16px", marginBottom: "24px" },
-  photo: { width: "200px", height: "150px", borderRadius: radius.lg, flexShrink: 0 },
-  val: { fontSize: "32px", fontWeight: 600, letterSpacing: "-0.022em", fontVariantNumeric: "tabular-nums" },
-  sub: { fontSize: "13px", color: colors.ink3, marginTop: "2px" },
+  pills: { display: "flex", gap: "6px", marginTop: "10px", marginBottom: "24px" },
   layout: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" },
   kv: { display: "flex", justifyContent: "space-between", padding: "12px 20px", borderBottom: `1px solid ${colors.line}`, fontSize: "13.5px" },
-  kvK: { color: colors.ink3 },
-  kvV: { fontWeight: 500 },
-  grow: { flex: 1 },
-  num: { fontVariantNumeric: "tabular-nums" },
-  colStack: { display: "flex", flexDirection: "column", gap: "24px" },
-  b135: { fontSize: "13.5px" },
-  semibold: { fontWeight: 600 },
+  kvK: { color: colors.ink3, textTransform: "capitalize" },
+  kvV: { fontWeight: 500, textTransform: "capitalize" },
+  note: { padding: "14px 20px", fontSize: "12.5px", color: colors.ink3 },
 });
 
-type Val = { date: string; value: number; by: string };
-type Doc = { name: string; kind: string };
+function money(minor: number | null, currency: string | null): string {
+  if (minor == null) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency ?? "GBP" }).format(minor / 100);
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency ?? ""}`.trim();
+  }
+}
 
 export function AssetDetail() {
-  const { id } = useParams();
+  const { id = "" } = useParams();
   const navigate = useNavigate();
-  const asset = ASSETS.find((a) => a.id === id);
+  const { token } = useAuth();
+  const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
+  const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
 
-  if (!asset) {
-    return (
-      <div>
-        <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.backWrap)}>← Inventory</button>
-        <p>Asset not found.</p>
-      </div>
-    );
-  }
+  const back = <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.back)}>← Inventory</button>;
+  if (assetQ.isPending) return <div {...stylex.props(styles.page)}>{back}<Loading label="Loading the asset…" /></div>;
+  if (assetQ.isError) return <div {...stylex.props(styles.page)}>{back}<ErrorState error={assetQ.error} /></div>;
 
-  const valuations: Val[] = [
-    { date: asset.acquired, value: Math.round(asset.current * 0.7), by: "Purchase price" },
-    { date: "2022-01-15", value: Math.round(asset.current * 0.88), by: "Appraisal — Bonhams" },
-    { date: "2024-09-01", value: asset.current, by: "Market estimate" },
-  ];
-  const docs: Doc[] = [
-    { name: "Purchase receipt.pdf", kind: "Proof of purchase" },
-    { name: "Insurance schedule.pdf", kind: "Policy" },
-    ...(asset.condition === "Service" ? [{ name: "Service order — 2025.pdf", kind: "Maintenance" }] : []),
-  ];
+  const a = assetQ.data;
+  const categoryName = (catsQ.data ?? []).find((c) => c.id === a.categoryId)?.name ?? "—";
+  const attrs = Object.entries(a.attributes ?? {});
+  const modeLabel = a.trackingMode === "grouped_quantity" ? `grouped ×${a.quantity}` : a.trackingMode.replace("_", " ");
 
   return (
     <div {...stylex.props(styles.page)}>
-      <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.backWrap)}>← Inventory</button>
-
+      {back}
       <div>
-        <div {...stylex.props(styles.eyebrow)}>{asset.maker}</div>
-        <h1 {...stylex.props(styles.title)}>{asset.title}</h1>
+        {a.maker && <div {...stylex.props(styles.eyebrow)}>{a.maker}</div>}
+        <h1 {...stylex.props(styles.title)}>{a.title}</h1>
         <div {...stylex.props(styles.pills)}>
-          <Pill tone="accent">{categoryName(asset.category)}</Pill>
-          <Pill tone={asset.condition === "Service" ? "warn" : "default"}>{asset.condition}</Pill>
-          <Pill>{asset.status}</Pill>
-        </div>
-      </div>
-
-      <div {...stylex.props(styles.hero)}>
-        <div {...stylex.props(styles.photo)} style={{ background: asset.fill }} />
-        <div>
-          <div {...stylex.props(styles.val)}>{fmtMoneyShort(asset.current, asset.currency)}</div>
-          <div {...stylex.props(styles.sub)}>Current estimate · insured {fmtMoneyShort(asset.insured, asset.currency)}</div>
+          <Pill tone="accent">{categoryName}</Pill>
+          <Pill>{modeLabel}</Pill>
+          <Pill>{a.ownershipStatus}</Pill>
         </div>
       </div>
 
       <div {...stylex.props(styles.layout)}>
-        <div {...stylex.props(styles.colStack)}>
-          <Card>
-            <CardHeader><CardTitle>Key facts</CardTitle></CardHeader>
-            <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquired</span><span {...stylex.props(styles.kvV)}>{asset.acquired}</span></div>
-            <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Location</span><span {...stylex.props(styles.kvV)}>{propName(asset.propId)} · {asset.sub}</span></div>
-            <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Status</span><span {...stylex.props(styles.kvV)}>{asset.status}</span></div>
-            <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tags</span><span {...stylex.props(styles.kvV)}>{asset.tags.length ? asset.tags.join(", ") : "—"}</span></div>
-          </Card>
+        <Card>
+          <CardHeader><CardTitle>Key facts</CardTitle></CardHeader>
+          <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Category</span><span {...stylex.props(styles.kvV)}>{categoryName}</span></div>
+          <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tracking</span><span {...stylex.props(styles.kvV)}>{modeLabel}</span></div>
+          <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Quantity</span><span {...stylex.props(styles.kvV)}>{a.quantity}</span></div>
+          <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquisition</span><span {...stylex.props(styles.kvV)}>{money(a.acquisitionCostMinor, a.acquisitionCurrency)}</span></div>
+          <div {...stylex.props(styles.note)}>Valuation history arrives with F20; documents with F05.</div>
+        </Card>
 
-          <Card>
-            <CardHeader><CardTitle>Valuation history</CardTitle></CardHeader>
-            {valuations.map((v) => (
-              <CardRow key={v.date}>
-                <div {...stylex.props(styles.grow)}>
-                  <div {...stylex.props(styles.b135)}>{v.by}</div>
-                  <div {...stylex.props(styles.sub)}>{v.date}</div>
-                </div>
-                <span {...stylex.props(styles.num, styles.semibold)}>{fmtMoneyShort(v.value, asset.currency)}</span>
-              </CardRow>
-            ))}
-          </Card>
-        </div>
-
-        <div>
-          <Card>
-            <CardHeader><CardTitle>Attached documents</CardTitle></CardHeader>
-            {docs.map((d) => (
-              <CardRow key={d.name}>
-                <div {...stylex.props(styles.grow)}>
-                  <div {...stylex.props(styles.b135)}>{d.name}</div>
-                  <div {...stylex.props(styles.sub)}>{d.kind}</div>
-                </div>
-                <ChevronRight size={14} />
-              </CardRow>
-            ))}
-            <CardRow>
-              <Pin size={12} />
-              <div {...stylex.props(styles.grow)}>
-                <div {...stylex.props(styles.sub)}>Stored immutably in S3 — originals are never edited.</div>
+        <Card>
+          <CardHeader><CardTitle>Specifications</CardTitle></CardHeader>
+          {attrs.length === 0 ? (
+            <EmptyState title="No specifications">Add typed attributes for this vertical (F22).</EmptyState>
+          ) : (
+            attrs.map(([k, v]) => (
+              <div key={k} {...stylex.props(styles.kv)} data-testid="spec-row">
+                <span {...stylex.props(styles.kvK)}>{k.replace(/_/g, " ")}</span>
+                <span {...stylex.props(styles.kvV)}>{String(v)}</span>
               </div>
-            </CardRow>
-          </Card>
-        </div>
+            ))
+          )}
+        </Card>
       </div>
     </div>
   );
