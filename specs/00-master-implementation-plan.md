@@ -39,7 +39,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 
 | ID | Feature | Wave | Depends on | Spec | Build |
 |---|---|---|---|---|---|
-| F00 | Foundation: infra, repo, design system | Phase 0 | — | ✅ | 🚧 rails done (API+auth+boot+seed+skeleton); CI/mobile/visual-diff pending |
+| F00 | Foundation: infra, repo, design system | Phase 0 | — | ✅ | 🚧 rails + design system done; CI green-gate (backend+web+flutter, scalafmt) ✓; mobile foundation ✓ (F31); **Terraform launch substrate ✓ (validate-clean)**; cross-cutting authz-fuzz suite ✓. Pending: visual-diff goldens (F0.7), a11y/axe sweep, real-AWS apply (operator) |
 | F01 | Identity, auth & session (Cognito) | Phase 0/1 | F00 | ✅ | 🚧 In-slice (auth + DB principal resolution + /api/me + web login done; real Cognito pool + auto-provision pending) |
 | F02 | Authorization (resource/field RBAC + custom roles + property **& entity** scope) | A | F01 | ✅ | 🚧 In-slice (Authorizer + permission_rules + property scope + reusable path done; field-filter applies at F04, role-mgmt UI + entity scope pending) |
 | F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | ✔️ Done (sandbox) — backend complete; web list/Bible/Add-property wired + e2e; in-Bible write forms + mobile (via F31) deferred |
