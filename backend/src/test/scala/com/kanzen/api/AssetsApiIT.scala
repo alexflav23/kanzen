@@ -1,0 +1,79 @@
+package com.kanzen.api
+
+import cats.effect.IO
+import com.kanzen.api.Assets.CreateReq
+import com.kanzen.asset.AssetRepo
+import com.kanzen.auth.Principal
+import com.kanzen.db.TestDb
+import doobie.implicits._
+import doobie.util.transactor.Transactor
+import io.circe.Json
+import weaver.IOSuite
+
+import java.util.UUID
+
+/** F04 — assets list/detail/create: authz (AC6 staff 403), tracking modes (AC1),
+  * JSONB attributes (AC3), category-descendant filter (AC2 partial). */
+object AssetsApiIT extends IOSuite {
+  type Res = Transactor[IO]
+  override def sharedResource = TestDb.transactor
+
+  private def principal(role: String) = Principal(UUID.randomUUID(), s"$role-sub", s"$role@kanzen.local", role)
+  private def req(title: String, cat: UUID, mode: String, qty: Int, parent: Option[UUID] = None, attrs: Json = Json.obj()) =
+    CreateReq(title, Some("Maker"), cat, Some("watch"), mode, qty, parent, None, None, None, Some(attrs))
+
+  test("AC6 — staff cannot read the registry (403); principal/manager can") { xa =>
+    for {
+      cat   <- AssetRepo.createCategory("Watches", None).transact(xa)
+      _     <- Assets.create(xa, principal("principal"), req("Royal Oak", cat, "unique", 1))
+      staff <- Assets.list(xa, principal("staff"), None, None)
+      mgr   <- Assets.list(xa, principal("manager"), None, None)
+      prin  <- Assets.list(xa, principal("principal"), None, None)
+    } yield expect(staff.left.exists(_._1.code == 403)) and
+      expect(mgr.isRight) and expect(prin.toOption.exists(_.nonEmpty))
+  }
+
+  test("AC1 — create across all three tracking modes; structured child links to its parent") { xa =>
+    for {
+      cat     <- AssetRepo.createCategory("Porcelain", None).transact(xa)
+      unique  <- Assets.create(xa, principal("principal"), req("Watch", cat, "unique", 1)).map(_.toOption.get)
+      grouped <- Assets.create(xa, principal("principal"), req("Tumblers", cat, "grouped_quantity", 6)).map(_.toOption.get)
+      set     <- Assets.create(xa, principal("principal"), req("Tea service", cat, "structured_set", 1)).map(_.toOption.get)
+      child   <- Assets.create(xa, principal("principal"), req("Cup", cat, "unique", 1, parent = Some(set.id))).map(_.toOption.get)
+      orphan  <- Assets.create(xa, principal("principal"), req("Bad", cat, "unique", 1, parent = Some(UUID.randomUUID())))
+    } yield expect(unique.quantity == 1) and
+      expect(grouped.trackingMode == "grouped_quantity" && grouped.quantity == 6) and
+      expect(set.trackingMode == "structured_set") and
+      expect(child.parentAssetId.contains(set.id)) and
+      expect(orphan.left.exists(_._1.code == 400)) // parent must exist
+  }
+
+  test("AC3 — JSONB attributes round-trip through create + detail") { xa =>
+    val attrs = Json.obj("year" -> Json.fromInt(1959), "body_wood" -> Json.fromString("mahogany"))
+    for {
+      cat <- AssetRepo.createCategory("Guitars", None).transact(xa)
+      a   <- Assets.create(xa, principal("principal"), req("Les Paul", cat, "unique", 1, attrs = attrs)).map(_.toOption.get)
+      d   <- Assets.detail(xa, principal("principal"), a.id).map(_.toOption.get)
+    } yield expect(d.attributes.hcursor.get[Int]("year").toOption.contains(1959)) and
+      expect(d.attributes.hcursor.get[String]("body_wood").toOption.contains("mahogany"))
+  }
+
+  test("AC2 (partial) — filtering by a parent category includes descendants") { xa =>
+    for {
+      art      <- AssetRepo.createCategory("Art", None).transact(xa)
+      painting <- AssetRepo.createCategory("Painting", Some(art)).transact(xa)
+      _        <- Assets.create(xa, principal("principal"), req("Abstract No.4", painting, "unique", 1))
+      byParent <- Assets.list(xa, principal("principal"), Some(art), None).map(_.toOption.get)
+      byChild  <- Assets.list(xa, principal("principal"), Some(painting), None).map(_.toOption.get)
+    } yield expect(byParent.exists(_.title == "Abstract No.4")) and // parent filter includes child category
+      expect(byChild.exists(_.title == "Abstract No.4"))
+  }
+
+  test("create is rejected for a bad tracking mode (400) and missing category (400)") { xa =>
+    for {
+      cat <- AssetRepo.createCategory("Misc", None).transact(xa)
+      badMode <- Assets.create(xa, principal("principal"), req("X", cat, "banana", 1))
+      badCat  <- Assets.create(xa, principal("principal"), req("Y", UUID.randomUUID(), "unique", 1))
+    } yield expect(badMode.left.exists(_._1.code == 400)) and expect(badCat.left.exists(_._1.code == 400))
+  }
+}
