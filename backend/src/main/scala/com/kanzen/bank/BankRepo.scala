@@ -47,4 +47,10 @@ object BankRepo {
 
   def list(accountId: UUID): ConnectionIO[List[BankTx]] =
     (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId order by booked_on desc").query[BankTx].to[List]
+
+  def findTx(id: UUID): ConnectionIO[Option[BankTx]] =
+    (fr"select" ++ txCols ++ fr"from bank_transactions where id = $id").query[BankTx].option
+
+  def unmatched(accountId: UUID): ConnectionIO[List[BankTx]] =
+    (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId and reconciliation_state = 'unmatched' order by booked_on desc").query[BankTx].to[List]
 }
