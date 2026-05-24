@@ -61,15 +61,15 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.getByText("1959 Les Paul Standard")).toBeVisible();
 
-  // 3. Finance + approve + reject
+  // 3. Finance (live; read-only walk to keep the shared DB idempotent)
   where.v = "finance";
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.getByRole("heading", { name: /Bills, expenses/ })).toBeVisible();
+  await expect(page.getByText("Thames Water")).toBeVisible();
   await shot("04-finance");
-  await page.getByRole("button", { name: /Expenses/ }).click();
-  await page.getByRole("button", { name: /Approve/ }).first().click();
-  await page.getByRole("button", { name: /Reject/ }).first().click();
-  await shot("05-finance-after-decisions");
+  await page.getByRole("button", { name: "Expenses" }).click();
+  await expect(page.getByText(/Awaiting approval/)).toBeVisible();
+  await shot("05-finance-expenses");
 
   // 4. Properties
   where.v = "properties";
