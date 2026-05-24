@@ -51,7 +51,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F10 | People / HR | B | F02 | ✅ | ✔️ Done (sandbox) — backend (roster/detail/create/expiring, Staff own-only authz, permit surfacing) + web People wired + e2e; leave/offboarding/HR-doc-visibility deferred |
 | F09 | Vendors & contacts | B | F03 | ✅ | ✔️ Done (sandbox) — backend (scoped list/detail/create/approve/selectable, insurance gating, Staff read-scoped) + web Vendors wired + e2e; history panels (maintenance/bills/asset-roles) deferred to their features |
 | F37 | Currencies & FX (ECB source + cache, rate-at-date) | C | F12, F17, F20 | ✅ | ⬜ |
-| F12 | Bank ingestion & transactions (AIS) **+ CSV import (marvis)** | C | F02 | ✅ | ⬜ |
+| F12 | Bank ingestion & transactions (AIS) **+ CSV import (marvis)** | C | F02 | ✅ | 🚧 backend done (accounts/transactions/CSV-import, idempotent, finance carve-out authz, seed, tests); web Finance surface + GoCardless sandbox deferred |
 | F13 | Receipts, OCR/parse + ML categorisation **+ brand/product resolution** | C | F05, F04 | ✅ | ⬜ |
 | F14 | Reconciliation engine (**single-spend / dedup association**) | C | F12, F13 | ✅ | ⬜ |
 | F15 | Bills & recurring schedule | C | F03, F09 | ✅ | ⬜ |
