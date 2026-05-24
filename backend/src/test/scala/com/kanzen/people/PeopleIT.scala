@@ -7,20 +7,23 @@ import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
 import java.time.LocalDate
+import java.util.UUID
 
-/** F10 integration test: expiring-permit query (Siti within 60 days, others not). */
+/** F10 integration test: expiring-permit query (soon-to-expire surfaces, far-future doesn't). */
 object PeopleIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
 
-  test("expiringPermits(60) surfaces only the soon-to-expire permit") { xa =>
+  private val owner = UUID.fromString("10000000-0000-0000-0000-000000000001")
+
+  test("expiringPermits(60) surfaces a soon-to-expire permit but not a far-future one") { xa =>
     val prog = for {
-      siti <- PeopleRepo.create("Siti", Some("Housekeeper"), Some("sg"), Some(LocalDate.now.plusDays(50)))
-      _ <- PeopleRepo.create("Marcia", Some("Housekeeper"), Some("uk"), Some(LocalDate.now.plusDays(300)))
+      soon <- PeopleRepo.insert(owner, None, "Test Soon", Some("Housekeeper"), Some("sg"), None, Some(LocalDate.now.plusDays(50)), None)
+      far  <- PeopleRepo.insert(owner, None, "Test Far", Some("Housekeeper"), Some("uk"), None, Some(LocalDate.now.plusDays(300)), None)
       expiring <- PeopleRepo.expiringPermits(60)
-    } yield (siti, expiring)
-    prog.transact(xa).map { case (siti, expiring) =>
-      expect(expiring.size == 1) and expect(expiring.exists(_.id == siti.id))
+    } yield (soon, far, expiring)
+    prog.transact(xa).map { case (soon, far, expiring) =>
+      expect(expiring.exists(_.id == soon.id)) and expect(!expiring.exists(_.id == far.id))
     }
   }
 }
