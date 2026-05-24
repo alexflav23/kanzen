@@ -67,11 +67,11 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F35 | Products & stock (consumables) | D | F08, F09, F33, F34 | ✅ | ✔️ Done (sandbox) — backend (products list/create, stock state, reorder list, manager-write/staff-read authz) + seed; web surface deferred |
 | F36 | Predictive replenishment | D | F35, F12, F13 | ✅ | ✔️ Done (sandbox) — backend forecast (avg interval / predicted-next / due-soon via pure ReplenishmentService) + IT; web surface deferred |
 | F11 | Maintenance plans & reminder engine | D | F04, F06, F07 | ✅ | ✔️ Done (sandbox) — backend (plans, due-soon reminders, complete-rolls-forward + logs) + web Maintenance page + e2e; calendar/task spawn deferred |
-| F25 | Email agent pipeline (Gmail + Bedrock) | E | F05, F13, F15 | ✅ | ⬜ |
-| F26 | Unified Inbox + Triage | E | F25, F14, F23 | ✅ | ⬜ |
-| F27 | Trust model, rules & learned categorisation | E | F25, F13 | ✅ | ⬜ |
-| F28 | Search + ⌘K command palette (semantic) | E | F04, F12, F13 | ✅ | ⬜ |
-| F32 | Advanced: bulk onboarding, **NL query (product-level spend)**, Drive export | E | F28, F30 | ✅ | ⬜ |
+| F25 | Email agent pipeline (Gmail + Bedrock) | E | F05, F13, F15 | ✅ | ✔️ Done (sandbox) — backend ingest→classify→propose actions + IT. Deferred (infra): Gmail fetch + Bedrock classification |
+| F26 | Unified Inbox + Triage | E | F25, F14, F23 | ✅ | ✔️ Done (sandbox) — backend unified inbox counts + agent-action Triage stream (confirm/reject, 409 on re-act) + IT; web Inbox UI deferred |
+| F27 | Trust model, rules & learned categorisation | E | F25, F13 | ✅ | ✔️ Done (sandbox) — backend trust routing; financial/asset categories LOCKED to review (auto-execute 409, setTrust forced to review); confirm via agent-write authz + IT (never-auto-commit invariant proven). Deferred: learned categorisation |
+| F28 | Search + ⌘K command palette (semantic) | E | F04, F12, F13 | ✅ | ✔️ Done (sandbox) — backend permission-filtered full-text search (no leak: hit returned only if role can read that entity type) + IT. Deferred (infra): pgvector semantic embeddings, web ⌘K palette |
+| F32 | Advanced: bulk onboarding, **NL query (product-level spend)**, Drive export | E | F28, F30 | ✅ | ✔️ Done (sandbox) — backend NL query (read-only intent: count/last-purchase, permission-filtered, gibberish 422, Staff 403) + IT. Deferred: bulk onboarding (F24), Drive export, semantic NL via Claude |
 | F30 | Backup / export / restore | F | all domains | ✅ | ⬜ |
 | F31 | Flutter companion (capture-first; Triage) | F | F00, key reads | ✅ | ⬜ |
 | F42 | Legal entities, books & structures (multi-book foundation) | G | F02, F18, F37 | ✅ | ⬜ |
