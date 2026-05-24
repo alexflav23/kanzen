@@ -8,9 +8,10 @@ const BUILT: [string, RegExp][] = [
   ["Properties", /Properties/],
   ["People", /People/],
   ["Finance", /Bills, expenses/],
+  ["Documents", /Documents/],
 ];
 
-const STUBS = ["Inbox", "Collections", "Insights", "Tasks", "Calendar", "Lists", "Maintenance", "Vendors", "Vehicles", "Documents", "Backup", "Settings"];
+const STUBS = ["Inbox", "Collections", "Insights", "Tasks", "Calendar", "Lists", "Maintenance", "Vendors", "Vehicles", "Backup", "Settings"];
 
 test("built nav items route to their pages", async ({ page }) => {
   await page.goto("/");
