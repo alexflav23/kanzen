@@ -48,7 +48,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F20 | Valuation snapshots | B | F04 | ✅ | ⬜ |
 | F21 | Warranty / provenance / insurance | B | F04 | ✅ | ⬜ |
 | F24 | Legacy onboarding & restructure | B | F04, F19, F20 | ✅ | ⬜ |
-| F10 | People / HR | B | F02 | ✅ | ⬜ |
+| F10 | People / HR | B | F02 | ✅ | ✔️ Done (sandbox) — backend (roster/detail/create/expiring, Staff own-only authz, permit surfacing) + web People wired + e2e; leave/offboarding/HR-doc-visibility deferred |
 | F09 | Vendors & contacts | B | F03 | ✅ | ⬜ |
 | F37 | Currencies & FX (ECB source + cache, rate-at-date) | C | F12, F17, F20 | ✅ | ⬜ |
 | F12 | Bank ingestion & transactions (AIS) **+ CSV import (marvis)** | C | F02 | ✅ | ⬜ |
