@@ -69,6 +69,17 @@ object AssetsApiIT extends IOSuite {
       expect(byChild.exists(_.title == "Abstract No.4"))
   }
 
+  test("the seeded registry is visible to the principal; categories list (Staff 403)") { xa =>
+    for {
+      assets   <- Assets.list(xa, principal("principal"), None, None).map(_.toOption.get)
+      cats     <- Assets.categories(xa, principal("principal")).map(_.toOption.get)
+      staffCat <- Assets.categories(xa, principal("staff"))
+    } yield expect(assets.exists(_.title == "Royal Oak 15500ST")) and
+      expect(assets.exists(a => a.title == "Cumbria Crystal Tumblers" && a.quantity == 6)) and
+      expect(cats.exists(_.name == "Watches")) and expect(cats.size >= 4) and
+      expect(staffCat.left.exists(_._1.code == 403))
+  }
+
   test("create is rejected for a bad tracking mode (400) and missing category (400)") { xa =>
     for {
       cat <- AssetRepo.createCategory("Misc", None).transact(xa)

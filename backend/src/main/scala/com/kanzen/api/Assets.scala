@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.all._
-import com.kanzen.asset.{Asset, AssetRepo}
+import com.kanzen.asset.{Asset, AssetRepo, Category}
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
 import doobie.ConnectionIO
@@ -34,6 +34,7 @@ object Assets {
                                parentAssetId: Option[UUID], acquisitionCostMinor: Option[Long],
                                acquisitionCurrency: Option[String], ownershipStatus: String,
                                locationId: Option[UUID], attributes: Json)
+  final case class CategoryView(id: UUID, name: String, parentId: Option[UUID])
   final case class CreateReq(title: String, maker: Option[String], categoryId: UUID, vertical: Option[String],
                              trackingMode: String, quantity: Int, parentAssetId: Option[UUID],
                              acquisitionCostMinor: Option[Long], acquisitionCurrency: Option[String],
@@ -61,6 +62,14 @@ object Assets {
             }
           }
       }
+    }
+    tx.transact(xa)
+  }
+
+  def categories(xa: Transactor[IO], p: Principal): IO[Out[List[CategoryView]]] = {
+    val tx = Authz.authorizer(p.role).flatMap { authz =>
+      if (!authz.canRead("asset")) (Left(forbidden): Out[List[CategoryView]]).pure[ConnectionIO]
+      else AssetRepo.listCategories.map(cs => Right(cs.map(c => CategoryView(c.id, c.name, c.parentId))): Out[List[CategoryView]])
     }
     tx.transact(xa)
   }
@@ -112,11 +121,17 @@ object Assets {
       .in("api" / "assets").in(jsonBody[CreateReq]).errorOut(err).out(jsonBody[AssetDetail])
       .summary("Create an asset (Manager+; tracking modes unique/grouped/structured)")
 
+  val categoriesEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[CategoryView], Any] =
+    sttp.tapir.endpoint.get.securityIn(auth.bearer[String]())
+      .in("api" / "categories").errorOut(err).out(jsonBody[List[CategoryView]])
+      .summary("The asset category tree (Principal-private)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (cat, q) => list(xa, p, cat, q) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
+    categoriesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => categories(xa, p)),
   )
 
-  val endpoints: List[AnyEndpoint] = List(listEndpoint, detailEndpoint, createEndpoint)
+  val endpoints: List[AnyEndpoint] = List(listEndpoint, detailEndpoint, createEndpoint, categoriesEndpoint)
 }

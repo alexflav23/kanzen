@@ -25,6 +25,8 @@ final case class Asset(
     attributes: Json,
 )
 
+final case class Category(id: UUID, name: String, parentId: Option[UUID])
+
 /** F04 — asset registry core. Vertical attributes are a JSONB column (not EAV). */
 object AssetRepo {
   private val cols =
@@ -33,6 +35,10 @@ object AssetRepo {
 
   def createCategory(name: String, parentId: Option[UUID]): ConnectionIO[UUID] =
     sql"insert into categories (name, parent_id) values ($name, $parentId) returning id".query[UUID].unique
+
+  def listCategories: ConnectionIO[List[Category]] =
+    sql"select id, name, parent_id from categories where deleted_at is null order by sort_order, name"
+      .query[Category].to[List]
 
   def categoryExists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from categories where id = $id and deleted_at is null)".query[Boolean].unique
