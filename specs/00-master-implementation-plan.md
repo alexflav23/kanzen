@@ -38,7 +38,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F00 | Foundation: infra, repo, design system | Phase 0 | — | ✅ | 🚧 rails done (API+auth+boot+seed+skeleton); CI/mobile/visual-diff pending |
 | F01 | Identity, auth & session (Cognito) | Phase 0/1 | F00 | ✅ | 🚧 In-slice (auth + DB principal resolution + /api/me + web login done; real Cognito pool + auto-provision pending) |
 | F02 | Authorization (resource/field RBAC + custom roles + property **& entity** scope) | A | F01 | ✅ | 🚧 In-slice (Authorizer + permission_rules + property scope + reusable path done; field-filter applies at F04, role-mgmt UI + entity scope pending) |
-| F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | 🚧 In-slice (read end-to-end: API+authz+web+e2e done; CRUD/locations/defects/bible pending) |
+| F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | 🚧 In-slice (read+detail+location tree+defects backend done; properties create/patch/archive + web Bible + mobile pending) |
 | F04 | Asset registry core (JSONB) | B | F03 | ✅ | ⬜ |
 | F05 | Documents — S3 evidence store | B | F02 | ✅ | ⬜ |
 | F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
