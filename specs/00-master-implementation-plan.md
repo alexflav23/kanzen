@@ -39,13 +39,13 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F01 | Identity, auth & session (Cognito) | Phase 0/1 | F00 | ✅ | 🚧 In-slice (auth + DB principal resolution + /api/me + web login done; real Cognito pool + auto-provision pending) |
 | F02 | Authorization (resource/field RBAC + custom roles + property **& entity** scope) | A | F01 | ✅ | 🚧 In-slice (Authorizer + permission_rules + property scope + reusable path done; field-filter applies at F04, role-mgmt UI + entity scope pending) |
 | F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | ✔️ Done (sandbox) — backend complete; web list/Bible/Add-property wired + e2e; in-Bible write forms + mobile (via F31) deferred |
-| F04 | Asset registry core (JSONB) | B | F03 | ✅ | ✔️ Done (sandbox) — backend (list/detail/create/categories/seed, authz, modes, JSONB) + web Inventory/detail wired + e2e; location/custody, collections multi-ccy, field-strip (w/ F20) deferred |
+| F04 | Asset registry core (JSONB) | B | F03 | ✅ | ✔️ Done (sandbox) — backend (list/detail/create/categories/seed, authz, modes, JSONB) + web Inventory/detail wired + e2e; location/custody, collections multi-ccy deferred; field-strip (AC5) done via F20 |
 | F05 | Documents — S3 evidence store | B | F02 | ✅ | ✔️ Done (sandbox) — backend (upload/list/detail/links/presign/dedup/soft-delete, visibility+scope, ObjectStore) + web Documents module + e2e; embedded asset/property tabs + real S3/LocalStack deferred |
 | F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
 | F33 | Custom fields, tags & taxonomies | B | F02, F04, F22 | ✅ | ⬜ |
 | F23 | Completeness scoring & data quality | B | F04, F19–F22 | ✅ | ⬜ |
 | F19 | Lifecycle events & timeline | B | F04 | ✅ | ⬜ |
-| F20 | Valuation snapshots | B | F04 | ✅ | ⬜ |
+| F20 | Valuation snapshots | B | F04 | ✅ | ✔️ Done (sandbox) — backend (record/list latest-by-kind, Principal-only) + field-level stripping for Manager (closes F04 AC5) + web detail; aggregate valuation summary deferred |
 | F21 | Warranty / provenance / insurance | B | F04 | ✅ | ⬜ |
 | F24 | Legacy onboarding & restructure | B | F04, F19, F20 | ✅ | ⬜ |
 | F10 | People / HR | B | F02 | ✅ | ✔️ Done (sandbox) — backend (roster/detail/create/expiring, Staff own-only authz, permit surfacing) + web People wired + e2e; leave/offboarding/HR-doc-visibility deferred |
