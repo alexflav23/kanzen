@@ -1,8 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Plus } from "../components/icons";
-import { PROPERTIES, type MockProperty } from "../data/mockProperties";
+import { listProperties, type Property } from "../services/properties";
+import { useAuth } from "../state/AuthContext";
+import { Loading, EmptyState, ErrorState } from "../components/states";
+
+// Deterministic cover so each property reads consistently (rich imagery lands with F05).
+const COVERS = ["linear-gradient(135deg,#1B1F2E,#3B3F55)", "linear-gradient(135deg,#243B47,#3D6B7D)"];
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "28px" },
@@ -16,28 +22,32 @@ const styles = stylex.create({
   coverTop: { position: "absolute", top: "16px", left: "18px", right: "18px", display: "flex", justifyContent: "space-between" },
   coverBottom: { position: "absolute", bottom: "18px", left: "20px", right: "20px" },
   coverName: { fontSize: "24px", fontWeight: 600, letterSpacing: "-0.018em" },
-  coverAddr: { fontSize: "13px", opacity: 0.8, marginTop: "2px" },
-  outlinePill: { display: "inline-flex", alignItems: "center", padding: "2px 10px", borderRadius: radius.sm, fontSize: "12px", color: "#fff", backgroundColor: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.22)" },
+  outlinePill: { display: "inline-flex", alignItems: "center", padding: "2px 10px", borderRadius: radius.sm, fontSize: "12px", color: "#fff", backgroundColor: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.22)", textTransform: "capitalize" },
   stats: { padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" },
   statL: { fontSize: "11px", color: colors.ink3 },
   statN: { fontSize: "18px", fontWeight: 600, letterSpacing: "-0.014em", marginTop: "2px", fontVariantNumeric: "tabular-nums" },
 });
 
-function PropertyCard({ p, onOpen }: { p: MockProperty; onOpen: () => void }) {
+function PropertyCard({ p, cover, onOpen }: { p: Property; cover: string; onOpen: () => void }) {
+  const stats: [string, string][] = [
+    ["Currency", p.currency],
+    ["Rooms", "—"],
+    ["Assets", "—"],
+    ["Vendors", "—"],
+  ];
   return (
     <button type="button" data-testid="property-card" onClick={onOpen} {...stylex.props(styles.card)}>
-      <div {...stylex.props(styles.cover)} style={{ background: p.cover }}>
+      <div {...stylex.props(styles.cover)} style={{ background: cover }}>
         <div {...stylex.props(styles.coverTop)}>
-          <span {...stylex.props(styles.outlinePill)}>{p.jurisdiction}</span>
-          <span {...stylex.props(styles.outlinePill)}>{p.ownership}</span>
+          <span {...stylex.props(styles.outlinePill)}>{p.jurisdiction ?? "—"}</span>
+          <span {...stylex.props(styles.outlinePill)}>{p.status}</span>
         </div>
         <div {...stylex.props(styles.coverBottom)}>
           <div {...stylex.props(styles.coverName)}>{p.name}</div>
-          <div {...stylex.props(styles.coverAddr)}>{p.address}</div>
         </div>
       </div>
       <div {...stylex.props(styles.stats)}>
-        {([["Rooms", p.rooms], ["Assets", p.assets], ["Bills", p.bills], ["Vendors", p.vendors]] as const).map(([l, v]) => (
+        {stats.map(([l, v]) => (
           <div key={l}>
             <div {...stylex.props(styles.statL)}>{l}</div>
             <div {...stylex.props(styles.statN)}>{v}</div>
@@ -50,6 +60,12 @@ function PropertyCard({ p, onOpen }: { p: MockProperty; onOpen: () => void }) {
 
 export function Properties() {
   const navigate = useNavigate();
+  const { token } = useAuth();
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["properties", token],
+    queryFn: () => listProperties(token),
+  });
+
   return (
     <div>
       <header {...stylex.props(styles.header)}>
@@ -60,9 +76,20 @@ export function Properties() {
         </div>
         <button type="button" {...stylex.props(styles.btn)}><Plus size={14} /> Add property</button>
       </header>
-      <div {...stylex.props(styles.grid)}>
-        {PROPERTIES.map((p) => <PropertyCard key={p.id} p={p} onOpen={() => navigate(`/properties/${p.id}`)} />)}
-      </div>
+
+      {isPending ? (
+        <Loading label="Loading properties…" />
+      ) : isError ? (
+        <ErrorState error={error} />
+      ) : data.length === 0 ? (
+        <EmptyState title="No properties yet">Add your first property to start its record.</EmptyState>
+      ) : (
+        <div {...stylex.props(styles.grid)}>
+          {data.map((p, i) => (
+            <PropertyCard key={p.id} p={p} cover={COVERS[i % COVERS.length]} onOpen={() => navigate(`/properties/${p.id}`)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

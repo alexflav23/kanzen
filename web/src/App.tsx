@@ -9,6 +9,8 @@ import { Properties } from "./pages/Properties";
 import { PropertyBible } from "./pages/PropertyBible";
 import { People } from "./pages/People";
 import { ThemeToggle } from "./theme/ThemeContext";
+import { useAuth } from "./state/AuthContext";
+import { DevLogin } from "./auth/DevLogin";
 
 // F00 app shell — grouped left navigation (SPEC §5) + routed content.
 const NAV: { group: string | null; items: string[] }[] = [
@@ -36,9 +38,15 @@ const styles = stylex.create({
   group: { fontSize: "10.5px", letterSpacing: "0.08em", color: colors.ink3, textTransform: "uppercase", padding: "16px 8px 4px" },
   item: { display: "block", padding: "7px 8px", borderRadius: "8px", fontSize: "13.5px", color: colors.ink2, textDecoration: "none" },
   main: { padding: "32px" },
+  account: { marginTop: "16px", paddingTop: "14px", borderTop: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
+  who: { fontSize: "13px", color: colors.ink2, lineHeight: 1.25 },
+  whoRole: { fontSize: "11px", color: colors.ink3, textTransform: "capitalize" },
+  signout: { padding: "5px 9px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "12px", color: colors.ink2 },
 });
 
 export function App() {
+  const { token, persona, signOut } = useAuth();
+  if (!token) return <DevLogin />;
   return (
     <BrowserRouter>
       <div {...stylex.props(styles.app)}>
@@ -57,6 +65,13 @@ export function App() {
             </div>
           ))}
           <ThemeToggle />
+          <div {...stylex.props(styles.account)}>
+            <div {...stylex.props(styles.who)}>
+              {persona?.name ?? "Signed in"}
+              <div {...stylex.props(styles.whoRole)}>{persona?.role}</div>
+            </div>
+            <button type="button" onClick={signOut} {...stylex.props(styles.signout)}>Sign out</button>
+          </div>
         </nav>
         <main {...stylex.props(styles.main)}>
           <Routes>

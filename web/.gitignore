@@ -3,3 +3,6 @@ test-results/
 playwright-report/
 dist/
 *.tsbuildinfo
+
+# Playwright auth state (minted at runtime)
+e2e/.auth/
