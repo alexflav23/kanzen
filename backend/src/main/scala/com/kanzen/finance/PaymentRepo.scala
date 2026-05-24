@@ -13,6 +13,7 @@ object PayQueueService {
 
 final case class PaymentMethod(id: UUID, displayName: String, last4: Option[String])
 final case class BillPayment(id: UUID, mode: String, state: String)
+final case class PaymentQueueItem(id: UUID, amountMinor: Long, currency: String, mode: String, state: String)
 
 object PaymentRepo {
   def createMethod(`type`: String, displayName: String, last4: Option[String], currency: Option[String], vaultRef: Option[String]): ConnectionIO[PaymentMethod] =
@@ -31,4 +32,10 @@ object PaymentRepo {
 
   def get(id: UUID): ConnectionIO[Option[BillPayment]] =
     sql"select id, mode, state from bill_payments where id = $id".query[BillPayment].option
+
+  def queue: ConnectionIO[List[PaymentQueueItem]] =
+    sql"select id, amount_minor, currency, mode, state from bill_payments order by created_at desc".query[PaymentQueueItem].to[List]
+
+  def listMethods: ConnectionIO[List[PaymentMethod]] =
+    sql"select id, display_name, last4 from payment_methods where status = 'active' order by display_name".query[PaymentMethod].to[List]
 }

@@ -28,4 +28,8 @@ object BillRepo {
 
   def get(id: UUID): ConnectionIO[Option[Bill]] =
     sql"select id, payee, amount_minor, currency, variance_flag from bills where id = $id".query[Bill].option
+
+  def list: ConnectionIO[List[Bill]] =
+    sql"select id, payee, amount_minor, currency, variance_flag from bills where deleted_at is null and active order by next_due nulls last"
+      .query[Bill].to[List]
 }
