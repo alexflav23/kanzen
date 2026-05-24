@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Browser audit (Playwright = real Chromium, same signals as DevTools):
- * walks every route + key interaction and records console errors/warnings,
- * uncaught page exceptions, failed requests and 4xx/5xx responses, with a
- * screenshot per step. Surfaces "every single thing" before we lock in tests.
+ * Browser audit (Playwright = real Chromium, same signals as DevTools): walks EVERY built
+ * route + key interactions and records console errors/warnings, uncaught page exceptions,
+ * failed requests and 4xx/5xx responses. The test fails if any hard error is seen anywhere —
+ * the guarantee that no feature logs a console error against the real backend.
  */
 
 type Issue = { where: string; kind: string; detail: string };
@@ -18,9 +18,7 @@ function attach(page: Page, issues: Issue[], whereRef: { v: string }) {
     if (IGNORE.some((r) => r.test(msg.text()))) return;
     issues.push({ where: whereRef.v, kind: `console.${t}`, detail: msg.text() });
   });
-  page.on("pageerror", (err) =>
-    issues.push({ where: whereRef.v, kind: "pageerror", detail: err.message }),
-  );
+  page.on("pageerror", (err) => issues.push({ where: whereRef.v, kind: "pageerror", detail: err.message }));
   page.on("requestfailed", (req) => {
     if (IGNORE.some((r) => r.test(req.url()))) return;
     issues.push({ where: whereRef.v, kind: "requestfailed", detail: `${req.url()} — ${req.failure()?.errorText}` });
@@ -36,67 +34,78 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   const issues: Issue[] = [];
   const where = { v: "boot" };
   attach(page, issues, where);
-
-  const shot = async (name: string) => {
-    where.v = name;
-    await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  const go = async (link: string, headingRe: RegExp) => {
+    where.v = link;
+    await nav.getByRole("link", { name: link, exact: true }).click();
+    await expect(page.getByRole("heading", { name: headingRe }).first()).toBeVisible();
   };
 
-  // 1. Dashboard
+  // boot
   where.v = "dashboard";
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Good morning, Toby." })).toBeVisible();
-  await shot("01-dashboard");
 
-  // 2. Inventory + filter rail + reset (live, seeded registry)
-  where.v = "inventory";
-  await page.getByRole("link", { name: "Inventory" }).click();
-  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
-  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
-  await shot("02-inventory-all");
-  await page.getByRole("button", { name: /^Watches/ }).click();
-  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
-  await expect(page.getByText("1959 Les Paul Standard")).toHaveCount(0);
-  await shot("03-inventory-watches");
-  await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await expect(page.getByText("1959 Les Paul Standard")).toBeVisible();
+  // every nav-reachable page (each asserts its heading; the guard watches throughout)
+  await go("Inbox", /^Inbox$/);
+  await go("Notifications", /^Notifications$/);
+  await go("Inventory", /^Inventory$/);
+  await go("Insights", /^Insights$/);
+  await go("Properties", /^Properties$/);
+  await go("Tasks", /^Tasks$/);
+  await go("Calendar", /^Calendar$/);
+  await go("Lists", /^Lists$/);
+  await go("Maintenance", /^Maintenance$/);
+  await go("People", /^People$/);
+  await go("Vendors", /^Vendors$/);
+  await go("Documents", /^Documents$/);
+  await go("Finance", /Bills, expenses/);
+  await go("Wealth", /Net worth/);
+  await go("Backup", /Backup/);
 
-  // 3. Finance (live; read-only walk to keep the shared DB idempotent)
-  where.v = "finance";
-  await page.getByRole("link", { name: "Finance" }).click();
-  await expect(page.getByRole("heading", { name: /Bills, expenses/ })).toBeVisible();
-  await expect(page.getByText("Thames Water")).toBeVisible();
-  await shot("04-finance");
-  await page.getByRole("button", { name: "Expenses" }).click();
-  await expect(page.getByText(/Awaiting approval/)).toBeVisible();
-  await shot("05-finance-expenses");
+  // dynamic detail routes (reached by clicking a seeded row)
+  where.v = "asset-detail";
+  await nav.getByRole("link", { name: "Inventory", exact: true }).click();
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 
-  // 4. Properties
-  where.v = "properties";
-  await page.getByRole("link", { name: "Properties" }).click();
-  await expect(page.getByRole("heading", { name: "Properties" })).toBeVisible();
-  await expect(page.getByText("Wardian — Apt 5206")).toBeVisible();
-  await expect(page.getByText("Singapore Residence")).toBeVisible();
-  await shot("06-properties");
+  where.v = "property-bible";
+  await nav.getByRole("link", { name: "Properties", exact: true }).click();
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
 
-  // 5. People
-  where.v = "people";
-  await page.getByRole("link", { name: "People" }).click();
-  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
-  await shot("07-people");
+  // Finance tabs (each tab fetches; watch for query/render errors)
+  where.v = "finance-tabs";
+  await nav.getByRole("link", { name: "Finance", exact: true }).click();
+  for (const tab of ["Pay queue", "Transactions", "Expenses", "Tax", "Budgets"]) {
+    await page.getByRole("button", { name: tab }).click();
+  }
 
-  // 6. A "Coming soon" stub route (a still-unbuilt nav item; Inbox is now built)
-  where.v = "coming-soon";
-  await page.getByRole("link", { name: "Settings" }).click();
+  // ⌘K command palette (global) — open, query the live search, close
+  where.v = "command-palette";
+  await page.keyboard.press("Meta+k");
+  if (!(await page.getByTestId("command-palette").isVisible().catch(() => false))) await page.keyboard.press("Control+k");
+  await expect(page.getByTestId("command-palette")).toBeVisible();
+  await page.getByLabel("Search").fill("guitar");
+  await expect(page.getByTestId("cmdk-result").first()).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // theme toggle (dark mode) — re-render under the dark theme
+  where.v = "theme-dark";
+  await page.keyboard.press("Meta+d");
+  if (await page.getByTestId("command-palette").isVisible().catch(() => false)) await page.keyboard.press("Escape");
+
+  // a "Coming soon" stub
+  where.v = "stub";
+  await nav.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByText("Coming soon.")).toBeVisible();
-  await shot("08-coming-soon");
+  await page.screenshot({ path: testInfo.outputPath("audit-final.png"), fullPage: true });
 
-  // Report everything, then fail if any hard errors were seen.
   if (issues.length) {
     console.log("\n=== UI AUDIT ISSUES ===");
     for (const i of issues) console.log(`[${i.where}] ${i.kind}: ${i.detail}`);
   } else {
-    console.log("\n=== UI AUDIT: clean (no console errors, exceptions, or failed requests) ===");
+    console.log("\n=== UI AUDIT: clean across every route (no console errors, exceptions, or failed requests) ===");
   }
   const hard = issues.filter((i) => i.kind === "pageerror" || i.kind.startsWith("console.error") || i.kind.startsWith("http.5") || i.kind === "requestfailed");
   expect(hard, hard.map((i) => `[${i.where}] ${i.kind}: ${i.detail}`).join("\n")).toEqual([]);
