@@ -57,7 +57,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F15 | Bills & recurring schedule | C | F03, F09 | ✅ | ⬜ |
 | F16 | Payment methods & Pay queue (never moves money) | C | F15 | ✅ | ⬜ |
 | F17 | Budgets, expenses & approvals **+ income/deductibility (marvis)** | C | F15 | ✅ | ⬜ |
-| F18 | General ledger — Postgres double-entry (hidden in UI) | C | F14 | ✅ | ⬜ |
+| F18 | General ledger — Postgres double-entry (hidden in UI) | C | F14 | ✅ | 🚧 backend done (gl_accounts/transactions/splits, balanced-or-rejected, derived balances, reversing corrections, registers, Principal-only) + tests; posting-cookbook auto-post + statements web deferred |
 | F38 | Tax, VAT & deductibility (marvis tax engine) | C | F13, F17, F37 | ✅ | ⬜ |
 | F29 | Dashboard, Insights & reporting | C | F18, F23 | ✅ | ⬜ |
 | F06 | Tasks — native | D | F03 | ✅ | ⬜ |
