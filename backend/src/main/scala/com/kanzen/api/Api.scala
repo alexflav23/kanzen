@@ -17,7 +17,7 @@ object Api {
     val interp = Http4sServerInterpreter[IO]()
     val devEps = dev.map(Dev.serverEndpoint).toList
     val secured = interp.toRoutes(
-      List(Me.serverEndpoint(auth)) ++ Properties.serverEndpoints(auth, xa)
+      List(Me.serverEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
         ++ Assets.serverEndpoints(auth, xa) ++ Valuations.serverEndpoints(auth, xa)
         ++ AssetEvents.serverEndpoints(auth, xa) ++ Provenance.serverEndpoints(auth, xa)

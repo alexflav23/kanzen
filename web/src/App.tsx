@@ -33,6 +33,13 @@ const NAV: { group: string | null; items: string[] }[] = [
   { group: "FINANCE & SYSTEM", items: ["Finance", "Wealth", "Backup", "Settings"] },
 ];
 
+// F02 — the resource each nav item requires; the nav recalibrates to the principal's permissions.
+// Items absent here are operational/always-shown; registry/finance/wealth are permission-gated.
+const NAV_RESOURCE: Record<string, string> = {
+  Inventory: "asset", Collections: "asset", Insights: "asset",
+  Finance: "bill", Wealth: "wealth", Backup: "backup",
+};
+
 function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inbox") return "/inbox";
@@ -68,8 +75,14 @@ const styles = stylex.create({
 });
 
 export function App() {
-  const { token, persona, signOut } = useAuth();
+  const { token, persona, signOut, can, meLoading } = useAuth();
   if (!token) return <DevLogin />;
+  // F02 — recalibrate the nav to the principal's permissions. While /api/me loads, show only the
+  // ungated items (avoids a flash of gated links the principal may not keep).
+  const visible = (item: string) => {
+    const resource = NAV_RESOURCE[item];
+    return !resource || (!meLoading && can(resource));
+  };
   return (
     <BrowserRouter>
       <div {...stylex.props(styles.app)}>
@@ -77,16 +90,20 @@ export function App() {
           <div {...stylex.props(styles.brand)}>
             <span {...stylex.props(styles.mark)}>完</span> Kanzen
           </div>
-          {NAV.map((section) => (
+          {NAV.map((section) => {
+            const items = section.items.filter(visible);
+            if (items.length === 0) return null;
+            return (
             <div key={section.group ?? "top"}>
               {section.group && <div {...stylex.props(styles.group)}>{section.group}</div>}
-              {section.items.map((item) => (
+              {items.map((item) => (
                 <Link key={item} to={routeFor(item)} {...stylex.props(styles.item)}>
                   {item}
                 </Link>
               ))}
             </div>
-          ))}
+            );
+          })}
           <ThemeToggle />
           <div {...stylex.props(styles.account)}>
             <div {...stylex.props(styles.who)}>

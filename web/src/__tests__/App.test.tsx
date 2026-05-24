@@ -1,15 +1,27 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+
+// Keep the real `can`/PERSONAS/devToken; stub only the network call /api/me.
+vi.mock("../services/auth", async (orig) => {
+  const actual = await orig<typeof import("../services/auth")>();
+  return { ...actual, getMe: vi.fn() };
+});
+
 import { App } from "../App";
 import { ThemeProvider } from "../theme/ThemeContext";
 import { AuthProvider } from "../state/AuthContext";
 import { queryClient } from "../state/query";
+import { getMe } from "../services/auth";
 
-// The shell is auth-gated, so seed a session before rendering.
+const me = (permissions: { resource: string; field: string | null; level: string }[], role = "principal") => ({
+  userId: "u1", email: "x@kanzen.local", role, permissions, impersonatedBy: null,
+});
+
 beforeEach(() => {
   localStorage.setItem("kanzen.token", "dev.token");
   localStorage.setItem("kanzen.persona", JSON.stringify({ name: "Toby", email: "toby@kanzen.local", role: "principal" }));
+  (getMe as Mock).mockReset();
 });
 
 const renderApp = () =>
@@ -21,25 +33,35 @@ const renderApp = () =>
     </QueryClientProvider>,
   );
 
-// UI test (Vitest): the shell renders the brand + grouped navigation (SPEC §5).
 describe("App shell", () => {
-  it("shows the Kanzen brand", () => {
+  it("shows the Kanzen brand + the signed-in persona", () => {
+    (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderApp();
     expect(screen.getByText("Kanzen")).toBeInTheDocument();
-  });
-
-  it("renders the grouped navigation items", () => {
-    renderApp();
-    const nav = within(screen.getByRole("navigation", { name: "Primary" }));
-    expect(nav.getByText("Inventory")).toBeInTheDocument();
-    expect(nav.getByText("Finance")).toBeInTheDocument();
-    expect(nav.getByText("INVENTORY")).toBeInTheDocument();
-  });
-
-  it("shows the signed-in persona and a sign-out", () => {
-    renderApp();
     const nav = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(nav.getByText("Toby")).toBeInTheDocument();
     expect(nav.getByText("Sign out")).toBeInTheDocument();
+  });
+
+  it("recalibrates the nav to the principal — admin sees the gated registry/finance items", async () => {
+    (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
+    renderApp();
+    const nav = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(await nav.findByText("Inventory")).toBeInTheDocument();
+    expect(nav.getByText("Finance")).toBeInTheDocument();
+    expect(nav.getByText("Wealth")).toBeInTheDocument();
+    expect(nav.getByText("INVENTORY")).toBeInTheDocument();
+  });
+
+  it("recalibrates the nav for Staff — gated items (Inventory/Finance/Wealth) are hidden", async () => {
+    (getMe as Mock).mockResolvedValue(me([{ resource: "calendar", field: null, level: "read" }], "staff"));
+    renderApp();
+    const nav = within(screen.getByRole("navigation", { name: "Primary" }));
+    // an ungated item is always present — wait for the shell to settle on it
+    expect(await nav.findByText("Properties")).toBeInTheDocument();
+    await waitFor(() => expect(nav.queryByText("Inventory")).not.toBeInTheDocument());
+    expect(nav.queryByText("Finance")).not.toBeInTheDocument();
+    expect(nav.queryByText("Wealth")).not.toBeInTheDocument();
+    expect(nav.queryByText("INVENTORY")).not.toBeInTheDocument(); // empty group hidden
   });
 });

@@ -20,3 +20,29 @@ const TokenSchema = z.object({ token: z.string(), note: z.string() });
 export function devToken(email: string, role: string): Promise<string> {
   return api("/api/dev/token", TokenSchema, { method: "POST", body: { email, role } }).then((r) => r.token);
 }
+
+/** F02 — one permission rule (resource/field → level), as the backend Authorizer holds it. */
+export const PermSchema = z.object({ resource: z.string(), field: z.string().nullable(), level: z.string() });
+export type Perm = z.infer<typeof PermSchema>;
+
+/** F01/F02 — the authenticated principal + its effective permission set + impersonation state. */
+export const MeSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  role: z.string(),
+  permissions: z.array(PermSchema),
+  impersonatedBy: z.string().nullable(),
+});
+export type Me = z.infer<typeof MeSchema>;
+
+export const getMe = (token: string | null) => api("/api/me", MeSchema, { token });
+
+const RANK: Record<string, number> = { none: 0, read: 1, write: 2, admin: 3 };
+
+/** Mirror the backend Authorizer: most-specific wins (resource rule > `*` wildcard); default-deny.
+  * Resource-level only (field-level filtering stays server-side). Drives UI recalibration. */
+export function can(perms: Perm[], resource: string, level: "read" | "write" | "admin" = "read"): boolean {
+  const req = RANK[level];
+  const rule = perms.find((p) => p.resource === resource && !p.field) ?? perms.find((p) => p.resource === "*" && !p.field);
+  return rule ? (RANK[rule.level] ?? 0) >= req : false;
+}

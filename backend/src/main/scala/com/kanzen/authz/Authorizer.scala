@@ -12,6 +12,12 @@ object Level {
     case "admin" => Admin
     case _ => Deny
   }
+  def label(l: Level): String = l match {
+    case Deny => "none"
+    case Read => "read"
+    case Write => "write"
+    case Admin => "admin"
+  }
 }
 
 final case class Rule(resource: String, field: Option[String], level: Level)
