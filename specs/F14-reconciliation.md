@@ -31,6 +31,7 @@ Resource `reconciliation` (Manager operational, F02): **Principal** `admin`; **M
 Per `ReconciliationStream` (App. E.3): **Needs attention** (suggested w/ confidence vs unmatched, Confirm/Review/Link/Ignore) + **Resolved (30d)** (state pills). A fuller reconciliation workspace for N:M/partial cases. States: suggested, unmatched, partially-matched, split, resolved, transfer/refund.
 
 ## 6. Business rules & validation
+- **Single-spend guarantee (the association engine)**: a real-world payment is counted **exactly once**. A receipt and its matching bank transaction(s) are **one** spend, never two — reconciliation (this feature) is the association; per-source dedup upstream (bank transactions by `provider_transaction_id`/`dedup_hash` in F12; duplicate receipts merged in F13) prevents the *same* receipt or transaction entering twice. All spend totals, budgets (F17), insights (F29) and product-level analytics draw from this de-duplicated, associated set — so nothing double-counts.
 - **Match cardinality**: 1:1, 1:N, N:M; partial allocation sums must reconcile; overpayment/refund handled via `refund` linkage.
 - **Transfer detection**: opposite amounts between the household's own accounts → `transfer` (excluded from spend, no double-count).
 - **Suggestions**: heuristic proximity (amount tolerance, date window, merchant-name similarity) + rules (F27); embeddings/Claude optional for fuzzy merchant matching. Above a threshold → suggested (never silently committed for financial records, §10.3).

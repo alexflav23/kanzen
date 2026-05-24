@@ -210,3 +210,11 @@ marvis was CSV + manual/rule categorisation. Kanzen runs a single **AI-automated
 **Automation principle (F27):** automate as far as confidence + invariants allow. Non-financial steps (categorise/tag) may **auto-apply** above per-category confidence thresholds; **financial postings and asset/inventory creation are ALWAYS proposed, never auto-committed** — automation proposes, the Principal decides.
 
 **Already specced** (no new feature needed): OCR + ML categorisation + line-item→asset proposal (F13 incl. AC5), ML reconciliation (F14), TB postings (F18), learned trust/rules (F27), agent + mobile capture (F25/F31), Triage confirm (F26). This section makes the **end-to-end thread** + the **receipt→inventory promotion with provenance** the explicit product north star.
+
+### N.3 Product-level analytics + the single-spend (dedup/association) engine
+Two cross-cutting guarantees that make the finance domain trustworthy and queryable:
+
+- **"Spend by product/brand" backbone.** Receipt line items resolve to a normalised **brand/product** (F13 `brand_norm`/`product_id`→F35) via the ML categorisation layer — so every "Coca-Cola" line across every receipt aggregates to one product. This makes plain-English questions like **"how much did I spend on Coca-Cola this year?"** answerable (F32 NL query / F29 insights / F28 search), permission-filtered, FX-normalised — not fuzzy text matching.
+- **Single-spend guarantee.** A real-world payment is counted **exactly once**: per-source dedup (bank transactions in F12 by `provider_transaction_id`/`dedup_hash`; duplicate receipts merged in F13) + **reconciliation as the association engine** (F14) linking a receipt to its matching transaction(s). All totals/budgets/insights/analytics draw from this de-duplicated, associated set — a receipt and its bank transaction never double-count.
+
+Both are **already implemented** by F12/F13/F14/F29/F32 with the small additions above (line-item product/brand resolution in F13; the explicit guarantee in F14; the product-spend example in F32). No new feature.

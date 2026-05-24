@@ -23,7 +23,7 @@ Resources `receipt`, `receipt_line_item` (Principal-private with Manager operati
 `V__receipts.sql` (+ pgvector):
 - **`receipts`** — `id, owner_id, document_id → documents (immutable original, F05), kind ('receipt'|'invoice'), merchant_id uuid null → merchants, purchased_at date null, subtotal_minor bigint null, tax_minor bigint null, total_minor bigint null, currency text, source ('agent'|'manual'|'import'), status ('parsing'|'needs_review'|'confirmed'|'failed'), created_at, deleted_at`.
 - **`receipt_parse_runs`** — `id, receipt_id, version int, model text (e.g. claude-on-bedrock + schema version), status ('success'|'failed'|'superseded'), raw_extraction jsonb, overall_confidence numeric, created_by ('system'|user), created_at`. **Versioned**; re-parse supersedes, never overwrites; originals untouched.
-- **`receipt_line_items`** — `id, receipt_id, parse_run_id, line_no int, description text, qty numeric, unit_price_minor bigint null, total_minor bigint, tax_minor bigint null, currency text, suggested_category_id uuid null, suggested_tags jsonb, suggestion_confidence numeric, suggestion_source ('rule'|'history'|'claude'), confirmed_category_id uuid null, confirmed_tags jsonb, asset_link_id uuid null (→ asset, F04), status ('suggested'|'confirmed'|'ignored'), created_at`.
+- **`receipt_line_items`** — `id, receipt_id, parse_run_id, line_no int, description text, qty numeric, unit_price_minor bigint null, total_minor bigint, tax_minor bigint null, currency text, suggested_category_id uuid null, suggested_tags jsonb, suggestion_confidence numeric, suggestion_source ('rule'|'history'|'claude'), confirmed_category_id uuid null, confirmed_tags jsonb, brand_norm text null, product_id uuid null (→ products, F35), asset_link_id uuid null (→ asset, F04), status ('suggested'|'confirmed'|'ignored'), created_at`. *(`brand_norm` + optional `product_id` resolve each line to a normalised product/brand — the "spend by product" backbone for NL/insights.)*
 - **`line_item_memory`** (pgvector — the learned store) — `id, owner_id, vendor_norm text, text_norm text, embedding vector(N), confirmed_category_id, confirmed_tags jsonb, source_line_item_id, created_at`. Built only from **confirmed** items; the retrieval corpus. HNSW/IVF index.
 - Reuses **`merchants`** (F12) for normalisation; **`document_links`** (F05) ties the receipt to assets/transactions.
 
@@ -44,6 +44,7 @@ Receipts surface mostly through the **Inbox** (agent receipt proposals + reconci
 - **Extraction**: Claude multimodal reads the immutable original; structured-output schema (header + lines). Optional **Textract** pre-pass for poor scans. Low `overall_confidence` → `needs_review`.
 - **Categorisation (layered, per line item)**: (1) **rules** (merchant/keyword → category/tags, F27); (2) **history retrieval** — embed `(vendor_norm + text_norm)`, nearest-neighbour in `line_item_memory`, borrow the majority category/tags with a confidence; (3) **Claude** for novel/low-confidence items, given the closest historical examples in-context. Highest-confidence suggestion wins; **source recorded**.
 - **Learning loop**: on **confirm**, write/refresh a `line_item_memory` row (embedding of vendor+text → confirmed category/tags). Suggestions improve with use; no batch retraining.
+- **Product/brand resolution**: alongside category/tags, the ML layer **normalises each line to a product/brand** (`brand_norm`, e.g. "Coca-Cola") and, where it matches the consumables catalogue, links `product_id` (F35) — the same normalise-on-confirm-and-learn loop as merchants. Every "Coca-Cola" line across every receipt resolves to the **same** product/brand, so historical **spend-by-product** is reliably aggregatable (surfaced via F28 search, F29 insights and F32 NL query — not fuzzy text matching).
 - **Auto-apply**: above a per-category **confidence threshold** (configurable, trust model §10.3), a suggestion may auto-confirm; **asset/financial creation never auto-commits** (always proposed).
 - **Originals immutable**; corrections = edits to derived line items or a new parse run.
 - **Line item → asset (inventory promotion)**: a line item maps to 0/1/many assets (e.g. "6 tumblers" → one grouped asset; "tea set" → structured set) — **proposed, never auto-committed**, confirmed by a human (F19/F24). On promotion the asset **carries provenance**: line `total`→`acquisition_cost`, receipt `merchant`/`purchased_at`→acquisition merchant/date, the **immutable receipt as the proof document** (F05 → asset `hero_document_id`/`document_link`), and any warranty terms → **F21**; this feeds valuation (**F20**) and lifetime cost (**F19**). The system **suggests which lines are inventory-worthy** (durable goods vs consumables) via the same ML categorisation layer.
@@ -96,6 +97,12 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **When** the parse pipeline and agent process it
 - **Then** the system **proposes** one grouped asset (quantity=6) — status `proposed`, not committed
 - **And** Toby must explicitly confirm before the asset record is created in F04; no asset is written without confirmation.
+
+**AC8 — Product-level historical spend ("how much on Coca-Cola")**  ‹maps: `ProductSpendAggregateIT`, web `advanced.spec` nl-product-spend›
+- **Given** several confirmed receipts over a year whose lines include Coca-Cola (varied descriptions: "Coca Cola 330ml ×6", "Coke 1.5L")
+- **When** Toby asks (NL/F32 or an insights filter) "how much did I spend on Coca-Cola this year?"
+- **Then** all those lines resolve to the **same** `brand_norm`/`product_id` and the system returns the **summed spend** (FX-normalised, F37), not a fuzzy text guess
+- **And** the figure is permission-filtered (a Manager's identical query is scoped/field-limited per F02 — no leak).
 
 **AC6 — Re-parse creates new version without destroying prior work**  ‹maps: `ReparseVersioningIT`›
 - **Given** receipt with version-1 parse run and some confirmed line items
