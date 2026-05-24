@@ -16,6 +16,7 @@ import { Maintenance } from "./pages/Maintenance";
 import { Wealth } from "./pages/Wealth";
 import { Inbox } from "./pages/Inbox";
 import { Calendar } from "./pages/Calendar";
+import { Insights } from "./pages/Insights";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
@@ -34,6 +35,7 @@ function routeFor(item: string): string {
   if (item === "Dashboard") return "/";
   if (item === "Inbox") return "/inbox";
   if (item === "Inventory") return "/inventory";
+  if (item === "Insights") return "/insights";
   if (item === "Finance") return "/finance";
   if (item === "Wealth") return "/wealth";
   if (item === "Properties") return "/properties";
@@ -96,6 +98,7 @@ export function App() {
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
+            <Route path="/insights" element={<Insights />} />
             <Route path="/finance" element={<Finance />} />
             <Route path="/wealth" element={<Wealth />} />
             <Route path="/properties" element={<Properties />} />
