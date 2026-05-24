@@ -257,3 +257,8 @@ GnuCash core engine objects (verified from `libgnucash/engine`): **Account** (ty
 - **F43 — Financial statements & wealth reporting**: Balance Sheet, Income Statement (P&L), Cash Flow, Trial Balance, net-worth-over-time, asset allocation, liquidity/concentration, accountant/advisor statements + exports.
 
 **Scale:** a major expansion (proper accounting + investment + multi-entity wealth) — roughly doubles the finance depth. Scope to be confirmed before specs are written.
+
+### O.1 Decisions locked
+- **Multi-entity / multi-book from the start:** `entity` is a **first-class scoping dimension** across the accounting core — every account, transaction/split and TB posting is **entity-scoped**; each entity (personal / trust / Ltd / SPV) keeps its own books, **consolidated up** to total net worth. **F42 (entity model) is foundational** and lands **first** in Wave G, before F39. F02 RBAC extends to **entity scope** (alongside property scope).
+- **Full investment accounting (F40):** live price feeds, holdings, buy/sell with **lots** (cost basis), **capital gains**, dividends/distributions, **corporate actions** (splits/mergers/spin-offs), portfolio **performance + allocation**.
+- **Wave G sequence:** F42 (entities/books) → F39 (accounting core) → F40 (investments) → F41 (liabilities + net worth) → F43 (statements + wealth reporting).
