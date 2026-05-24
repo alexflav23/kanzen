@@ -1,161 +1,170 @@
-# Kanzen — Product Completion Plan
+# Kanzen — Product Completion Plan (v2)
 
-**Goal:** take Kanzen from the current state (tested backend domain modules + a design system + 5 mock-data web screens + a Flutter shell) to a **finished product**: every feature F00–F37 with **full web UI, full mobile functionality, wired end-to-end (UI → API → DB → integration), matching the `input/` design, and covered by the full test pyramid** (Scala FreeSpec units + weaver server + Testcontainers integration; web Vitest + Playwright; Flutter widget + integration).
+**Goal:** every feature F00–F37 → **full web UI + full mobile + wired end-to-end (UI → API → DB → integration) + full test pyramid + design-matched**, shipped as a usable product.
 
-> Status discipline (per `BUILD.md`): a feature is **Done** only when a real user can use it end-to-end against the real backend, it matches the design, and all its tests are green. "Code module exists with unit tests" is **not** Done.
+**v2 change vs v1:** the unit of work is now a **repeatable vertical slice**, not a giant per-domain "milestone". We ship a thin end-to-end thread first (walking skeleton), then deliver features one slice at a time in dependency order, pulling shared pieces in just-in-time. CI + deploy + auth are sequenced sanely (early, not at the end).
 
----
-
-## 0. Honest baseline (what we start from)
-
-**Real & reusable**
-- Design system + **theme engine** (StyleX `defineVars` → `createTheme` light/dark → `ThemeContext` ⌘D + persistence → **static CSS extraction**). ✅
-- Backend **domain logic**: ~48 repo/service files (~37 feature areas), **126 tests** (FreeSpec + weaver + Testcontainers/Postgres 16) — *isolated*; the server only serves `/api/health` + `/docs`.
-- Web: **5 of 17** screens built on **mock data** (Dashboard, Inventory, Finance, Properties, People) + 2 detail views.
-- Mobile: 5-screen Flutter shell on mock data.
-
-**Not started**: the API layer, auth, web↔backend wiring, real integrations, ~12 web screens, the real mobile app, and design-exact matching.
-
-**Hard dependency:** obtain the **missing prototype source** (`input/` has only `views/*.jsx` + previews; we lack `styles.css`, `app.jsx`, `data.jsx`, `data-inventory.jsx`, `icons.jsx`). Needed for pixel-accurate design matching + a visual-diff harness. *Owner action.*
+> **Done bar:** a real user can use the feature end-to-end against the real backend, it matches the design, and all its tests are green. "Tested module exists" ≠ Done.
 
 ---
 
-## 1. Definition of Done (every feature must pass ALL)
+## A. Decisions baked in (override any)
 
-1. **Web UI** — every screen/state in the design for the feature (loading, empty, error, permission-filtered, edge cases), built with the StyleX design system, light + dark, responsive, a11y (axe) clean.
-2. **Mobile** — the feature's mobile surface per the capture-first IA (or "not on mobile" explicitly, per design).
-3. **API** — Tapir endpoint(s) wired into the server, OpenAPI documented, auth-secured, RBAC-enforced (resource + field level), audited where it writes.
-4. **Wired** — web/mobile consume the real API (services + Zod on web; Dart client + models on mobile); no mock module remains for that feature.
-5. **Integration** — any external dependency uses the real adapter (or a clearly-flagged sandbox) — see §6.
-6. **Tests** — Scala FreeSpec unit + weaver server test + Testcontainers integration; web Vitest unit + Playwright e2e **against the real API**; Flutter widget (+ integration where stateful). Error/permission paths covered.
-7. **Design match** — visually verified against the `input/` prototype (screenshot/▲golden diff), incl. dark mode.
-8. **Invariants honoured** (§7).
+- **D1 — Auth (your call): real Cognito from the start.** Phase 0 builds the real **JWKS-validation middleware → `Principal` → default-deny `Authorizer`** and real **web login** (Cognito Hosted UI / OIDC). **→ Critical-path operator input:** a Cognito **dev user pool** (app client + JWKS URL) is needed before Phase 1 can fully complete — now the **first `SETUP.md` item**. **Testability:** CI / integration / Playwright authenticate against a **local test issuer (RSA keypair → test JWKS)** the *same* middleware validates, plus a Cognito test user via `USER_PASSWORD_AUTH` for the real-login e2e — so tests never depend on a live browser SSO dance.
+- **D2 — "Deployable":** the skeleton is "deployable" = **builds + runs against dockerised Postgres locally + CI green**. Real AWS deploy (Terraform/NixOS/Cognito/CloudFront) is the **final wave** (needs operator accounts). We prove the thread locally first.
+- **D3 — Design source:** match from `input/views/*.jsx` + `previews/` (the actual component source — faithful). The missing `styles.css`/`app.jsx`/`data*.jsx`/`icons.jsx` are a *nice-to-have* for pixel-diffing, **not a blocker**. Visual-diff harness uses our own approved screenshots as goldens.
+- **D4 — Integrations:** each integration ships against its **sandbox** first (GoCardless sandbox, Cognito dev pool, Bedrock dev, Gmail test mailbox), explicitly flagged. A feature on a sandboxed integration is **"Done (sandbox)"** — distinct from **"Done (prod)"**, which requires the real account (swapped at the final wave).
+- **D5 — Money:** integer minor units everywhere; **dinero.js** on web; **FX (F37) lands before** any multi-currency reporting.
+- **D6 — Tracking:** master-plan status per feature = `Backlog → In-slice → Done (sandbox) → Done (prod)`. Each `specs/F__-*.md` gets a **Productisation** section (screens, endpoints, states, edge cases, test list) = the slice's contract.
 
 ---
 
-## 2. Milestones
+## B. The Vertical-Slice Playbook (every feature follows this)
 
-Sequenced by dependency. Each milestone ends at a **gate**: everything in it meets the §1 Definition of Done before the next begins. Sizing is relative (S/M/L/XL), not calendar dates.
+The unit of delivery. Mechanical and trackable:
 
-### M0 — Spine / foundations (unblocks everything) — **XL**
-Cross-cutting; must land first.
+1. **Spec** — read `specs/F__-*.md`; write its **Productisation** section (screens + states, endpoints, edge cases, test list).
+2. **DB** — migration(s) + seed if needed.
+3. **API** — Tapir endpoint(s) + Doobie repo wiring + **Authorizer rule (default-deny)** + **audit** on writes + OpenAPI entry.
+4. **Backend tests** — FreeSpec (domain rules) + weaver (endpoint **incl. authz/field-filter**) + Testcontainers (repo round-trip).
+5. **Web service** — Zod schema + service + TanStack Query hook; **delete the feature's mock module**.
+6. **Web UI** — screen(s) + every state (loading / empty / error / **forbidden**), light + dark, **design-matched**, a11y (axe).
+7. **Web tests** — Vitest (component/service) + Playwright (flow **against the real API**, console-error guard, axe).
+8. **Mobile** — screen/surface + Dart model/client + widget test (or "N/A on mobile" per design).
+9. **Verify** — visual diff vs prototype; run the DoD checklist; flip status.
 
-- **API platform** — Tapir endpoint module per domain; group + serve at `/api`; OpenAPI at `/docs`; shared error model (problem+json), pagination, validation; boot order wires Flyway → Doobie → endpoints (replace the health-only server). *(L)*
-- **Auth (F01/F02)** — Cognito JWKS validation middleware → `Principal`; central `Authorizer` enforced on every endpoint (default-deny, resource/field none/read/write/admin + property scope); field-level response filtering. Web login + token storage/refresh; route guards. *(L)*
-- **Web data layer** — `src/services/*` (hand-written) + **Zod** at boundaries + **TanStack Query** + **dinero.js**; standard loading/empty/error patterns; auth-aware fetch. Replace mock modules feature-by-feature. *(M)*
-- **Component library (SPEC §16/App-E)** — finish: SegmentedControl, Tabs, FilterRail, MetaGrid, KvCard, Table, Timeline + EventDot, Modal, Toast, **CommandPalette (⌘K)**, EmptyState, AgentRibbon (have Card/Pill/Bar/icons). *(M)*
-- **Shell chrome** — top bar (**⌘K** search, notifications, Quick-add), grouped nav with live badges/dots, breadcrumbs. *(M)*
-- **Design source + visual harness** — import the missing prototype files; stand up a Playwright visual-diff (or golden) check vs the prototype. *(S, blocked on owner)*
-- **Local real-data stack** — docker Postgres seeded with the **real** users (Toby/Lorna/Marcia/Siti) + properties (Wardian 5206; Singapore); web/mobile run against `:8080`. *(S)*
-- **Mobile foundation** — Flutter architecture: routing, state mgmt, **Dart API client + models**, design-token/theme parity, capture-first IA (Home · Triage · Bibles · Money · Search). *(L)*
-
-### M1 — Registry & Records — **XL**
-Features: **F03** properties (+ bible), **F04** assets (JSONB) + detail, **F22** templates, **F23** completeness, **F19** lifecycle/events, **F20** valuation, **F21** warranty/insurance, **F24** restructure (split/group/structured sets), **F33** extensibility (tags + infinite taxonomies), **F10** people, **F09** vendors, **F05** documents (+ S3).
-Web screens: Inventory (wire + grid/list/timeline), Asset detail (full), Collections, Property bible (all tabs incl. Rooms/Assets/Maintenance/Defects), People, Vendors, Vehicles, Documents.
-Mobile: Bibles (property/asset browse), capture → asset.
-Integration: **S3** (immutable originals).
-Edge cases: grouped-quantity, structured sets, legacy/inherited assets, restructures, associated costs.
-
-### M2 — Finance — **XL**
-Features: **F12** bank ingestion, **F13** receipts + line items, **F14** reconciliation (+ transfer detection), **F15** bills (±15% variance), **F16** pay queue (**never moves money**), **F17** expenses/approvals (thresholds), **F18** ledger (double-entry), **F37** currencies/FX (txn-date rate), **F29** insights.
-Web screens: Finance (4 tabs wired) + Payment methods + Budgets, Insights.
-Mobile: Money (approvals, pay queue review, variance).
-Integration: **GoCardless** (AIS, read-only), **TigerBeetle** (ledger postings, hidden in UI).
-Edge cases: split receipts/transactions, partial payments, refunds, multi-currency reporting.
-
-### M3 — Operations — **L**
-Features: **F06** tasks (native, recurring), **F07** calendar, **F08** lists (propose→approve→roll-forward), **F36** replenishment, **F11** maintenance, **F35** products/stock ("in stock" + preferred vendors).
-Web screens: Tasks, Calendar (month + agenda), Lists, Maintenance, Add-maintenance.
-Mobile: lists/tasks quick actions.
-Integration: **Google Calendar** (dedup), tasks are **native** (not an integration).
-Edge cases: list approve → roll-forward cycle.
-
-### M4 — Agent & Intelligence — **XL**
-Features: **F25** email agent pipeline, **F26** unified inbox/triage, **F27** trust/rules (financial locked, propose-not-commit), **F28** search (full-text + filters), **F32** NL query (permission-filtered), **F34** event outbox.
-Web screens: **Triage** (swipe/confirm agent proposals), **Inbox**, **⌘K Search/Command palette**, agent ribbons wherever the agent acted.
-Mobile: **Triage** (the heart of the capture-first app: extracted KV + proposed actions + Reject/Confirm).
-Integration: **Gmail** (ingest), **Bedrock** (Claude OCR + categorisation/pgvector), **Pulsar** (event backbone).
-Invariant: financial/asset creation always **proposed**, never auto-commit.
-
-### M5 — System & Settings — **L**
-Features: **F30** backup/restore (catastrophic round-trip drill), Settings (incl. **RBAC permissions matrix** UI for F02), **F31** mobile completion.
-Web screens: Backup, Settings/Permissions, account.
-Mobile: full app parity for in-scope features + capture (camera/receipt), offline-capture queue.
-Integration: **SES** (notifications), backup to S3.
-
-### M6 — Hardening & launch readiness — **L**
-- Cross-feature **edge-case suite** (split receipts, partial payments, refunds, grouped/structured assets, legacy assets, associated costs, restructures, list roll-forward, backup→restore round-trip).
-- **Performance** (query/index review, web bundle, list virtualisation), **a11y** (axe across all screens), **visual regression** vs design (light + dark).
-- **Security**: authz fuzzing (default-deny, field filtering, no leak via totals/search/NL), secrets in Secrets Manager.
-- **Infra/CI** (Terraform: EC2+NixOS, ALB, RDS, S3, Cognito, CloudFront; GitLab CI on Nix; package → S3 → NixOS).
-- Seed both real properties + real users end-to-end.
+**Slice sizes:** S (≤ a day-ish of focused work), M, L — relative, not calendar. Counts below, not dates.
 
 ---
 
-## 3. Testing strategy (the pyramid, per feature)
+## C. Phase 0 — Pre-flight (one-time; makes slices possible)
 
-| Layer | Tool | Scope |
-|---|---|---|
-| Backend pure units | **ScalaTest FreeSpec** | domain rules (variance %, thresholds, FX, trust, completeness, reconciliation) |
-| Backend service/HTTP | **weaver-cats** | endpoint behaviour incl. **authz/RBAC + field filtering** |
-| Backend integration / e2e | **weaver + Testcontainers** Postgres 16 | repo round-trips, migrations, reconciliation, backup/restore |
-| Web unit/UI | **Vitest + Testing Library** | components, services + **Zod** parsing, state |
-| Web e2e | **Playwright** (Chromium) | full flows **against the real API**, light + dark, console-error guard, axe |
-| Web visual | Playwright screenshot/golden | design-match vs `input/` |
-| Mobile | **Flutter** widget + `integration_test` | screens + capture flows + app audit (exception guard) |
+No features yet — this builds the rails the playbook runs on.
 
-Cross-cutting: every PR runs all suites in CI; integration tests use a seeded ephemeral Postgres; auth/permission paths are tested negatively (forbidden, filtered).
+- **Backend API scaffold** — replace the health-only server with: router under `/api`, shared error model (problem+json), pagination/validation conventions, **real Cognito JWKS-validation middleware → `Principal`** (validated in tests against a local test JWKS), the **`Authorizer` enforced by default-deny**, OpenAPI at `/docs`. *(L)*
+- **Web data-layer scaffold** — TanStack Query client, Zod conventions, **auth context wired to Cognito login (OIDC/Hosted UI) + token storage/refresh + fetch wrapper**, and reusable **loading / empty / error / forbidden** primitives. *(M)*
+- **Operator input (now critical-path): Cognito dev pool** — user pool, app client, JWKS URL, a test user. Without it, the middleware + login are *built and unit-tested* (test JWKS) but the real-login e2e and Phase 1 gate can't complete. *(blocked on owner)*
+- **CI pipeline** — runs all suites on every push: backend (sbt test), web (Vitest + Playwright against a built+served app or dev server), Flutter (`flutter test`). Green-gate. *(M)*
+- **Local real-data stack** — docker Postgres seeded with the **real** users (Toby/Lorna/Marcia/Siti) + properties (Wardian 5206; Singapore); one-command up. *(S)*
+- **Mobile foundation** — Flutter routing + state + **Dart API client + models** + theme/token parity + capture-first IA (Home · Triage · Bibles · Money · Search). *(L)*
+- **Visual-diff harness** — Playwright screenshot baseline per screen (light + dark) to guard design match. *(S)*
 
----
-
-## 4. Per-feature deliverable matrix (summary)
-
-For **every** F-feature, the deliverable is: **[Web UI] + [Mobile surface or N/A] + [Tapir API] + [Integration or native] + [full test pyramid] + [design match]**. The milestone tables (§2) assign each feature; the detailed per-feature specs live in `specs/F__-*.md` and are the contract — each gains a "Productisation" section listing its exact screens, endpoints, and test cases.
+**Gate:** rails exist, CI green, app runs against real Postgres locally — but no feature is wired yet.
 
 ---
 
-## 5. Sequencing & dependencies
+## D. Phase 1 — Walking skeleton (thinnest end-to-end thread)
 
-- **M0 is a hard prerequisite** for all feature milestones (no feature can be "wired" without the API + auth + web data layer).
-- M1 (registry) and M2 (finance) can partially parallelise once M0 lands (different domains), but **F02 RBAC** and **F37 FX** are shared and land in M0/early-M1.
-- M4 (agent) depends on M1–M3 data existing to act on.
-- M6 hardening is continuous but gated last.
-- **Vertical slice first:** within M0, prove the spine by wiring **one** feature (Inventory/F04) fully end-to-end before widening — de-risks the whole architecture.
+One feature, all layers, to prove the architecture **before** going wide. Chosen feature: **F03 Properties (read path)** — smallest real domain, screen already built, seeds the two real properties.
 
----
+Thread: **Cognito login → `GET /api/me` → `GET /api/properties` (Authorizer-filtered, from Postgres) → Properties page renders real data → Playwright e2e (test-JWKS auth) → CI green → runs in docker.**
 
-## 6. Integrations & operator inputs (track in `SETUP.md`)
-
-| Integration | Used by | Needed |
-|---|---|---|
-| **AWS Cognito** | F01/F02 auth | user pool, app client, JWKS URL |
-| **GoCardless Bank Account Data** | F12 finance | API token, linked institutions (AMEX, Revolut, …) |
-| **AWS Bedrock** | F25 OCR/categorisation | region/model access (Claude) |
-| **Google** (Gmail/Calendar/Drive) | F07/F25 | OAuth client + mailbox/calendar IDs |
-| **AWS S3** | F05 documents, F30 backup | bucket(s), eu-west-1 |
-| **TigerBeetle** | F18 ledger | cluster (docker locally) |
-| **Apache Pulsar** | F34 events | broker |
-| **AWS SES** | notifications | verified sender/domain |
-| Infra | M6 | Terraform state bucket, domains/DNS, CloudFront |
-
-Each milestone names exactly which inputs it needs; missing inputs → that feature ships against a clearly-flagged sandbox/stub and is **not** marked Done.
+**Gate (demoable):** a real user logs in **via Cognito**, sees the two seeded properties **from the database** (not mock), light + dark, fully tested and green in CI. This is the proof the whole stack connects; every later slice repeats the playbook on top of it.
 
 ---
 
-## 7. Invariants (never violate — from `CLAUDE.md`)
+## E. Phase 2 — Feature waves (dependency-ordered backlog of slices)
 
-- Kanzen **never moves money** (AIS read-only; "Mark paid" records reality; no PIS).
-- Financial & asset creation is **always proposed**, never auto-committed (agent trust, F27).
-- The **TigerBeetle ledger is hidden** in the UI (postings only; Postgres holds domain data).
-- **Source documents are sacred** — immutable originals in S3; OCR is derived/versioned.
-- **Everything is permission- and scope-filtered server-side** (incl. search, aggregates, NL — no leak via totals).
-- Registry/finance is **Principal-private** with the documented Manager carve-out.
+Each item = one vertical slice (Playbook §B). Grouped into waves for ordering and demoable gates; shared components pulled **just-in-time** (§F). `→` = "before".
+
+- **Wave A — Access control** *(F01 identity/Cognito is delivered in Phase 0/1)*
+  `F02` RBAC depth: Authorizer **field-level filtering** + **Settings → permission-matrix UI** + user/role management. **Gate:** a Manager sees service info but not valuations; no leak via any read.
+- **Wave B — Registry & records** *(the asset bible)*
+  `F03` full bible (Rooms/Assets/Maintenance/Defects/Docs tabs) → `F04` assets + detail (JSONB) → `F22` templates → `F33` tags/taxonomies → `F23` completeness → `F19` lifecycle/events → `F20` valuation → `F21` warranty/insurance → `F24` restructure (split/group/sets); records: `F10` people, `F09` vendors, `F05` documents (**S3**). **Gate:** browse the real registry; open an asset's life history.
+- **Wave C — Finance** *(money in, never out)*
+  `F37` FX (first) → `F12` bank ingest (**GoCardless** sandbox) → `F13` receipts → `F14` reconciliation → `F15` bills → `F16` pay queue → `F17` expenses/approvals → `F18` ledger (**TigerBeetle**, hidden in UI) → `F29` insights. **Gate:** real bank txns reconcile; approve an expense; multi-currency totals.
+- **Wave D — Operations**
+  `F06` tasks (native) → `F07` calendar (**Google**) → `F08` lists → `F36` replenishment → `F35` products/stock → `F11` maintenance. **Gate:** a list rolls forward; a maintenance plan schedules.
+- **Wave E — Agent & intelligence**
+  `F34` events (**Pulsar**) → `F25` agent (**Gmail** + **Bedrock** OCR) → `F26` inbox/triage → `F27` trust → `F28` search (+ **⌘K**) → `F32` NL query. **Gate:** an inbound email becomes a *proposed* (never auto) action you confirm in Triage.
+- **Wave F — System & mobile**
+  `F30` backup/restore → Settings polish → `F31` mobile full (capture/camera, offline queue). **Gate:** catastrophic backup→restore round-trip; capture a receipt on mobile.
+- **Final wave — Hardening & launch**
+  edge-case suite (split receipts, partial payments, refunds, grouped/structured/legacy assets, associated costs, restructures, list roll-forward) · perf · a11y sweep · visual regression · **authz fuzzing** (no leak via totals/search/NL) · **real AWS infra** (Terraform/NixOS/Cognito/CloudFront, secrets) · prod-credential swap → **Done (prod)**.
 
 ---
 
-## 8. How we'll track it
+## F. Shared components pulled just-in-time (first feature that needs them)
 
-- Each feature gets a **Productisation** checklist (the §1 DoD) appended to its `specs/F__-*.md`.
-- `specs/00-master-implementation-plan.md` status column flips to **Done** only on full DoD.
-- `BUILD.md` reports honest, end-to-end status (not module counts).
-- One milestone in flight at a time; vertical-slice proof inside M0 before going wide.
+| Component | First needed by |
+|---|---|
+| Table | F03 bible / F04 list / Finance |
+| FilterRail | F04 Inventory |
+| Tabs / SegmentedControl | Property bible, Finance |
+| MetaGrid / KvCard | asset & property detail, Triage |
+| Timeline + EventDot | F19 lifecycle |
+| Modal / Toast | first write (F03/F04 create/edit) |
+| **CommandPalette (⌘K)** + top-bar search | F28 search (or earlier if useful) |
+| Notifications / Quick-add (shell chrome) | Wave D/E |
+
+Build each when its first consumer slice reaches it — not up front.
+
+---
+
+## G. Testing strategy (per slice; unchanged from v1)
+
+ScalaTest **FreeSpec** (rules) · **weaver** (endpoint + **authz/field-filter**) · **Testcontainers** Postgres (round-trip, migrations, reconciliation, backup/restore) · **Vitest** (component/service+Zod) · **Playwright** (flows **against real API**, console-error guard, axe, visual diff) · **Flutter** widget + `integration_test`. All run in CI on every push.
+
+---
+
+## H. Integrations & operator inputs (`SETUP.md`)
+
+**Cognito (Phase 0/1 — CRITICAL PATH, needed first)** · GoCardless (F12) · Bedrock (F25) · Google Gmail/Calendar/Drive (F07/F25) · S3 (F05/F30) · TigerBeetle (F18) · Pulsar (F34) · SES (notifications) · Terraform/DNS/CloudFront (final wave). Each wave names exactly what it needs; missing input → **Done (sandbox)**, not **Done (prod)**.
+
+---
+
+## I. Invariants (never violate — `CLAUDE.md`)
+
+Never moves money (AIS read-only; "Mark paid" records reality) · financial/asset creation **always proposed** (F27) · **ledger hidden** in UI · **source docs sacred** (immutable S3 originals) · **everything permission/scope-filtered server-side** (incl. search/aggregates/NL — no leak via totals) · registry/finance **Principal-private** (Manager carve-out).
+
+---
+
+## J. Risk register (top)
+
+| Risk | Mitigation |
+|---|---|
+| Architecture wrong (layers don't fit) | **Walking skeleton (Phase 1) proves it before any breadth** |
+| Auth blocks everything | D1 dev-login first; Cognito as a swap slice |
+| Integration setup latency (GoCardless/Bedrock/Google) | D4 sandbox-first, prod swap at the end; never blocks feature UI/logic |
+| Design drift from prototype | D3 match from views/previews + visual-diff goldens per screen |
+| RBAC leak via totals/search/NL | authz fuzzing in final wave + field-filter tests per slice |
+| Scope/morale (it's big) | demoable gate per wave; one slice in flight; honest status |
+| Missing prototype files | proceed from views/previews; request files as enhancement |
+
+---
+
+## K. Rough size
+
+~38 feature slices + Phase 0 (6 foundation tasks) + final hardening wave. Mix of S/M/L; finance (Wave C) and agent (Wave E) are the heaviest. This is a **large multi-month build** — tracked by slices completed, not by a fabricated date.
+
+---
+
+## L. How we track
+
+`specs/00-master-implementation-plan.md` status column (D6 states) · per-spec **Productisation** checklist · `BUILD.md` reports honest end-to-end status · one slice in flight; wave gate before the next.
+
+---
+
+## M. Immediate execution backlog — start here (Phase 0 + Phase 1, ordered)
+
+Each task has a crisp acceptance check. Do them in order; ★ = can proceed without the Cognito pool (uses the test JWKS), ⛔ = needs the Cognito dev pool.
+
+**Phase 0 — rails**
+- **0.1 ★ Backend API scaffold** — `/api` router, problem+json error model, pagination/validation, OpenAPI at `/docs`; keep `/health`. *Acc:* a trivial `/api/ping` returns through the new stack; `/docs` lists it; existing tests still green.
+- **0.2 ★ Auth middleware** — Tapir security: Cognito **JWKS RS256 validation → `Principal`**; cached JWKS; `Authorizer` (resource/field none/read/write/admin + property scope), **default-deny**. Tests use a local RSA test issuer. *Acc:* weaver test — valid test-JWT passes, missing/invalid/forbidden → 401/403; default-deny proven.
+- **0.3 ⛔→★ Web auth + data layer** — Cognito OIDC login (Hosted UI) + token storage/refresh; TanStack Query client; Zod conventions; fetch wrapper attaching the token; loading/empty/error/forbidden primitives. *Acc:* unauthenticated → login; authenticated fetch carries the bearer; primitives unit-tested. (Login UI built ★; real round-trip ⛔ needs pool.)
+- **0.4 ★ CI pipeline** — one pipeline runs backend (`sbt test`), web (`vitest` + `playwright`), mobile (`flutter test`) on push; green-gate. *Acc:* a red test fails the pipeline; all-green passes.
+- **0.5 ★ Local real-data stack** — boot order wired (config → Flyway migrate → Doobie → endpoints); docker Postgres seeded with real users + 2 properties; one-command up. *Acc:* `docker compose up` + `sbt run` serves `/api` against seeded Postgres.
+- **0.6 ★ Mobile foundation** — Flutter routing/state + Dart API client + models + theme parity + capture-first IA shell. *Acc:* app boots to Home; client can call `/api/ping`; widget test green.
+- **0.7 ★ Visual-diff harness** — Playwright screenshot baselines (light + dark) for existing screens. *Acc:* a deliberate visual change fails the diff.
+
+**Phase 1 — walking skeleton (F03 Properties, read)**
+- **1.1 ★ DB** — confirm/align `properties` table + seed the two real properties. *Acc:* row round-trip via Doobie.
+- **1.2 ★ API** — `GET /api/me` (`Principal`) + `GET /api/properties` (Authorizer-filtered) on real repo. *Acc:* weaver — returns only properties the principal may see; OpenAPI documents both.
+- **1.3 ★ Backend tests** — FreeSpec (filter logic) + weaver (authz) + Testcontainers (repo). *Acc:* all green incl. a negative-authz case.
+- **1.4 ⛔→★ Web wire** — properties service + Zod + query hook; Properties page renders **real** data (delete its mock); behind the login gate. *Acc:* page shows the 2 DB properties, light + dark; mock module gone.
+- **1.5 ★ Web e2e** — Playwright (test-JWKS auth) login → properties from the real API; Vitest service test. *Acc:* green in CI.
+- **1.6 ⛔ Real-login e2e** — one Playwright run against the Cognito dev pool (test user, `USER_PASSWORD_AUTH`). *Acc:* real token validates end-to-end.
+- **1.7 Gate** — demo + DoD review; flip F03(read) status; record what's `Done (sandbox)` vs `Done (prod)`.
+
+**Critical-path note:** everything ★ proceeds now. The ⛔ items (real web login round-trip, real-login e2e) need the **Cognito dev pool** — first `SETUP.md` ask. Until it lands, those run on the test JWKS and Phase 1's *real-login* gate stays open while all other work continues.
