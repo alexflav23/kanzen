@@ -218,3 +218,42 @@ Two cross-cutting guarantees that make the finance domain trustworthy and querya
 - **Single-spend guarantee.** A real-world payment is counted **exactly once**: per-source dedup (bank transactions in F12 by `provider_transaction_id`/`dedup_hash`; duplicate receipts merged in F13) + **reconciliation as the association engine** (F14) linking a receipt to its matching transaction(s). All totals/budgets/insights/analytics draw from this de-duplicated, associated set — a receipt and its bank transaction never double-count.
 
 Both are **already implemented** by F12/F13/F14/F29/F32 with the small additions above (line-item product/brand resolution in F13; the explicit guarantee in F14; the product-spend example in F32). No new feature.
+
+---
+
+## O. GnuCash-grade accounting + the Private Wealth module (UHNWI)
+
+**Vision:** Kanzen is private-wealth software for a UHNWI individual. We take GnuCash's mature **double-entry accounting** model and **translate it into a modern system** on the **TigerBeetle ledger (F18)** as the posting engine, then add a **Private Wealth module** that consolidates everything (illiquid registry assets + liquid cash + investments − liabilities) into a single net-worth picture, by entity and currency.
+
+GnuCash core engine objects (verified from `libgnucash/engine`): **Account** (typed/hierarchical chart of accounts), **Transaction + Split** (balanced double-entry), **Recurrence** (scheduled), **gnc-budget**, **gnc-commodity** (currencies + securities), **gnc-pricedb** (price history), **gnc-lot** (cost basis/capital gains), business suite (Invoice/Customer/Vendor/Employee/Entry/BillTerm/TaxTable/Job).
+
+### Mapping
+| GnuCash | Kanzen | Status |
+|---|---|---|
+| Double-entry posting engine | **TigerBeetle (F18)** | ✅ engine exists |
+| Reconciliation | F14 | ✅ |
+| Scheduled transactions / Recurrence | F15 | ✅ |
+| Budgets | F17 | ✅ |
+| Currencies + price (FX) | F37 | ✅ |
+| Tax / tax tables | F38 | ✅ |
+| **Chart of Accounts (typed/hierarchical) + Transaction/Splits (domain model)** | — | **NEW → F39** |
+| **Securities + price database + lots + capital gains/dividends** | — | **NEW → F40** |
+| **Liabilities + consolidated net worth / balance sheet** | — | **NEW → F41** |
+| **Legal entities / trusts / structures + multi-book + accounting periods/closing** | — | **NEW → F42** |
+| **Financial statements (Balance Sheet / P&L / Cash Flow / Trial Balance) + wealth reporting** | F29 (informal) | **NEW → F43** |
+| Business: invoicing / customers / employees / payroll | A/P via F15/F16 | **OUT** for personal UHNWI (revisit) |
+
+### Architecture (how it layers)
+- **TigerBeetle (F18)** = the immutable balanced posting engine ("the books" at posting level).
+- **F39 Chart of Accounts + Splits** = the accounting domain model on top (typed accounts; balanced multi-split transactions) — GnuCash's Account/Transaction/Split, modernised, posting to TB.
+- **Inputs to the books:** the **registry (F04)** = illiquid asset accounts at **valuation (F20)**; **investments (F40)**; **liabilities (F41)**; **income/expense (F12–F17)** = the P&L; **FX (F37)** normalises across currencies.
+- **Private Wealth module (F39–F43)** = consolidated **net worth** + proper **financial statements** + advisor exports, per **entity**.
+
+### Proposed Private Wealth module — new Wave G (on the finance/ledger base)
+- **F39 — Accounting core**: chart of accounts (typed/hierarchical), double-entry transactions as balanced splits posting to TB; registry/finance/investments feed it. Principal-private.
+- **F40 — Investments & securities**: holdings, **price database** (live quotes), buy/sell with **lots** (cost basis), capital gains, dividends/distributions, corporate actions; portfolio + allocation + performance.
+- **F41 — Liabilities & net worth**: liability accounts (mortgage/loan/credit) + the consolidated **net-worth / balance sheet** across illiquid + liquid + investments − liabilities, per entity/currency.
+- **F42 — Entities & structures**: personal / trust / company / SPV; multi-book; accounting periods + year-end close; consolidation.
+- **F43 — Financial statements & wealth reporting**: Balance Sheet, Income Statement (P&L), Cash Flow, Trial Balance, net-worth-over-time, asset allocation, liquidity/concentration, accountant/advisor statements + exports.
+
+**Scale:** a major expansion (proper accounting + investment + multi-entity wealth) — roughly doubles the finance depth. Scope to be confirmed before specs are written.
