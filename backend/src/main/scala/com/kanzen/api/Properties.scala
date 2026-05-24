@@ -1,9 +1,11 @@
 package com.kanzen.api
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authorizer, PermissionRepo}
-import com.kanzen.property.PropertyRepo
+import com.kanzen.authz.Authz
+import com.kanzen.property.{Property, PropertyRepo}
+import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.generic.auto._
@@ -25,16 +27,21 @@ object Properties {
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no read access to property"))
 
-  /** Authorize against the principal's DB rules, then read. The handler is public so
-    * tests can exercise the real authz + query path without HTTP plumbing. */
-  def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] =
-    PermissionRepo.rulesFor(p.role).transact(xa).flatMap { rules =>
-      if (Authorizer(rules).canRead("property"))
-        PropertyRepo.list.transact(xa).map { ps =>
-          Right(ps.map(r => PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)))
-        }
-      else IO.pure(Left(forbidden))
+  /** Authorize against the principal's DB rules, then read what F02 scope allows — in one
+    * transaction. The handler is public so tests can exercise the real authz + scope +
+    * query path without HTTP plumbing. */
+  def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] = {
+    val tx: ConnectionIO[(Boolean, List[Property])] = for {
+      authz <- Authz.authorizer(p.role)
+      allowed = authz.canRead("property")
+      props <- if (allowed) PropertyRepo.listForPrincipal(p.userId) else List.empty[Property].pure[ConnectionIO]
+    } yield (allowed, props)
+
+    tx.transact(xa).map {
+      case (true, props) => Right(props.map(r => PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)))
+      case (false, _)    => Left(forbidden)
     }
+  }
 
   val endpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[PropertyView], Any] =
     sttp.tapir.endpoint.get

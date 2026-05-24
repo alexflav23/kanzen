@@ -20,6 +20,17 @@ object PropertyRepo {
     sql"select id, name, jurisdiction, default_currency, status from properties where deleted_at is null order by name"
       .query[Property].to[List]
 
+  /** Properties visible to a principal under F02 scope: all of them when the user has no
+    * scope rows, otherwise only the scoped ones. */
+  def listForPrincipal(userId: UUID): ConnectionIO[List[Property]] =
+    sql"""select id, name, jurisdiction, default_currency, status
+          from properties p
+          where p.deleted_at is null
+            and (not exists (select 1 from user_property_scopes s where s.user_id = $userId)
+                 or exists (select 1 from user_property_scopes s
+                            where s.user_id = $userId and s.property_id = p.id))
+          order by name""".query[Property].to[List]
+
   def addLocation(propertyId: UUID, parentId: Option[UUID], kind: String, name: String): ConnectionIO[Location] =
     sql"""insert into locations (property_id, parent_id, kind, name)
           values ($propertyId, $parentId, $kind, $name)

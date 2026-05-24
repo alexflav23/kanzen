@@ -25,6 +25,18 @@ object PropertiesApiIT extends IOSuite {
     }
   }
 
+  test("a property-scoped user sees only their property (F02 scope)") { xa =>
+    // Siti (seeded) is scoped to the Singapore residence only.
+    val siti = Principal(java.util.UUID.fromString("10000000-0000-0000-0000-000000000004"), "siti-sub", "siti@kanzen.local", "staff")
+    Properties.list(xa, siti).map {
+      case Right(ps) =>
+        expect(ps.size == 1) and
+          expect(ps.exists(_.name == "Singapore Residence")) and
+          expect(!ps.exists(_.name.startsWith("Wardian")))
+      case Left((sc, _)) => failure(s"expected 200, got $sc")
+    }
+  }
+
   test("manager and staff can read properties (operational)") { xa =>
     for {
       m <- Properties.list(xa, principal("manager"))
