@@ -10,6 +10,7 @@ import { PropertyBible } from "./pages/PropertyBible";
 import { People } from "./pages/People";
 import { Documents } from "./pages/Documents";
 import { Vendors } from "./pages/Vendors";
+import { Tasks } from "./pages/Tasks";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
@@ -31,6 +32,7 @@ function routeFor(item: string): string {
   if (item === "People") return "/people";
   if (item === "Documents") return "/documents";
   if (item === "Vendors") return "/vendors";
+  if (item === "Tasks") return "/tasks";
   return "/soon";
 }
 
@@ -88,6 +90,7 @@ export function App() {
             <Route path="/people" element={<People />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/tasks" element={<Tasks />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
