@@ -4,7 +4,7 @@ import cats.effect.{IO, IOApp}
 import cats.syntax.all._
 import com.comcast.ip4s._
 import com.kanzen.api.{Admin, Api}
-import com.kanzen.auth.{Auth, Jwks}
+import com.kanzen.auth.{Auth, DevAuth, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import doobie.util.transactor.Transactor
@@ -24,9 +24,9 @@ object Main extends IOApp.Simple {
   implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
   private val log = loggerFactory.getLogger
 
-  private def primaryApp(auth: Auth, xa: Transactor[IO]): HttpApp[IO] =
+  private def primaryApp(auth: Auth, xa: Transactor[IO], dev: Option[DevAuth]): HttpApp[IO] =
     Logger.httpApp[IO](logHeaders = true, logBody = false)(
-      CORS.policy.withAllowOriginAll(Api.routes(auth, xa).orNotFound)
+      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, dev).orNotFound)
     )
 
   private def server(h: Host, p: Port, app: HttpApp[IO]) =
@@ -37,18 +37,22 @@ object Main extends IOApp.Simple {
       case Left(errors) =>
         IO.raiseError(new RuntimeException(s"Config errors:\n - ${errors.mkString("\n - ")}"))
       case Right(cfg) =>
-        // Phase 0: JWKS empty until a real Cognito dev pool is wired; the HTTP-fetching
-        // Jwks impl + DB-backed principal resolution (F01) land with the pool.
-        val auth = Auth(Jwks.empty, cfg.cognito.issuer, cfg.cognito.audience)
         for {
           _ <- log.info(s"Kanzen booting (env=${cfg.env})")
           n <- Database.runMigrations(cfg.db.url, cfg.db.user, cfg.db.password)
           _ <- log.info(s"Flyway: $n migration(s) applied")
+          // Local + no real pool → ephemeral dev auth (mints + verifies its own JWTs).
+          // Otherwise JWKS empty until the HTTP-fetching Cognito JWKS lands with a pool.
+          dev  <- if (cfg.env == "local" && cfg.cognito.issuer.isEmpty)
+                    DevAuth.generate(cfg.cognito.issuer, cfg.cognito.audience).map(Some(_))
+                  else IO.pure(None)
+          _ <- dev.traverse_(_ => log.warn("DEV AUTH ENABLED — POST /api/dev/token mints local JWTs (env=local, no Cognito pool)"))
+          auth = Auth(dev.map(_.jwks).getOrElse(Jwks.empty), cfg.cognito.issuer, cfg.cognito.audience)
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
-                 (server(host"0.0.0.0", p, primaryApp(auth, xa)),
+                 (server(host"0.0.0.0", p, primaryApp(auth, xa, dev)),
                   server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
                }
         } yield ()
