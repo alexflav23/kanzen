@@ -40,7 +40,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F02 | Authorization (resource/field RBAC + custom roles + property **& entity** scope) | A | F01 | ✅ | 🚧 In-slice (Authorizer + permission_rules + property scope + reusable path done; field-filter applies at F04, role-mgmt UI + entity scope pending) |
 | F03 | Properties, locations & defects | B (skeleton) | F02 | ✅ | ✔️ Done (sandbox) — backend complete; web list/Bible/Add-property wired + e2e; in-Bible write forms + mobile (via F31) deferred |
 | F04 | Asset registry core (JSONB) | B | F03 | ✅ | ✔️ Done (sandbox) — backend (list/detail/create/categories/seed, authz, modes, JSONB) + web Inventory/detail wired + e2e; location/custody, collections multi-ccy, field-strip (w/ F20) deferred |
-| F05 | Documents — S3 evidence store | B | F02 | ✅ | ⬜ |
+| F05 | Documents — S3 evidence store | B | F02 | ✅ | ✔️ Done (sandbox) — backend (upload/list/detail/links/presign/dedup/soft-delete, visibility+scope, ObjectStore) + web Documents module + e2e; embedded asset/property tabs + real S3/LocalStack deferred |
 | F22 | Verticals & category templates | B | F04 | ✅ | ⬜ |
 | F33 | Custom fields, tags & taxonomies | B | F02, F04, F22 | ✅ | ⬜ |
 | F23 | Completeness scoring & data quality | B | F04, F19–F22 | ✅ | ⬜ |
