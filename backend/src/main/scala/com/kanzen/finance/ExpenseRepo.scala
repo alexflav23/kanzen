@@ -50,4 +50,11 @@ object ExpenseRepo {
     val filtered = status.fold(base)(s => base ++ fr"and status = $s")
     (filtered ++ fr"order by created_at desc").query[Expense].to[List]
   }
+
+  /** F38 — (deductible total, VAT-reclaimable total, deductible count) over approved expenses. */
+  def deductibleSummary: ConnectionIO[(Long, Long, Int)] =
+    sql"""select coalesce(sum(amount_minor) filter (where deductible), 0),
+                 coalesce(sum(amount_minor) filter (where vat_reclaimable), 0),
+                 count(*) filter (where deductible)
+          from expenses where deleted_at is null and status = 'approved'""".query[(Long, Long, Int)].unique
 }
