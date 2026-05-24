@@ -40,6 +40,17 @@ vi.mock("../services/bank", () => ({
   matchTxn: vi.fn(async () => ({ matchId: "m1", state: "matched" })),
 }));
 
+vi.mock("../services/receipts", () => ({
+  listReceipts: async () => [{ id: "rc1", kind: "receipt", merchant: "Waitrose", totalMinor: 5470, currency: "GBP", status: "parsed" }],
+  getReceipt: async () => ({
+    receipt: { id: "rc1", kind: "receipt", merchant: "Waitrose", totalMinor: 5470, currency: "GBP", status: "parsed" },
+    lines: [
+      { id: "l1", lineNo: 1, description: "Nespresso pods Arpeggio", totalMinor: 3200, currency: "GBP", brandNorm: "nespresso", suggestedCategory: "Groceries", confirmedCategory: null, status: "parsed" },
+      { id: "l2", lineNo: 2, description: "Frantoia olive oil 1L", totalMinor: 1280, currency: "GBP", brandNorm: "frantoia", suggestedCategory: "Groceries", confirmedCategory: null, status: "parsed" },
+    ],
+  }),
+}));
+
 import { Finance } from "../pages/Finance";
 
 const renderFinance = () =>
@@ -100,6 +111,16 @@ describe("Finance", () => {
     expect(screen.getByRole("button", { name: /Confirm match/ })).toBeInTheDocument();
     // the unmatchable txn shows the manual fallback
     expect(screen.getByText(/review and link a receipt manually/)).toBeInTheDocument();
+  });
+
+  it("the Receipts tab shows a receipt's brand-normalised line items (F13)", async () => {
+    renderFinance();
+    await screen.findByText("Recurring schedule · 2");
+    fireEvent.click(screen.getByRole("button", { name: "Receipts" }));
+    expect(await screen.findAllByTestId("line-row")).toHaveLength(2);
+    expect(screen.getByText("Nespresso pods Arpeggio")).toBeInTheDocument();
+    expect(screen.getByText("nespresso")).toBeInTheDocument();   // brand-norm
+    expect(screen.getAllByText("Groceries").length).toBeGreaterThanOrEqual(1); // category
   });
 
   it("the Tax tab shows the income estimate and deductible report (F38)", async () => {

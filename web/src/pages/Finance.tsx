@@ -10,8 +10,9 @@ import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { approveExpense, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
 import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
+import { getReceipt, listReceipts } from "../services/receipts";
 
-type Tab = "bills" | "pay" | "transactions" | "reconcile" | "expenses" | "budgets" | "tax";
+type Tab = "bills" | "pay" | "transactions" | "reconcile" | "receipts" | "expenses" | "budgets" | "tax";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -62,6 +63,10 @@ export function Finance() {
     mutationFn: ({ txnId, receiptId }: { txnId: string; receiptId: string }) => matchTxn(token, txnId, receiptId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["bank", "suggest"] }); qc.invalidateQueries({ queryKey: ["bank", "txns"] }); },
   });
+  const receipts = useQuery({ queryKey: ["receipts", token], queryFn: () => listReceipts(token) });
+  const [rcpt, setRcpt] = useState<string | null>(null);
+  const rcptId = rcpt ?? receipts.data?.[0]?.id ?? null;
+  const receiptDetail = useQuery({ queryKey: ["receipt", token, rcptId], queryFn: () => getReceipt(token, rcptId as string), enabled: !!rcptId });
   const [incomeGbp, setIncomeGbp] = useState(150000); // gross income in whole £ (F38 estimate)
   const deductible = useQuery({ queryKey: ["tax", "deductible", token], queryFn: () => getDeductibleReport(token) });
   const estimate   = useQuery({ queryKey: ["tax", "estimate", token, incomeGbp], queryFn: () => getIncomeEstimate(token, incomeGbp * 100) });
@@ -80,7 +85,7 @@ export function Finance() {
       </header>
 
       <div {...stylex.props(styles.tabs)}>
-        {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["reconcile", "Reconcile"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
+        {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["reconcile", "Reconcile"], ["receipts", "Receipts"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>{label}</button>
         ))}
       </div>
@@ -195,6 +200,52 @@ export function Finance() {
                               <td {...stylex.props(styles.td, styles.bold)}>{t.merchant ?? t.description ?? "—"}</td>
                               <td {...stylex.props(styles.td)}><Pill tone={t.reconciliationState === "reconciled" ? "default" : "warn"}>{t.reconciliationState}</Pill></td>
                               <td {...stylex.props(styles.td, styles.tdR)}>{t.direction === "debit" ? "−" : "+"}{fmtMoney(t.amountMinor, t.currency)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                </Card>
+              </>
+            )}
+        </div>
+      )}
+
+      {tab === "receipts" && (
+        <div data-testid="receipts-tab">
+          {receipts.isPending ? <Loading /> : receipts.isError ? <ErrorState error={receipts.error} />
+            : receipts.data.length === 0 ? <EmptyState title="No receipts">Captured receipts appear here once parsed.</EmptyState>
+            : (
+              <>
+                <div {...stylex.props(styles.tabs)}>
+                  {receipts.data.map((r) => (
+                    <button key={r.id} type="button" aria-pressed={rcptId === r.id} onClick={() => setRcpt(r.id)} {...stylex.props(styles.tab, rcptId === r.id && styles.tabActive)}>
+                      {r.merchant ?? "Receipt"}
+                    </button>
+                  ))}
+                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{receiptDetail.data?.receipt.merchant ?? "Receipt"} · line items</CardTitle>
+                    {receiptDetail.data?.receipt.totalMinor != null && <Pill>{fmtMoney(receiptDetail.data.receipt.totalMinor, receiptDetail.data.receipt.currency ?? "GBP")}</Pill>}
+                  </CardHeader>
+                  {receiptDetail.isPending ? <Loading /> : receiptDetail.isError ? <ErrorState error={receiptDetail.error} />
+                    : receiptDetail.data.lines.length === 0 ? <div {...stylex.props(styles.note)}>No parsed line items for this receipt.</div>
+                    : (
+                      <table {...stylex.props(styles.table)}>
+                        <thead><tr>
+                          <th {...stylex.props(styles.th)}>Item</th>
+                          <th {...stylex.props(styles.th)}>Brand</th>
+                          <th {...stylex.props(styles.th)}>Category</th>
+                          <th {...stylex.props(styles.th, styles.thR)}>Amount</th>
+                        </tr></thead>
+                        <tbody>
+                          {receiptDetail.data.lines.map((l) => (
+                            <tr key={l.id} data-testid="line-row">
+                              <td {...stylex.props(styles.td, styles.bold)}>{l.description ?? "—"}</td>
+                              <td {...stylex.props(styles.td)}>{l.brandNorm ?? "—"}</td>
+                              <td {...stylex.props(styles.td)}>{(l.confirmedCategory ?? l.suggestedCategory) ? <Pill tone={l.confirmedCategory ? "default" : "accent"}>{l.confirmedCategory ?? l.suggestedCategory}</Pill> : "—"}</td>
+                              <td {...stylex.props(styles.td, styles.tdR)}>{l.totalMinor != null ? fmtMoney(l.totalMinor, l.currency ?? "GBP") : "—"}</td>
                             </tr>
                           ))}
                         </tbody>

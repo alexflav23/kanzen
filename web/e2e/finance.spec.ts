@@ -36,6 +36,14 @@ test("the transactions tab lists a seeded account's transactions with reconcilia
   expect(await page.getByTestId("txn-row").count()).toBeGreaterThanOrEqual(1);
 });
 
+test("the receipts tab shows a seeded receipt's brand-normalised line items (F13)", async ({ page }) => {
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Receipts" }).click();
+  await expect(page.getByTestId("line-row").first()).toBeVisible(); // wait for the detail query
+  await expect(page.getByText("Nespresso pods Arpeggio")).toBeVisible();
+  await expect(page.getByText("nespresso", { exact: true })).toBeVisible(); // the brand-norm cell
+});
+
 test("the reconcile tab auto-suggests a receipt match for a seeded transaction (F14)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Reconcile" }).click();
