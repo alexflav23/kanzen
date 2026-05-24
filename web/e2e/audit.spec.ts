@@ -85,9 +85,9 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await shot("07-people");
 
-  // 6. A "Coming soon" stub route (every other nav item)
+  // 6. A "Coming soon" stub route (a still-unbuilt nav item; Inbox is now built)
   where.v = "coming-soon";
-  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByText("Coming soon.")).toBeVisible();
   await shot("08-coming-soon");
 
