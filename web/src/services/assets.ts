@@ -71,6 +71,32 @@ export function getAssetTimeline(id: string, token: string | null): Promise<Asse
   return api(`/api/assets/${id}/events`, AssetTimelineSchema, { token });
 }
 
+/** F21 — warranties + insurance (insurance is Principal-only). */
+export const WarrantySchema = z.object({
+  id: z.string(),
+  provider: z.string().nullable(),
+  startsOn: z.string().nullable(),
+  endsOn: z.string().nullable(),
+});
+export type Warranty = z.infer<typeof WarrantySchema>;
+
+export const InsuranceSchema = z.object({
+  insured: z.boolean(),
+  policyRef: z.string().nullable(),
+  insurer: z.string().nullable(),
+  insuredValueMinor: z.number().nullable(),
+  renewalOn: z.string().nullable(),
+});
+export type Insurance = z.infer<typeof InsuranceSchema>;
+
+export function listWarranties(id: string, token: string | null): Promise<Warranty[]> {
+  return api(`/api/assets/${id}/warranties`, z.array(WarrantySchema), { token });
+}
+
+export function getInsurance(id: string, token: string | null): Promise<Insurance> {
+  return api(`/api/assets/${id}/insurance`, InsuranceSchema, { token });
+}
+
 export function createAsset(req: CreateAssetReq, token: string | null): Promise<AssetDetail> {
   return api("/api/assets", AssetDetailSchema, { method: "POST", body: req, token });
 }

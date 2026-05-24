@@ -20,11 +20,12 @@ object Api {
       List(Me.serverEndpoint(auth)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
         ++ Assets.serverEndpoints(auth, xa) ++ Valuations.serverEndpoints(auth, xa)
-        ++ AssetEvents.serverEndpoints(auth, xa) ++ Documents.serverEndpoints(auth, xa, store)
+        ++ AssetEvents.serverEndpoints(auth, xa) ++ Provenance.serverEndpoints(auth, xa)
+        ++ Documents.serverEndpoints(auth, xa, store)
         ++ People.serverEndpoints(auth, xa) ++ Vendors.serverEndpoints(auth, xa) ++ devEps)
     val swagger  = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
-      AssetEvents.endpoints ++ Documents.endpoints ++ People.endpoints ++ Vendors.endpoints ++ dev.map(_ => Dev.endpoint).toList
+      AssetEvents.endpoints ++ Provenance.endpoints ++ Documents.endpoints ++ People.endpoints ++ Vendors.endpoints ++ dev.map(_ => Dev.endpoint).toList
     val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }

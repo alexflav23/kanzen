@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { colors } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { getAsset, getAssetTimeline } from "../services/assets";
+import { getAsset, getAssetTimeline, getInsurance, listWarranties } from "../services/assets";
 import { listCategories } from "../services/categories";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
@@ -44,6 +44,9 @@ export function AssetDetail() {
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
   const timelineQ = useQuery({ queryKey: ["asset-timeline", id, token], queryFn: () => getAssetTimeline(id, token), enabled: assetQ.isSuccess });
+  const warrantiesQ = useQuery({ queryKey: ["asset-warranties", id, token], queryFn: () => listWarranties(id, token), enabled: assetQ.isSuccess });
+  // Insurance is Principal-only; a Manager session 403s — render only on success.
+  const insuranceQ = useQuery({ queryKey: ["asset-insurance", id, token], queryFn: () => getInsurance(id, token), enabled: assetQ.isSuccess, retry: false });
 
   const back = <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.back)}>← Inventory</button>;
   if (assetQ.isPending) return <div {...stylex.props(styles.page)}>{back}<Loading label="Loading the asset…" /></div>;
@@ -118,6 +121,33 @@ export function AssetDetail() {
                 <div {...stylex.props(styles.lifetime)}><span>Lifetime cost</span><span>{money(timelineQ.data.lifetimeCostMinor, "GBP")}</span></div>
               </>
             )}
+        </Card>
+      </div>
+
+      <div {...stylex.props(styles.lifecycle)}>
+        <Card>
+          <CardHeader><CardTitle>Insurance &amp; warranty</CardTitle></CardHeader>
+          {insuranceQ.isSuccess && (
+            <div {...stylex.props(styles.kv)}>
+              <span {...stylex.props(styles.kvK)}>Insurance</span>
+              <span {...stylex.props(styles.kvV)}>
+                {insuranceQ.data.insured
+                  ? `${insuranceQ.data.policyRef ?? "Policy"}${insuranceQ.data.insuredValueMinor != null ? ` · ${money(insuranceQ.data.insuredValueMinor, "GBP")}` : ""}`
+                  : "Not insured"}
+              </span>
+            </div>
+          )}
+          {warrantiesQ.isPending ? <Loading label="Loading warranties…" />
+            : warrantiesQ.isError ? <ErrorState error={warrantiesQ.error} />
+            : warrantiesQ.data.length === 0 ? <div {...stylex.props(styles.note)}>No warranties recorded. {insuranceQ.isError ? "Insurance is Principal-only." : ""}</div>
+            : warrantiesQ.data.map((w) => (
+                <CardRow key={w.id}>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.evTitle)}>{w.provider ?? "Warranty"}</div>
+                    <div {...stylex.props(styles.evSub)}>{w.endsOn ? `ends ${w.endsOn.slice(0, 10)}` : "—"}</div>
+                  </div>
+                </CardRow>
+              ))}
         </Card>
       </div>
     </div>
