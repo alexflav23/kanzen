@@ -62,7 +62,7 @@ Dependency-ordered. `Spec` = spec written; `Build` = implementation status. Wave
 | F29 | Dashboard, Insights & reporting | C | F18, F23 | ✅ | ✔️ Done (sandbox) — backend summary (authz/scope-filtered counts, no leak) + web live at-a-glance + e2e; spend-trend charts/insights deferred |
 | F06 | Tasks — native | D | F03 | ✅ | ✔️ Done (sandbox) — backend (projects/tasks CRUD, recurrence-spawns-next, operational authz) + web Tasks page + e2e; assignee/RRULE + calendar link deferred |
 | F07 | Calendar — Google (two-way) | D | F03, F06 | ✅ | ⬜ |
-| F08 | Lists | D | F03 | ✅ | ⬜ |
+| F08 | Lists | D | F03 | ✅ | ✔️ Done (sandbox) — backend (lists/items, Staff-propose→approve routing, Manager/Principal approve) + web Lists page + e2e; replenishment auto-fill (F36) deferred |
 | F34 | Event backbone (events, queue, push) | D | F00 | ✅ | ⬜ |
 | F35 | Products & stock (consumables) | D | F08, F09, F33, F34 | ✅ | ⬜ |
 | F36 | Predictive replenishment | D | F35, F12, F13 | ✅ | ⬜ |
