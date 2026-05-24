@@ -19,7 +19,8 @@ Resources `expense`, `approval`, `associated_cost`, `budget` (Principal-private 
 
 ## 3. Data model
 `V__budgets_expenses.sql`:
-- **`expenses`** — `id, owner_id, property_id, category_id, payee text, merchant_id uuid null, description, amount_minor bigint, currency text, incurred_on date, payment_method_id uuid null (F16), status ('draft'|'pending_approval'|'approved'|'rejected'), requested_by uuid, receipt_id uuid null (F13), bank_transaction_id uuid null (F14), created_at, deleted_at`.
+- **`expenses`** — `id, owner_id, property_id, category_id, payee text, merchant_id uuid null, description, amount_minor bigint, currency text, incurred_on date, payment_method_id uuid null (F16), status ('draft'|'pending_approval'|'approved'|'rejected'), requested_by uuid, receipt_id uuid null (F13), bank_transaction_id uuid null (F14), tax_rate_pct numeric null, vat_minor bigint null, deductible bool default false, deductible_pct numeric null, created_at, deleted_at`. *(tax/deductibility fields — ported from marvis — feed F38; the Agent may **propose** `deductible` (F27), never set it.)*
+- **Income** is **not** an expense row: income = `bank_transactions` with `category.kind='income'` (F12), sub-categorised **salary / dividend / rental / interest / other**. F17 recognises it only for **net budget/cashflow** and as the source F38 derives salary/dividends from — income is never approval-routed.
 - **`approvals`** — `id, owner_id, subject_type ('expense'|'list_item'|'maintenance'), subject_id, threshold_minor bigint, threshold_currency, status ('pending'|'approved'|'rejected'), decided_by uuid null, decided_at null, note text null, created_at` (polymorphic — also serves Lists F08 / Maintenance F11 above-threshold).
 - **`associated_costs`** — `id, owner_id, expense_id uuid null, kind ('cleaning'|'repair'|'restoration'|'transport'|'service'|'other'), amount_minor, currency, incurred_on, note, created_at`; **`associated_cost_asset_link`** — `(associated_cost_id, asset_id, allocation_minor)` (a cost split across assets → lifetime cost, F19/Insights).
 - **`budgets`** — `id, owner_id, property_id, category_id uuid null, period_year int, amount_minor bigint, currency`; spend derived from expenses + reconciled transactions.
@@ -42,6 +43,8 @@ Per `finance.jsx` (App. E.8):
 - **Associated cost → asset**: links feed the asset's **lifetime cost** (acquisition + operating, shown in Insights F29 / asset detail F19); a cost can split across multiple assets (allocations sum to total).
 - **Expense provenance**: an expense may originate from a confirmed receipt (F13) and/or a reconciled transaction (F14), or be logged manually.
 - **Budgets**: per property + optional category, per year; spend = approved expenses + reconciled transactions in scope; native-currency, no FX rollup by default.
+- **Income vs expense (cashflow)**: income credits (F12, `kind='income'`, sub-categorised salary/dividend/rental/interest/other) are tracked alongside expenses for a **net cashflow** view and feed **F38** tax estimates + **F29** reporting. Income is **never** subject to expense approval and never counts as spend against a budget.
+- **Deductibility / VAT**: an expense may carry a `tax_rate_pct`, `vat_minor` and a `deductible`/`deductible_pct` flag (partial allowed). These drive **F38**'s deductible-expense report and VAT-reclaimable total; non-deductible expenses are excluded from those totals. FX-normalised via F37 before totalling.
 - **Never moves money** (payment via F16).
 
 ## 7. Integrations
@@ -94,6 +97,18 @@ Actors per `specs/_acceptance-conventions.md`. Each scenario is automated (§10)
 - **When** she requests `GET /api/expenses`, `GET /api/approvals`, or `GET /api/budgets`
 - **Then** she receives **403** on all three — no amounts, categories, or approval statuses are revealed
 - **And** Lorna (Manager) can log and submit expenses and view budgets, but cannot see asset valuations (stripped server-side, F02).
+
+**AC8 — Income is categorised, feeds cashflow, and is never approval-routed**  ‹maps: `IncomeCategorisationIT`, web `cashflow.spec`›
+- **Given** a £6,000 credit (F12) categorised as income → **salary**, and a £400 credit categorised income → **dividend**
+- **When** the finance view loads
+- **Then** both appear as **income** in the net cashflow (income − expense), **not** as spend against any budget, and **no approval** row is created for them
+- **And** F38's tax estimate can derive salary (£6,000) and dividends (£400) from these categorised income transactions.
+
+**AC9 — Deductible/VAT flags on an expense feed F38**  ‹maps: `ExpenseDeductibleFlagIT`›
+- **Given** a £120 expense with `tax_rate_pct=20`, `vat_minor=2000`, `deductible=true`
+- **When** F38's deductible report for the year runs
+- **Then** this expense contributes to the **deductible total** and its £20 VAT to the **VAT-reclaimable** total, FX-normalised (F37)
+- **And** a `deductible=false` expense contributes to neither.
 
 ## 10. Test plan
 Backend (weaver+PG): threshold routing per jurisdiction; polymorphic approvals; associated-cost allocation + lifetime-cost rollup; budget spend derivation; re-approval on edit. Web: Vitest expenses/approval block + budgets bars; Playwright log→approve + associated cost on an asset.
