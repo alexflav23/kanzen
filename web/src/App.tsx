@@ -17,6 +17,7 @@ import { Wealth } from "./pages/Wealth";
 import { Inbox } from "./pages/Inbox";
 import { Calendar } from "./pages/Calendar";
 import { Insights } from "./pages/Insights";
+import { Backup } from "./pages/Backup";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
@@ -38,6 +39,7 @@ function routeFor(item: string): string {
   if (item === "Insights") return "/insights";
   if (item === "Finance") return "/finance";
   if (item === "Wealth") return "/wealth";
+  if (item === "Backup") return "/backup";
   if (item === "Properties") return "/properties";
   if (item === "People") return "/people";
   if (item === "Documents") return "/documents";
@@ -101,6 +103,7 @@ export function App() {
             <Route path="/insights" element={<Insights />} />
             <Route path="/finance" element={<Finance />} />
             <Route path="/wealth" element={<Wealth />} />
+            <Route path="/backup" element={<Backup />} />
             <Route path="/properties" element={<Properties />} />
             <Route path="/properties/:id" element={<PropertyBible />} />
             <Route path="/people" element={<People />} />
