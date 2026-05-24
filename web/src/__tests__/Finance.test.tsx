@@ -22,6 +22,13 @@ vi.mock("../services/finance", () => ({
   getDeductibleReport: async () => ({ deductibleTotalMinor: 184000, vatReclaimableTotalMinor: 30667, deductibleCount: 1 }),
 }));
 
+vi.mock("../services/bank", () => ({
+  listAccounts: async () => [{ id: "acc1", name: "Coutts current", currency: "GBP", kind: "current" }],
+  listTransactions: async () => [
+    { id: "t1", providerTxId: "p1", bookedOn: "2026-05-10", amountMinor: 4200, currency: "GBP", direction: "debit", description: "Waitrose", merchant: "Waitrose", reconciliationState: "unmatched" },
+  ],
+}));
+
 import { Finance } from "../pages/Finance";
 
 const renderFinance = () =>
@@ -60,6 +67,15 @@ describe("Finance", () => {
     await screen.findAllByTestId("pending-row");
     fireEvent.click(screen.getAllByRole("button", { name: /Approve/ })[0]);
     await waitFor(() => expect(screen.getAllByTestId("pending-row")).toHaveLength(1));
+  });
+
+  it("the Transactions tab lists an account's transactions with reconciliation state (F12/F14)", async () => {
+    renderFinance();
+    await screen.findByText("Recurring schedule · 2");
+    fireEvent.click(screen.getByRole("button", { name: "Transactions" }));
+    expect(await screen.findByTestId("txn-row")).toBeInTheDocument();
+    expect(screen.getByText("Waitrose")).toBeInTheDocument();
+    expect(screen.getByText("unmatched")).toBeInTheDocument();
   });
 
   it("the Tax tab shows the income estimate and deductible report (F38)", async () => {

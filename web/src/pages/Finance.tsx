@@ -9,8 +9,9 @@ import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { approveExpense, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { listAccounts, listTransactions } from "../services/bank";
 
-type Tab = "bills" | "pay" | "expenses" | "budgets" | "tax";
+type Tab = "bills" | "pay" | "transactions" | "expenses" | "budgets" | "tax";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -48,6 +49,10 @@ export function Finance() {
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
   const pending  = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval") });
   const allExp   = useQuery({ queryKey: ["expenses", "all", token], queryFn: () => listExpenses(token, null) });
+  const accounts = useQuery({ queryKey: ["bank", "accounts", token], queryFn: () => listAccounts(token) });
+  const [acct, setAcct] = useState<string | null>(null);
+  const acctId = acct ?? accounts.data?.[0]?.id ?? null;
+  const txns = useQuery({ queryKey: ["bank", "txns", token, acctId], queryFn: () => listTransactions(token, acctId as string), enabled: !!acctId });
   const [incomeGbp, setIncomeGbp] = useState(150000); // gross income in whole £ (F38 estimate)
   const deductible = useQuery({ queryKey: ["tax", "deductible", token], queryFn: () => getDeductibleReport(token) });
   const estimate   = useQuery({ queryKey: ["tax", "estimate", token, incomeGbp], queryFn: () => getIncomeEstimate(token, incomeGbp * 100) });
@@ -66,7 +71,7 @@ export function Finance() {
       </header>
 
       <div {...stylex.props(styles.tabs)} role="tablist">
-        {([["bills", "Recurring"], ["pay", "Pay queue"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
+        {([["bills", "Recurring"], ["pay", "Pay queue"], ["transactions", "Transactions"], ["expenses", "Expenses"], ["tax", "Tax"], ["budgets", "Budgets"]] as const).map(([t, label]) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>{label}</button>
         ))}
       </div>
@@ -148,6 +153,47 @@ export function Finance() {
                 </table>
               )}
           </Card>
+        </div>
+      )}
+
+      {tab === "transactions" && (
+        <div data-testid="transactions-tab">
+          {accounts.isPending ? <Loading /> : accounts.isError ? <ErrorState error={accounts.error} />
+            : accounts.data.length === 0 ? <EmptyState title="No accounts">Connect a bank or import a statement.</EmptyState>
+            : (
+              <>
+                <div {...stylex.props(styles.tabs)} role="tablist">
+                  {accounts.data.map((a) => (
+                    <button key={a.id} type="button" aria-pressed={acctId === a.id} onClick={() => setAcct(a.id)} {...stylex.props(styles.tab, acctId === a.id && styles.tabActive)}>{a.name}</button>
+                  ))}
+                </div>
+                <Card>
+                  <CardHeader><CardTitle>Transactions · {txns.data?.length ?? 0}</CardTitle></CardHeader>
+                  {txns.isPending ? <Loading /> : txns.isError ? <ErrorState error={txns.error} />
+                    : txns.data.length === 0 ? <EmptyState title="No transactions" />
+                    : (
+                      <table {...stylex.props(styles.table)}>
+                        <thead><tr>
+                          <th {...stylex.props(styles.th)}>Date</th>
+                          <th {...stylex.props(styles.th)}>Description</th>
+                          <th {...stylex.props(styles.th)}>State</th>
+                          <th {...stylex.props(styles.th, styles.thR)}>Amount</th>
+                        </tr></thead>
+                        <tbody>
+                          {txns.data.map((t) => (
+                            <tr key={t.id} data-testid="txn-row">
+                              <td {...stylex.props(styles.td)}>{t.bookedOn ?? "—"}</td>
+                              <td {...stylex.props(styles.td, styles.bold)}>{t.merchant ?? t.description ?? "—"}</td>
+                              <td {...stylex.props(styles.td)}><Pill tone={t.reconciliationState === "reconciled" ? "default" : "warn"}>{t.reconciliationState}</Pill></td>
+                              <td {...stylex.props(styles.td, styles.tdR)}>{t.direction === "debit" ? "−" : "+"}{fmtMoney(t.amountMinor, t.currency)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                </Card>
+              </>
+            )}
         </div>
       )}
 

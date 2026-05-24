@@ -29,6 +29,13 @@ test("the expenses tab shows the approval queue", async ({ page }) => {
   await expect(page.getByText(/All expenses/)).toBeVisible();
 });
 
+test("the transactions tab lists a seeded account's transactions with reconciliation state", async ({ page }) => {
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Transactions" }).click();
+  await expect(page.getByTestId("txn-row").first()).toBeVisible(); // wait for the query
+  expect(await page.getByTestId("txn-row").count()).toBeGreaterThanOrEqual(1);
+});
+
 test("the tax tab estimates UK income tax and shows the deductible report (F38)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Tax" }).click();
