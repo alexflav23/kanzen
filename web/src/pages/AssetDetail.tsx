@@ -2,9 +2,9 @@ import * as stylex from "@stylexjs/stylex";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { colors } from "../styles/tokens.stylex";
-import { Card, CardHeader, CardTitle } from "../components/Card";
+import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { getAsset } from "../services/assets";
+import { getAsset, getAssetTimeline } from "../services/assets";
 import { listCategories } from "../services/categories";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
@@ -20,6 +20,12 @@ const styles = stylex.create({
   kvK: { color: colors.ink3, textTransform: "capitalize" },
   kvV: { fontWeight: 500, textTransform: "capitalize" },
   note: { padding: "14px 20px", fontSize: "12.5px", color: colors.ink3 },
+  lifecycle: { marginTop: "24px" },
+  grow: { flex: 1 },
+  evTitle: { fontSize: "13.5px", fontWeight: 500, textTransform: "capitalize" },
+  evSub: { fontSize: "12px", color: colors.ink3 },
+  evCost: { fontVariantNumeric: "tabular-nums", fontWeight: 500 },
+  lifetime: { display: "flex", justifyContent: "space-between", padding: "14px 20px", borderTop: `1px solid ${colors.line}`, fontSize: "13.5px", fontWeight: 600 },
 });
 
 function money(minor: number | null, currency: string | null): string {
@@ -37,6 +43,7 @@ export function AssetDetail() {
   const { token } = useAuth();
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
+  const timelineQ = useQuery({ queryKey: ["asset-timeline", id, token], queryFn: () => getAssetTimeline(id, token), enabled: assetQ.isSuccess });
 
   const back = <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.back)}>← Inventory</button>;
   if (assetQ.isPending) return <div {...stylex.props(styles.page)}>{back}<Loading label="Loading the asset…" /></div>;
@@ -88,6 +95,29 @@ export function AssetDetail() {
               </div>
             ))
           )}
+        </Card>
+      </div>
+
+      <div {...stylex.props(styles.lifecycle)}>
+        <Card>
+          <CardHeader><CardTitle>Lifecycle</CardTitle></CardHeader>
+          {timelineQ.isPending ? <Loading label="Loading the timeline…" />
+            : timelineQ.isError ? <ErrorState error={timelineQ.error} />
+            : timelineQ.data.events.length === 0 ? <EmptyState title="No events yet">Log acquisition, service, and movement events to build the timeline.</EmptyState>
+            : (
+              <>
+                {timelineQ.data.events.map((e) => (
+                  <CardRow key={e.id}>
+                    <div {...stylex.props(styles.grow)}>
+                      <div {...stylex.props(styles.evTitle)}>{e.eventType}</div>
+                      <div {...stylex.props(styles.evSub)}>{e.occurredAt.slice(0, 10)}{e.note ? ` · ${e.note}` : ""}</div>
+                    </div>
+                    {e.costMinor != null && <span {...stylex.props(styles.evCost)}>{money(e.costMinor, e.currency)}</span>}
+                  </CardRow>
+                ))}
+                <div {...stylex.props(styles.lifetime)}><span>Lifetime cost</span><span>{money(timelineQ.data.lifetimeCostMinor, "GBP")}</span></div>
+              </>
+            )}
         </Card>
       </div>
     </div>

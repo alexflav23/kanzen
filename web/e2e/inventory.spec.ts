@@ -39,6 +39,9 @@ test("opening an asset shows its detail + specifications", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
   await expect(page.getByText("Specifications")).toBeVisible();
   await expect(page.getByText("AP-15500")).toBeVisible(); // from the JSONB attributes
+  // F19 lifecycle timeline (seeded acquisition event) + lifetime cost
+  await expect(page.getByText("Lifecycle")).toBeVisible();
+  await expect(page.getByText("Lifetime cost")).toBeVisible();
 });
 
 test("New asset creates an asset that appears", async ({ page }) => {

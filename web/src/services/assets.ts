@@ -54,6 +54,23 @@ export function getAsset(id: string, token: string | null): Promise<AssetDetail>
   return api(`/api/assets/${id}`, AssetDetailSchema, { token });
 }
 
+/** F19 — lifecycle timeline + lifetime cost. */
+export const AssetEventSchema = z.object({
+  id: z.string(),
+  eventType: z.string(),
+  occurredAt: z.string(),
+  costMinor: z.number().nullable(),
+  currency: z.string().nullable(),
+  note: z.string().nullable(),
+  party: z.string().nullable(),
+});
+export const AssetTimelineSchema = z.object({ events: z.array(AssetEventSchema), lifetimeCostMinor: z.number() });
+export type AssetTimeline = z.infer<typeof AssetTimelineSchema>;
+
+export function getAssetTimeline(id: string, token: string | null): Promise<AssetTimeline> {
+  return api(`/api/assets/${id}/events`, AssetTimelineSchema, { token });
+}
+
 export function createAsset(req: CreateAssetReq, token: string | null): Promise<AssetDetail> {
   return api("/api/assets", AssetDetailSchema, { method: "POST", body: req, token });
 }
