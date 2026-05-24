@@ -11,6 +11,7 @@ import { People } from "./pages/People";
 import { Documents } from "./pages/Documents";
 import { Vendors } from "./pages/Vendors";
 import { Tasks } from "./pages/Tasks";
+import { Lists } from "./pages/Lists";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
@@ -33,6 +34,7 @@ function routeFor(item: string): string {
   if (item === "Documents") return "/documents";
   if (item === "Vendors") return "/vendors";
   if (item === "Tasks") return "/tasks";
+  if (item === "Lists") return "/lists";
   return "/soon";
 }
 
@@ -91,6 +93,7 @@ export function App() {
             <Route path="/documents" element={<Documents />} />
             <Route path="/vendors" element={<Vendors />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/lists" element={<Lists />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
