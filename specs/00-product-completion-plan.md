@@ -168,3 +168,22 @@ Each task has a crisp acceptance check. Do them in order; ★ = can proceed with
 - **1.7 Gate** — demo + DoD review; flip F03(read) status; record what's `Done (sandbox)` vs `Done (prod)`.
 
 **Critical-path note:** everything ★ proceeds now. The ⛔ items (real web login round-trip, real-login e2e) need the **Cognito dev pool** — first `SETUP.md` ask. Until it lands, those run on the test JWKS and Phase 1's *real-login* gate stays open while all other work continues.
+
+---
+
+## N. Marvis integration (automated expense engine)
+
+Source: `gitlab.com/outworkers/marvis` — a UK automated expense + tax system (Scala/Cassandra/Joda-Money). Its **domain logic is ported onto Kanzen's stack** (Postgres/Doobie, integer minor units, cats-effect/Tapil) — not lifted as code. Folds into the **Finance domain (Wave C)**; Principal-private (F02).
+
+| Marvis capability | Kanzen | Action |
+|---|---|---|
+| CSV / Google-sheet statement import (`importer`, `data/*.csv`) | **F12** | extend: import path beside GoCardless + column mapping |
+| Duplicate detection (amount/time tolerance) | F12 / **F14** | extend: dedup on ingest/reconcile |
+| FX normalization — `TransactionNormalizer`/`ExchangeRate`, `sourceCurrency` + `initialAmount` per txn | **F37** | reuse logic: store original ccy+amount, normalize at txn-date rate |
+| Receipt = grouped line items (per-item tax%, VAT, manufacturer, qty, unit price) + receipt aggregates (paid / tax-deductible / VAT-deductible) | **F13** | extend: line VAT/deductible + manufacturer + aggregates |
+| Expense: tax%, expensed/deductible flag, income-vs-expense, status/type, filters/lists | **F17** (+ F33 tags) | extend |
+| Stats aggregates + time-framed reports | **F29** | extend |
+| Exports (StoredFile / ExportStore) | **F30** | extend |
+| **UK tax engine** — income/dividend/salary tax, National Insurance, corporation tax, personal allowance, tax bands, VAT deductibility, TaxProfile | — | **NEW → F38 Tax, VAT & deductibility** |
+
+**Net plan change:** +1 feature (**F38**, Wave C) + scope extensions to F12/F13/F14/F17/F29/F30/F37. marvis serves as the porting reference for tax bands, FX normalization, CSV parsing, receipt itemization and duplicate detection.
