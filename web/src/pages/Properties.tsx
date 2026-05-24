@@ -1,9 +1,11 @@
 import * as stylex from "@stylexjs/stylex";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Plus } from "../components/icons";
-import { listProperties, type Property } from "../services/properties";
+import { createProperty, listProperties, type Property } from "../services/properties";
+import { ApiError } from "../services/http";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -26,6 +28,16 @@ const styles = stylex.create({
   stats: { padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" },
   statL: { fontSize: "11px", color: colors.ink3 },
   statN: { fontSize: "18px", fontWeight: 600, letterSpacing: "-0.014em", marginTop: "2px", fontVariantNumeric: "tabular-nums" },
+  overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
+  modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
+  modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  field: { display: "block", marginBottom: "12px" },
+  label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
+  input: { width: "100%", padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
+  actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
+  primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
+  ghost: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
+  err: { fontSize: "12.5px", color: colors.danger, marginTop: "10px" },
 });
 
 function PropertyCard({ p, cover, onOpen }: { p: Property; cover: string; onOpen: () => void }) {
@@ -58,9 +70,57 @@ function PropertyCard({ p, cover, onOpen }: { p: Property; cover: string; onOpen
   );
 }
 
+function AddPropertyModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [jurisdiction, setJurisdiction] = useState("GB");
+  const [currency, setCurrency] = useState("GBP");
+  const mutation = useMutation({
+    mutationFn: () =>
+      createProperty({ name, address: null, jurisdiction, propType: "apartment", ownership: "owned", currency }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["properties"] });
+      onClose();
+    },
+  });
+
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="add-property" onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); if (name.trim()) mutation.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Add property</div>
+        <label {...stylex.props(styles.field)}>
+          <span {...stylex.props(styles.label)}>Name</span>
+          <input {...stylex.props(styles.input)} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Wardian — Apt 5206" autoFocus />
+        </label>
+        <label {...stylex.props(styles.field)}>
+          <span {...stylex.props(styles.label)}>Jurisdiction</span>
+          <input {...stylex.props(styles.input)} value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} />
+        </label>
+        <label {...stylex.props(styles.field)}>
+          <span {...stylex.props(styles.label)}>Default currency</span>
+          <input {...stylex.props(styles.input)} value={currency} onChange={(e) => setCurrency(e.target.value)} />
+        </label>
+        {mutation.isError && (
+          <div {...stylex.props(styles.err)} role="alert">
+            {mutation.error instanceof ApiError ? mutation.error.detail : "Couldn't create the property."}
+          </div>
+        )}
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending || !name.trim()}>
+            {mutation.isPending ? "Adding…" : "Add property"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Properties() {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const [adding, setAdding] = useState(false);
   const { data, isPending, isError, error } = useQuery({
     queryKey: ["properties", token],
     queryFn: () => listProperties(token),
@@ -74,8 +134,9 @@ export function Properties() {
           <h1 {...stylex.props(styles.title)}>Properties</h1>
           <div {...stylex.props(styles.desc)}>One record per property. The full picture: rooms, assets, systems, documents.</div>
         </div>
-        <button type="button" {...stylex.props(styles.btn)}><Plus size={14} /> Add property</button>
+        <button type="button" onClick={() => setAdding(true)} {...stylex.props(styles.btn)}><Plus size={14} /> Add property</button>
       </header>
+      {adding && <AddPropertyModal token={token} onClose={() => setAdding(false)} />}
 
       {isPending ? (
         <Loading label="Loading properties…" />
