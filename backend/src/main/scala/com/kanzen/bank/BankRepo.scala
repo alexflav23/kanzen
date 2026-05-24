@@ -1,6 +1,7 @@
 package com.kanzen.bank
 
 import cats.syntax.all._
+import com.kanzen.fx.FxRepo
 import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -37,13 +38,24 @@ object BankRepo {
   def accountExists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from financial_accounts where id = $id)".query[Boolean].unique
 
-  /** Ingest a batch; returns the number of NEW rows (re-ingesting the same batch inserts 0). */
+  /** Ingest a batch; returns the number of NEW rows (re-ingesting the same batch inserts 0).
+    * F37 AC1: the rate-to-base for each tx is captured at ingestion from the snapshot for its
+    * own `booked_on` date and stored permanently — `on conflict do nothing` means a later
+    * sync never overwrites the historical rate with today's. Native amount stays the truth. */
   def ingest(accountId: UUID, txs: List[TxIn]): ConnectionIO[Int] =
     txs.traverse { t =>
-      sql"""insert into bank_transactions (account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description)
-            values ($accountId, ${t.providerTxId}, ${t.bookedOn}, ${t.amountMinor}, ${t.currency}, ${t.direction}, ${t.description})
-            on conflict (account_id, provider_tx_id) do nothing""".update.run
+      FxRepo.toBaseOn(t.currency, t.bookedOn).flatMap { fxRate =>
+        val fxAsOf = fxRate.map(_ => t.bookedOn)
+        sql"""insert into bank_transactions (account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description, fx_rate_to_base, fx_as_of)
+              values ($accountId, ${t.providerTxId}, ${t.bookedOn}, ${t.amountMinor}, ${t.currency}, ${t.direction}, ${t.description}, $fxRate, $fxAsOf)
+              on conflict (account_id, provider_tx_id) do nothing""".update.run
+      }
     }.map(_.sum)
+
+  /** The captured rate-to-base + as-of for a transaction (F37 AC1 — proves it isn't restated). */
+  def fxOf(txId: UUID): ConnectionIO[Option[(Option[Double], Option[LocalDate])]] =
+    sql"select fx_rate_to_base, fx_as_of from bank_transactions where id = $txId"
+      .query[(Option[Double], Option[LocalDate])].option
 
   def list(accountId: UUID): ConnectionIO[List[BankTx]] =
     (fr"select" ++ txCols ++ fr"from bank_transactions where account_id = $accountId order by booked_on desc").query[BankTx].to[List]

@@ -30,12 +30,12 @@ object Api {
         ++ Tasks.serverEndpoints(auth, xa) ++ Lists.serverEndpoints(auth, xa)
         ++ Maintenance.serverEndpoints(auth, xa) ++ Products.serverEndpoints(auth, xa)
         ++ Notifications.serverEndpoints(auth, xa) ++ Extensibility.serverEndpoints(auth, xa)
-        ++ DataQuality.serverEndpoints(auth, xa) ++ devEps)
+        ++ DataQuality.serverEndpoints(auth, xa) ++ Fx.serverEndpoints(auth, xa) ++ devEps)
     val swagger  = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++
-      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ dev.map(_ => Dev.endpoint).toList
+      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ dev.map(_ => Dev.endpoint).toList
     val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }
