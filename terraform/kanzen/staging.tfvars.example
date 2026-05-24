@@ -1,0 +1,10 @@
+# Copy to staging.tfvars and fill from SETUP.md. db_password comes from Secrets Manager via
+# TF_VAR_db_password (never commit the real file).
+domain_name                = "staging.kanzen.family"
+acm_certificate_arn        = "arn:aws:acm:eu-west-1:000000000000:certificate/REPLACE"
+cloudfront_certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/REPLACE"
+nixos_ami_id               = "ami-REPLACE" # published by CI's NixOS image build
+instance_type              = "t3.small"
+db_instance_class          = "db.t3.small"
+ssh_cidr_blocks            = [] # add the ops VPN CIDR if SSH is needed
+# db_password — supply via:  export TF_VAR_db_password="$(aws secretsmanager get-secret-value …)"

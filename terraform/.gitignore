@@ -1,0 +1,10 @@
+# Terraform working dirs + state + real var files (secrets). The provider lock (.terraform.lock.hcl)
+# IS committed for reproducible plans.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
