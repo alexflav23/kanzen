@@ -15,8 +15,10 @@ object DocumentIT extends IOSuite {
 
   test("a receipt document is immutable and links to an asset") { xa =>
     val assetId = UUID.randomUUID()
+    val owner   = UUID.fromString("10000000-0000-0000-0000-000000000001")
     val prog = for {
-      doc <- DocumentRepo.create("receipt_001.pdf", "receipt", Some("documents/x/original.pdf"), Some("abc123"), "household")
+      doc <- DocumentRepo.insert(UUID.randomUUID(), owner, "receipt_001.pdf", "receipt", Some("application/pdf"),
+               Some(1234L), "documents/x/original.pdf", "abc123", "household", "manual", None)
       _ <- DocumentRepo.link(doc.id, "asset", assetId, Some("proof"))
       links <- DocumentRepo.linksFor("asset", assetId)
     } yield (doc, links)

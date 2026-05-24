@@ -8,6 +8,7 @@ import com.kanzen.auth.{Auth, DevAuth, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import com.kanzen.identity.Principals
+import com.kanzen.s3.ObjectStore
 import doobie.util.transactor.Transactor
 import org.http4s.HttpApp
 import org.http4s.ember.server.EmberServerBuilder
@@ -25,9 +26,9 @@ object Main extends IOApp.Simple {
   implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
   private val log = loggerFactory.getLogger
 
-  private def primaryApp(auth: Auth, xa: Transactor[IO], dev: Option[DevAuth]): HttpApp[IO] =
+  private def primaryApp(auth: Auth, xa: Transactor[IO], store: ObjectStore, dev: Option[DevAuth]): HttpApp[IO] =
     Logger.httpApp[IO](logHeaders = true, logBody = false)(
-      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, dev).orNotFound)
+      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, store, dev).orNotFound)
     )
 
   private def server(h: Host, p: Port, app: HttpApp[IO]) =
@@ -51,10 +52,11 @@ object Main extends IOApp.Simple {
           jwks = dev.map(_.jwks).getOrElse(Jwks.empty)
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
+          store <- ObjectStore.inMemory // local/dev blob store; S3 (AWS SDK + LocalStack) wires in here later
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
                  val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
-                 (server(host"0.0.0.0", p, primaryApp(auth, xa, dev)),
+                 (server(host"0.0.0.0", p, primaryApp(auth, xa, store, dev)),
                   server(host"0.0.0.0", a, Admin.routes.orNotFound)).tupled.useForever
                }
         } yield ()

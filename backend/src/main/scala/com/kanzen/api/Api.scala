@@ -3,6 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, DevAuth}
+import com.kanzen.s3.ObjectStore
 import doobie.util.transactor.Transactor
 import org.http4s.HttpRoutes
 import sttp.tapir.server.http4s.Http4sServerInterpreter
@@ -12,15 +13,15 @@ import sttp.tapir.swagger.bundle.SwaggerInterpreter
   * Swagger/OpenAPI at `/docs`, and (local only) the dev token mint. Every later
   * feature adds its routes here. */
 object Api {
-  def routes(auth: Auth, xa: Transactor[IO], dev: Option[DevAuth]): HttpRoutes[IO] = {
+  def routes(auth: Auth, xa: Transactor[IO], store: ObjectStore, dev: Option[DevAuth]): HttpRoutes[IO] = {
     val interp   = Http4sServerInterpreter[IO]()
     val devEps   = dev.map(Dev.serverEndpoint).toList
     val secured  = interp.toRoutes(
       List(Me.serverEndpoint(auth)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
-        ++ Assets.serverEndpoints(auth, xa) ++ devEps)
+        ++ Assets.serverEndpoints(auth, xa) ++ Documents.serverEndpoints(auth, xa, store) ++ devEps)
     val swagger  = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
-      Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ dev.map(_ => Dev.endpoint).toList
+      Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Documents.endpoints ++ dev.map(_ => Dev.endpoint).toList
     val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }
