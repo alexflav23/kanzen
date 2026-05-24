@@ -187,3 +187,10 @@ Source: `gitlab.com/outworkers/marvis` — a UK automated expense + tax system (
 | **UK tax engine** — income/dividend/salary tax, National Insurance, corporation tax, personal allowance, tax bands, VAT deductibility, TaxProfile | — | **NEW → F38 Tax, VAT & deductibility** |
 
 **Net plan change:** +1 feature (**F38**, Wave C) + scope extensions to F12/F13/F14/F17/F29/F30/F37. marvis serves as the porting reference for tax bands, FX normalization, CSV parsing, receipt itemization and duplicate detection.
+
+### N.1 Coverage audit vs full marvis surface
+Compared against marvis's complete API surface (Expense · Income · Receipt · Import · Reports · Stats · Tags · Export · Users) + FX source/cache + S3 + Mailer. **All covered** by the mapping above, with two refinements added:
+- **Income first-class & categorized** → extend **F17/F12**: income credits get an income flag **and a category** (salary / dividend / rental / interest / other) + (optional) recurring income, so **F29** reports and **F38** tax estimates derive from real categorized data rather than manual input.
+- **Finance/report CSV export ("accountant export")** → extend **F29**: export expenses/reports to CSV/S3 (distinct from F30 system backup).
+
+Confirmed already-covered (no action): FX rate **source+cache** (F37 ECB + `fx_rates`), duplicate detection (F12/F14), receipt line-item VAT/manufacturer (F13), reports/stats/period framing (F29/F38), entry event log (audit F00 + F34), accounts/users/S3/mailer (F12/F01/F05+F30/SES).
