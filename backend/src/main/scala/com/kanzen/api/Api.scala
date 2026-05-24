@@ -15,8 +15,9 @@ object Api {
   def routes(auth: Auth, xa: Transactor[IO], dev: Option[DevAuth]): HttpRoutes[IO] = {
     val interp   = Http4sServerInterpreter[IO]()
     val devEps   = dev.map(Dev.serverEndpoint).toList
-    val secured  = interp.toRoutes(List(Me.serverEndpoint(auth), Properties.serverEndpoint(auth, xa)) ++ devEps)
-    val swagger  = List(Health.endpoint, Me.endpoint, Properties.endpoint) ++ dev.map(_ => Dev.endpoint).toList
+    val secured  = interp.toRoutes(
+      List(Me.serverEndpoint(auth), Properties.serverEndpoint(auth, xa), Properties.detailServerEndpoint(auth, xa)) ++ devEps)
+    val swagger  = List(Health.endpoint, Me.endpoint, Properties.endpoint, Properties.detailEndpoint) ++ dev.map(_ => Dev.endpoint).toList
     val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }

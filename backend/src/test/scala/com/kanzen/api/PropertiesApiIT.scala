@@ -51,4 +51,36 @@ object PropertiesApiIT extends IOSuite {
       case Right(_)        => failure("expected 403 for a role with no property rule")
     }
   }
+
+  private val wardianId   = java.util.UUID.fromString("20000000-0000-0000-0000-000000000001")
+  private val singaporeId = java.util.UUID.fromString("20000000-0000-0000-0000-000000000002")
+  private def siti = Principal(java.util.UUID.fromString("10000000-0000-0000-0000-000000000004"), "siti-sub", "siti@kanzen.local", "staff")
+
+  test("detail: principal reads the Wardian Bible aggregate") { xa =>
+    Properties.detail(xa, principal("principal"), wardianId).map {
+      case Right(d) => expect(d.name == "Wardian — Apt 5206") and expect(d.rooms == 0) and expect(d.assets == 0)
+      case Left((sc, _)) => failure(s"expected 200, got $sc")
+    }
+  }
+
+  test("detail: a scoped user gets 404 (not 403) for an out-of-scope property — no leak (AC4)") { xa =>
+    Properties.detail(xa, siti, wardianId).map {
+      case Left((sc, err)) => expect(sc.code == 404) and expect(err.code == "not_found")
+      case Right(_)        => failure("Siti must not see Wardian's existence")
+    }
+  }
+
+  test("detail: the scoped user can read their in-scope property") { xa =>
+    Properties.detail(xa, siti, singaporeId).map {
+      case Right(d)      => expect(d.name == "Singapore Residence")
+      case Left((sc, _)) => failure(s"expected 200, got $sc")
+    }
+  }
+
+  test("detail: a role with no property read is forbidden (403)") { xa =>
+    Properties.detail(xa, principal("guest"), wardianId).map {
+      case Left((sc, err)) => expect(sc.code == 403) and expect(err.code == "forbidden")
+      case Right(_)        => failure("expected 403")
+    }
+  }
 }

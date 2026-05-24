@@ -31,6 +31,10 @@ object PropertyRepo {
                             where s.user_id = $userId and s.property_id = p.id))
           order by name""".query[Property].to[List]
 
+  /** Number of (live) locations under a property — the "rooms" count on the Bible. */
+  def locationCount(propertyId: UUID): ConnectionIO[Int] =
+    sql"select count(*) from locations where property_id = $propertyId and deleted_at is null".query[Int].unique
+
   def addLocation(propertyId: UUID, parentId: Option[UUID], kind: String, name: String): ConnectionIO[Location] =
     sql"""insert into locations (property_id, parent_id, kind, name)
           values ($propertyId, $parentId, $kind, $name)
