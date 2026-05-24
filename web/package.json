@@ -17,13 +17,16 @@
     "react-router-dom": "^7.15.1"
   },
   "devDependencies": {
+    "@babel/preset-typescript": "^7.28.5",
     "@playwright/test": "^1.49.1",
     "@stylexjs/babel-plugin": "^0.10.1",
+    "@stylexjs/postcss-plugin": "^0.10.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.5.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
