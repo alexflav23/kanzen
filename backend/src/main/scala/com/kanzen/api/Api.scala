@@ -32,12 +32,13 @@ object Api {
         ++ Notifications.serverEndpoints(auth, xa) ++ Extensibility.serverEndpoints(auth, xa)
         ++ DataQuality.serverEndpoints(auth, xa) ++ Fx.serverEndpoints(auth, xa)
         ++ Restructure.serverEndpoints(auth, xa) ++ Calendar.serverEndpoints(auth, xa)
-        ++ Agent.serverEndpoints(auth, xa) ++ Search.serverEndpoints(auth, xa) ++ NlQuery.serverEndpoints(auth, xa) ++ devEps)
+        ++ Agent.serverEndpoints(auth, xa) ++ Search.serverEndpoints(auth, xa) ++ NlQuery.serverEndpoints(auth, xa)
+        ++ Backup.serverEndpoints(auth, xa) ++ devEps)
     val swagger  = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++
-      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ dev.map(_ => Dev.endpoint).toList
+      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ Backup.endpoints ++ dev.map(_ => Dev.endpoint).toList
     val docs     = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
     Health.routes <+> secured <+> docs
   }
