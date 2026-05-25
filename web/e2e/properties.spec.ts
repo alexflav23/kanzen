@@ -12,18 +12,21 @@ test("lists the two seeded properties from the database", async ({ page }) => {
   expect(await page.getByTestId("property-card").count()).toBeGreaterThanOrEqual(2);
 });
 
-test("shows real per-property currency from the API", async ({ page }) => {
+test("shows the per-property tallies on the cards", async ({ page }) => {
   await page.goto("/properties");
-  await expect(page.getByText("GBP").first()).toBeVisible();
-  await expect(page.getByText("SGD")).toBeVisible(); // Singapore only
+  // the prototype's four tiles, fed by the API counts (one set per card)
+  for (const label of ["Rooms", "Assets", "Bills", "Vendors"]) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
 });
 
-test("opening a property shows its Bible (overview, rooms, defects) from the API", async ({ page }) => {
+test("opening a property shows its Bible (overview, currency, rooms, defects) from the API", async ({ page }) => {
   await page.goto("/properties");
   await page.getByText("Wardian — Apt 5206").click();
   // Overview
   await expect(page.getByText("Particulars")).toBeVisible();
   await expect(page.getByText("At a glance")).toBeVisible();
+  await expect(page.getByText("GBP").first()).toBeVisible(); // real per-property currency from the API
   // Rooms (none seeded yet → empty state)
   await page.getByRole("button", { name: "Rooms" }).click();
   await expect(page.getByText("No rooms yet")).toBeVisible();

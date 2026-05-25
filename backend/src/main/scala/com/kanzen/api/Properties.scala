@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
-import com.kanzen.property.{Property, PropertyRepo}
+import com.kanzen.property.{Property, PropertyCounts, PropertyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -22,11 +22,19 @@ import java.util.UUID
   * or 403. Proves config → migrate → auth → authorize → query → JSON end-to-end.
   */
 object Properties {
-  final case class PropertyView(id: UUID, name: String, jurisdiction: Option[String], currency: String, status: String)
+  final case class PropertyView(
+      id: UUID,
+      name: String,
+      jurisdiction: Option[String],
+      currency: String,
+      status: String,
+      rooms: Int,
+      assets: Int,
+      bills: Int,
+      vendors: Int
+  )
 
-  /** The Bible aggregate. Counts beyond `rooms` are placeheld until their features land (assets F04, bills F15, vendors
-    * F09).
-    */
+  /** The Bible aggregate — rooms/assets/bills/vendors tallies for the property. */
   final case class PropertyDetail(
       id: UUID,
       name: String,
@@ -56,8 +64,10 @@ object Properties {
   )
 
   private type Out[A] = Either[(StatusCode, ApiError), A]
-  private def toView(r: Property): PropertyView =
-    PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status)
+  // Single-property responses (create/patch/archive) feed a list refetch, so counts there are 0;
+  // the list + detail compute real tallies.
+  private def toView(r: Property, c: PropertyCounts = PropertyCounts(0, 0, 0, 0)): PropertyView =
+    PropertyView(r.id, r.name, r.jurisdiction, r.defaultCurrency, r.status, c.rooms, c.assets, c.bills, c.vendors)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no write access to property"))
@@ -72,15 +82,17 @@ object Properties {
     * public so tests can exercise the real authz + scope + query path without HTTP plumbing.
     */
   def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] = {
-    val tx: ConnectionIO[(Boolean, List[Property])] = for {
+    val tx: ConnectionIO[(Boolean, List[(Property, PropertyCounts)])] = for {
       authz <- Authz.authorizer(p.role)
       allowed = authz.canRead("property")
-      props <- if (allowed) PropertyRepo.listForPrincipal(p.userId) else List.empty[Property].pure[ConnectionIO]
+      props <-
+        if (allowed) PropertyRepo.listForPrincipalWithCounts(p.userId)
+        else List.empty[(Property, PropertyCounts)].pure[ConnectionIO]
     } yield (allowed, props)
 
     tx.transact(xa).map {
       // Archived/sold properties are hidden from the default list (AC8); detail still reads them.
-      case (true, props) => Right(props.filter(_.status == "active").map(toView))
+      case (true, props) => Right(props.collect { case (pr, c) if pr.status == "active" => toView(pr, c) })
       case (false, _) => Left(forbidden)
     }
   }
@@ -107,7 +119,7 @@ object Properties {
           else if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else
             PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
-              PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+              PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
@@ -121,7 +133,7 @@ object Properties {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
         case Some(_) =>
           if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
-          else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(toView).toRight(notFound))
+          else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
@@ -141,9 +153,21 @@ object Properties {
         case (true, None) => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, Some(pr)) =>
           PropertyRepo
-            .locationCount(id)
-            .map(rooms =>
-              Right(PropertyDetail(pr.id, pr.name, pr.jurisdiction, pr.defaultCurrency, pr.status, rooms, 0, 0, 0))
+            .countsFor(id)
+            .map(c =>
+              Right(
+                PropertyDetail(
+                  pr.id,
+                  pr.name,
+                  pr.jurisdiction,
+                  pr.defaultCurrency,
+                  pr.status,
+                  c.rooms,
+                  c.assets,
+                  c.bills,
+                  c.vendors
+                )
+              )
             )
       }
     } yield result

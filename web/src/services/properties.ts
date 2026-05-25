@@ -1,25 +1,25 @@
 import { z } from "zod";
 import { api } from "./http";
 
-/** F03 — the property as the API returns it (mirrors backend api.Properties.PropertyView). */
+/** F03 — the property as the API returns it (mirrors backend api.Properties.PropertyView), incl. the
+  * per-property rooms/assets/bills/vendors tallies shown on the cards + Bible. */
 export const PropertySchema = z.object({
   id: z.string(),
   name: z.string(),
   jurisdiction: z.string().nullable(),
   currency: z.string(),
   status: z.string(),
-});
-export type Property = z.infer<typeof PropertySchema>;
-
-const PropertiesSchema = z.array(PropertySchema);
-
-/** The Bible aggregate (counts beyond rooms are placeheld until their features land). */
-export const PropertyDetailSchema = PropertySchema.extend({
   rooms: z.number(),
   assets: z.number(),
   bills: z.number(),
   vendors: z.number(),
 });
+export type Property = z.infer<typeof PropertySchema>;
+
+const PropertiesSchema = z.array(PropertySchema);
+
+/** The Bible aggregate — same shape as the list row (the counts are the aggregate). */
+export const PropertyDetailSchema = PropertySchema;
 export type PropertyDetail = z.infer<typeof PropertyDetailSchema>;
 
 export type CreatePropertyReq = {

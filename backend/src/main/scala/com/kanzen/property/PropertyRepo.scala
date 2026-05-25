@@ -7,6 +7,9 @@ import doobie.postgres.implicits._
 import java.util.UUID
 
 final case class Property(id: UUID, name: String, jurisdiction: Option[String], defaultCurrency: String, status: String)
+
+/** The per-property tallies on the Bible + property cards (rooms/assets/bills/vendors). */
+final case class PropertyCounts(rooms: Int, assets: Int, bills: Int, vendors: Int)
 final case class Location(
     id: UUID,
     propertyId: UUID,
@@ -85,6 +88,45 @@ object PropertyRepo {
   /** Number of (live) locations under a property — the "rooms" count on the Bible. */
   def locationCount(propertyId: UUID): ConnectionIO[Int] =
     sql"select count(*) from locations where property_id = $propertyId and deleted_at is null".query[Int].unique
+
+  /** Live assets located anywhere within a property (asset → location → property). */
+  def assetCount(propertyId: UUID): ConnectionIO[Int] =
+    sql"""select count(*) from assets a join locations l on a.location_id = l.id
+          where l.property_id = $propertyId and a.deleted_at is null""".query[Int].unique
+
+  /** Live bills attached to a property. */
+  def billCount(propertyId: UUID): ConnectionIO[Int] =
+    sql"select count(*) from bills where property_id = $propertyId and deleted_at is null".query[Int].unique
+
+  /** Vendors linked to a property (the directory many-to-many). */
+  def vendorCount(propertyId: UUID): ConnectionIO[Int] =
+    sql"select count(*) from vendor_property_link where property_id = $propertyId".query[Int].unique
+
+  /** Full counts for one property — feeds the Bible aggregate. */
+  def countsFor(propertyId: UUID): ConnectionIO[PropertyCounts] =
+    for {
+      rooms <- locationCount(propertyId)
+      assets <- assetCount(propertyId)
+      bills <- billCount(propertyId)
+      vendors <- vendorCount(propertyId)
+    } yield PropertyCounts(rooms, assets, bills, vendors)
+
+  /** Scoped list (as [[listForPrincipal]]) but with the per-property tallies for the cards, in one query. */
+  def listForPrincipalWithCounts(userId: UUID): ConnectionIO[List[(Property, PropertyCounts)]] =
+    sql"""select p.id, p.name, p.jurisdiction, p.default_currency, p.status,
+            (select count(*) from locations l where l.property_id = p.id and l.deleted_at is null),
+            (select count(*) from assets a join locations l on a.location_id = l.id
+               where l.property_id = p.id and a.deleted_at is null),
+            (select count(*) from bills b where b.property_id = p.id and b.deleted_at is null),
+            (select count(*) from vendor_property_link v where v.property_id = p.id)
+          from properties p
+          where p.deleted_at is null
+            and (not exists (select 1 from user_property_scopes s where s.user_id = $userId)
+                 or exists (select 1 from user_property_scopes s where s.user_id = $userId and s.property_id = p.id))
+          order by p.name"""
+      .query[(UUID, String, Option[String], String, String, Int, Int, Int, Int)]
+      .to[List]
+      .map(_.map { case (id, n, j, c, s, r, a, b, v) => (Property(id, n, j, c, s), PropertyCounts(r, a, b, v)) })
 
   private val locCols =
     fr"id, property_id, parent_id, kind, name, floor, area, notes, sort_order"

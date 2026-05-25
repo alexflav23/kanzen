@@ -42,10 +42,10 @@ const styles = stylex.create({
 
 function PropertyCard({ p, cover, onOpen }: { p: Property; cover: string; onOpen: () => void }) {
   const stats: [string, string][] = [
-    ["Currency", p.currency],
-    ["Rooms", "—"],
-    ["Assets", "—"],
-    ["Vendors", "—"],
+    ["Rooms", String(p.rooms)],
+    ["Assets", String(p.assets)],
+    ["Bills", String(p.bills)],
+    ["Vendors", String(p.vendors)],
   ];
   return (
     <button type="button" data-testid="property-card" onClick={onOpen} {...stylex.props(styles.card)}>
