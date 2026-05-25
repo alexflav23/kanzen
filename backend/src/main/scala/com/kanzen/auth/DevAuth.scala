@@ -34,10 +34,18 @@ final class DevAuth private (kid: String, kp: KeyPair, issuer: String, audience:
 }
 
 object DevAuth {
+
+  /** DEV-ONLY: a *stable* RSA keypair, derived deterministically from a fixed seed, so tokens survive backend restarts
+    * (a random per-boot key would invalidate every browser session on each rebuild — "Invalid signature for this
+    * token"). This only ever runs when `env=local` with no Cognito pool; real deployments verify against Cognito JWKS
+    * and never touch this. The seed is not a secret.
+    */
   def generate(issuer: String, audience: String): IO[DevAuth] =
     IO.blocking {
+      val rnd = java.security.SecureRandom.getInstance("SHA1PRNG")
+      rnd.setSeed("kanzen-dev-local-signing-key-v1".getBytes("UTF-8"))
       val gen = KeyPairGenerator.getInstance("RSA")
-      gen.initialize(2048)
+      gen.initialize(2048, rnd)
       new DevAuth("dev-local", gen.generateKeyPair(), issuer, audience)
     }
 }

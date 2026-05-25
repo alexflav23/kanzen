@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { can as canFor, devToken, getMe, impersonate as impersonateSvc, type Me, type Persona } from "../services/auth";
+import { ApiError } from "../services/http";
 
 type AuthState = {
   token: string | null;
@@ -46,7 +47,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMeLoading(true);
     getMe(token)
       .then((m) => { if (live) setMe(m); })
-      .catch(() => { if (live) setMe(null); })
+      .catch((e) => {
+        if (!live) return;
+        setMe(null);
+        // A stale/invalid token (e.g. the backend restarted with a new dev signing key) → drop it
+        // so the user lands on sign-in, instead of every page showing "Couldn't load this".
+        if (e instanceof ApiError && e.unauthorized) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(PERSONA_KEY);
+          localStorage.removeItem(ADMIN_KEY);
+          setTokenState(null);
+          setPersona(null);
+        }
+      })
       .finally(() => { if (live) setMeLoading(false); });
     return () => { live = false; };
   }, [token]);

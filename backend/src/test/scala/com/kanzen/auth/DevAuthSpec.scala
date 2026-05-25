@@ -14,11 +14,20 @@ object DevAuthSpec extends SimpleIOSuite {
     }
   }
 
-  test("a token from a different dev keypair is rejected") {
+  test("the dev signing key is stable across restarts — a token still verifies under a fresh DevAuth") {
+    // `b` simulates a backend restart/rebuild. With a deterministic dev key the token minted by `a`
+    // must still validate, so browser sessions survive a restart instead of 'Invalid signature'.
     for {
       a <- DevAuth.generate("", "")
       b <- DevAuth.generate("", "")
       res <- JwtVerifier.verify(a.mint("x@kanzen.local", "staff"), b.jwks, "", "")
+    } yield expect(res.isRight)
+  }
+
+  test("a tampered token is rejected") {
+    for {
+      a <- DevAuth.generate("", "")
+      res <- JwtVerifier.verify(a.mint("x@kanzen.local", "staff") + "tampered", a.jwks, "", "")
     } yield expect(res.isLeft)
   }
 }
