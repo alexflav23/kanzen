@@ -95,10 +95,10 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await page.keyboard.press("Meta+d");
   if (await page.getByTestId("command-palette").isVisible().catch(() => false)) await page.keyboard.press("Escape");
 
-  // a "Coming soon" stub
-  where.v = "stub";
+  // Vehicles — the asset-registry 'vehicle' vertical (no more "Coming soon" stubs anywhere)
+  where.v = "vehicles";
   await nav.getByRole("link", { name: "Vehicles", exact: true }).click();
-  await expect(page.getByText("Coming soon.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vehicles" })).toBeVisible();
 
   // Settings — the real admin role-management page (audited like every other route)
   where.v = "settings";
