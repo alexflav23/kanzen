@@ -67,6 +67,18 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await expect(page.getByTestId("valuation-row").first()).toBeVisible();
 });
 
+test("an asset's key facts can be edited", async ({ page }) => {
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  const m = page.getByTestId("edit-asset");
+  await expect(m).toBeVisible();
+  const maker = `Audemars Piguet · ${Date.now() % 100000}`; // unique → no collision with other specs
+  await m.getByLabel("Maker").fill(maker);
+  await m.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(maker)).toBeVisible();
+});
+
 test("New asset creates an asset that appears", async ({ page }) => {
   const title = `E2E Asset ${Date.now()}`;
   await page.goto("/inventory");

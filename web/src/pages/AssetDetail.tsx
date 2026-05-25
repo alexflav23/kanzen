@@ -7,7 +7,8 @@ import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
 import {
-  getAsset, getAssetTimeline, getInsurance, getValuations, listWarranties, logAssetEvent, recordValuation,
+  editAsset, getAsset, getAssetTimeline, getInsurance, getValuations, listWarranties, logAssetEvent, recordValuation,
+  type AssetDetail as AssetDetailT,
 } from "../services/assets";
 import { listCategories } from "../services/categories";
 import { useAuth } from "../state/AuthContext";
@@ -126,12 +127,53 @@ function RecordValuationModal({ id, token, onClose }: { id: string; token: strin
   );
 }
 
+const ASSET_STATUSES = ["owned", "sold", "gifted", "lost", "stolen", "archived"];
+
+function EditAssetModal(
+  { asset, categories, token, onClose }: { asset: AssetDetailT; categories: { id: string; name: string }[]; token: string | null; onClose: () => void },
+) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(asset.title);
+  const [maker, setMaker] = useState(asset.maker ?? "");
+  const [categoryId, setCategoryId] = useState(asset.categoryId ?? categories[0]?.id ?? "");
+  const [ownershipStatus, setStatus] = useState(asset.ownershipStatus);
+  const mutation = useMutation({
+    mutationFn: () => editAsset(asset.id, token, { title: title.trim(), maker: maker.trim() || null, categoryId, ownershipStatus }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["asset", asset.id] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="edit-asset" onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); if (title.trim()) mutation.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Edit asset</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Title</span>
+          <input {...stylex.props(styles.control)} aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Maker</span>
+          <input {...stylex.props(styles.control)} aria-label="Maker" value={maker} onChange={(e) => setMaker(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
+          <select {...stylex.props(styles.control)} aria-label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Status</span>
+          <select {...stylex.props(styles.control)} aria-label="Status" value={ownershipStatus} onChange={(e) => setStatus(e.target.value)}>
+            {ASSET_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending || !title.trim()}>{mutation.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function AssetDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { token, can } = useAuth();
   const [logging, setLogging] = useState(false);
   const [valuing, setValuing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
   const timelineQ = useQuery({ queryKey: ["asset-timeline", id, token], queryFn: () => getAssetTimeline(id, token), enabled: assetQ.isSuccess });
@@ -155,6 +197,7 @@ export function AssetDetail() {
       {back}
       {logging && <LogEventModal id={id} token={token} onClose={() => setLogging(false)} />}
       {valuing && <RecordValuationModal id={id} token={token} onClose={() => setValuing(false)} />}
+      {editing && <EditAssetModal asset={assetQ.data} categories={catsQ.data ?? []} token={token} onClose={() => setEditing(false)} />}
       <div>
         {a.maker && <div {...stylex.props(styles.eyebrow)}>{a.maker}</div>}
         <h1 {...stylex.props(styles.title)}>{a.title}</h1>
@@ -167,7 +210,10 @@ export function AssetDetail() {
 
       <div {...stylex.props(styles.layout)}>
         <Card>
-          <CardHeader><CardTitle>Key facts</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Key facts</CardTitle>
+            {can("asset", "write") && <button type="button" onClick={() => setEditing(true)} {...stylex.props(styles.action)}>Edit</button>}
+          </CardHeader>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Category</span><span {...stylex.props(styles.kvV)}>{categoryName}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tracking</span><span {...stylex.props(styles.kvV)}>{modeLabel}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Quantity</span><span {...stylex.props(styles.kvV)}>{a.quantity}</span></div>

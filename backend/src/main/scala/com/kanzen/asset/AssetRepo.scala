@@ -93,6 +93,20 @@ object AssetRepo {
   def exists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from assets where id = $id and deleted_at is null)".query[Boolean].unique
 
+  /** Edit the base entity's key facts (title/maker/category/status). Attributes + lineage are edited via their own
+    * paths; this is the generic record edit every asset/refined-concept needs.
+    */
+  def update(
+      id: UUID,
+      title: String,
+      maker: Option[String],
+      categoryId: UUID,
+      ownershipStatus: String
+  ): ConnectionIO[Int] =
+    sql"""update assets set title = $title, maker = $maker, category_id = $categoryId,
+            ownership_status = $ownershipStatus, updated_at = now()
+          where id = $id and deleted_at is null""".update.run
+
   def byCategory(categoryId: UUID): ConnectionIO[List[Asset]] =
     (fr"select" ++ cols ++ fr"from assets where category_id = $categoryId and deleted_at is null").query[Asset].to[List]
 

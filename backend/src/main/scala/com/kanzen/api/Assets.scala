@@ -27,6 +27,7 @@ object Assets {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   private val MODES = Set("unique", "grouped_quantity", "structured_set")
+  private val STATUSES = Set("owned", "sold", "gifted", "lost", "stolen", "archived")
 
   final case class AssetView(
       id: UUID,
@@ -70,6 +71,7 @@ object Assets {
       locationId: Option[UUID],
       attributes: Option[Json]
   )
+  final case class EditReq(title: String, maker: Option[String], categoryId: UUID, ownershipStatus: String)
 
   private def view(a: Asset): AssetView =
     AssetView(a.id, a.title, a.maker, a.categoryId, a.trackingMode, a.quantity, a.ownershipStatus)
@@ -203,6 +205,28 @@ object Assets {
     }
   }
 
+  /** Edit an existing asset's key facts (the generic record edit — Manager+). */
+  def update(xa: Transactor[IO], p: Principal, id: UUID, req: EditReq): IO[Out[AssetDetail]] = {
+    if (req.title.trim.isEmpty) IO.pure(Left(badReq("title is required")))
+    else if (!STATUSES.contains(req.ownershipStatus))
+      IO.pure(Left(badReq(s"status must be one of ${STATUSES.mkString(", ")}")))
+    else {
+      val tx = for {
+        authz <- Authz.authorizer(p.role)
+        exists <- AssetRepo.exists(id)
+        catOk <- AssetRepo.categoryExists(req.categoryId)
+        res <-
+          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
+          else if (!exists) (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
+          else if (!catOk) (Left(badReq("category not found")): Out[AssetDetail]).pure[ConnectionIO]
+          else
+            AssetRepo.update(id, req.title.trim, req.maker, req.categoryId, req.ownershipStatus) *>
+              AssetRepo.get(id).map(_.map(detailOf).toRight(notFound): Out[AssetDetail])
+      } yield res
+      tx.transact(xa)
+    }
+  }
+
   // ---- endpoints ----
   private val err = statusCode.and(jsonBody[ApiError])
 
@@ -235,6 +259,15 @@ object Assets {
       .out(jsonBody[AssetDetail])
       .summary("Create an asset (Manager+; tracking modes unique/grouped/structured)")
 
+  val patchEndpoint: Endpoint[String, (UUID, EditReq), (StatusCode, ApiError), AssetDetail, Any] =
+    sttp.tapir.endpoint.patch
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("id"))
+      .in(jsonBody[EditReq])
+      .errorOut(err)
+      .out(jsonBody[AssetDetail])
+      .summary("Edit an asset's key facts (Manager+)")
+
   val categoriesEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[CategoryView], Any] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
@@ -249,8 +282,12 @@ object Assets {
       .serverLogic(p => { case (cat, q, vert) => list(xa, p, cat, q, vert) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
+    patchEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id: UUID, r: EditReq) => update(xa, p, id, r) }),
     categoriesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => categories(xa, p))
   )
 
-  val endpoints: List[AnyEndpoint] = List(listEndpoint, detailEndpoint, createEndpoint, categoriesEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(listEndpoint, detailEndpoint, createEndpoint, patchEndpoint, categoriesEndpoint)
 }

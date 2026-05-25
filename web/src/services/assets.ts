@@ -118,6 +118,13 @@ export function getInsurance(id: string, token: string | null): Promise<Insuranc
   return api(`/api/assets/${id}/insurance`, InsuranceSchema, { token });
 }
 
+export type EditAssetReq = { title: string; maker: string | null; categoryId: string; ownershipStatus: string };
+
+/** Edit an asset's key facts (Manager+). */
+export function editAsset(id: string, token: string | null, req: EditAssetReq): Promise<AssetDetail> {
+  return api(`/api/assets/${id}`, AssetDetailSchema, { method: "PATCH", token, body: req });
+}
+
 export function createAsset(req: CreateAssetReq, token: string | null): Promise<AssetDetail> {
   return api("/api/assets", AssetDetailSchema, { method: "POST", body: req, token });
 }

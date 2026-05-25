@@ -108,6 +108,21 @@ object AssetsApiIT extends IOSuite {
         expect(!vehicles.exists(_.title == "Royal Oak 15500ST")) and expect(all.size > vehicles.size)
   }
 
+  test("edit an asset's key facts (Manager+); bad status 400; staff 403") { xa =>
+    for {
+      cat <- AssetRepo.createCategory("EditCat", None).transact(xa)
+      a <- Assets.create(xa, principal("principal"), req("Old Title", cat, "unique", 1)).map(_.toOption.get)
+      edited <- Assets
+        .update(xa, principal("principal"), a.id, Assets.EditReq("New Title", Some("New Maker"), cat, "sold"))
+        .map(_.toOption.get)
+      reread <- Assets.detail(xa, principal("principal"), a.id).map(_.toOption.get)
+      badStatus <- Assets.update(xa, principal("principal"), a.id, Assets.EditReq("X", None, cat, "banana"))
+      staffEdit <- Assets.update(xa, principal("staff"), a.id, Assets.EditReq("Y", None, cat, "owned"))
+    } yield expect(edited.title == "New Title") and expect(edited.ownershipStatus == "sold") and
+      expect(reread.title == "New Title" && reread.maker.contains("New Maker")) and
+      expect(badStatus.left.exists(_._1.code == 400)) and expect(staffEdit.left.exists(_._1.code == 403))
+  }
+
   test("create is rejected for a bad tracking mode (400) and missing category (400)") { xa =>
     for {
       cat <- AssetRepo.createCategory("Misc", None).transact(xa)
