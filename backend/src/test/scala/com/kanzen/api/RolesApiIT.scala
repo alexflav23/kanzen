@@ -86,4 +86,69 @@ object RolesApiIT extends IOSuite {
       badRole <- Roles.setRule(xa, admin, SetRuleReq("ghost", "asset", None, "read"))
     } yield expect(badLevel.left.exists(_._1.code == 400)) and expect(badRole.left.exists(_._1.code == 400))
   }
+
+  // --- role CRUD (fully DB-driven roles) ---
+
+  test("the four default staff roles are seeded as editable (non-system) rows") { xa =>
+    Roles.listRoles(xa, admin).map(_.toOption.get).map { roles =>
+      val defaults = List("Personal Assistant", "Executive Assistant", "Housekeeper", "Gardener")
+      forEach(defaults)(n => expect(roles.exists(r => r.name == n && !r.isSystem)))
+    }
+  }
+
+  test("admin creates a custom role → it appears (default-deny), is audited; duplicate is 409") { xa =>
+    import com.kanzen.api.Roles.CreateRoleReq
+    for {
+      created <- Roles.createRole(xa, admin, CreateRoleReq("Night Concierge", Some("evenings"))).map(_.toOption.get)
+      roles <- Roles.listRoles(xa, admin).map(_.toOption.get)
+      rules <- PermissionRepo.rulesFor("Night Concierge").transact(xa) // new role starts with no rules
+      dup <- Roles.createRole(xa, admin, CreateRoleReq("Night Concierge", None))
+      audits <-
+        sql"select count(*) from audit_log_entries where action = 'role.create' and actor_id = ${admin.userId}"
+          .query[Long]
+          .unique
+          .transact(xa)
+      _ <- Roles.deleteRole(xa, admin, "Night Concierge") // clean up
+    } yield expect(created.name == "Night Concierge") and expect(!created.isSystem) and
+      expect(roles.exists(_.name == "Night Concierge")) and expect(rules.isEmpty) and
+      expect(dup.left.exists(_._1.code == 409)) and expect(audits >= 1L)
+  }
+
+  test("admin deletes a custom role + its rules (audited)") { xa =>
+    import com.kanzen.api.Roles.{CreateRoleReq, SetRuleReq}
+    for {
+      _ <- Roles.createRole(xa, admin, CreateRoleReq("Pool Tech", None))
+      _ <- Roles.setRule(xa, admin, SetRuleReq("Pool Tech", "maintenance", None, "write"))
+      del <- Roles.deleteRole(xa, admin, "Pool Tech")
+      gone <- PermissionRepo.roleExists("Pool Tech").transact(xa)
+      rulesGone <- PermissionRepo.rulesFor("Pool Tech").transact(xa)
+    } yield expect(del.isRight) and expect(!gone) and expect(rulesGone.isEmpty)
+  }
+
+  test("system roles and in-use roles are protected from deletion (409); unknown is 404") { xa =>
+    import com.kanzen.api.Roles.CreateRoleReq
+    val tempUser = UUID.randomUUID()
+    for {
+      system <- Roles.deleteRole(xa, admin, "principal")
+      unknown <- Roles.deleteRole(xa, admin, "no-such-role")
+      // a custom role with a user assigned can't be deleted (would lock them out)
+      _ <- Roles.createRole(xa, admin, CreateRoleReq("Temp Valet", None))
+      _ <-
+        sql"insert into users (id, display_name, email, role, status) values ($tempUser, 'Valet', 'valet@kanzen.local', 'Temp Valet', 'active')".update.run
+          .transact(xa)
+      inUse <- Roles.deleteRole(xa, admin, "Temp Valet")
+      _ <- sql"delete from users where id = $tempUser".update.run.transact(xa) // cleanup
+      _ <- Roles.deleteRole(xa, admin, "Temp Valet")
+    } yield expect(system.left.exists(_._1.code == 409)) and
+      expect(unknown.left.exists(_._1.code == 404)) and
+      expect(inUse.left.exists(_._1.code == 409))
+  }
+
+  test("a non-admin cannot create or delete roles (403)") { xa =>
+    import com.kanzen.api.Roles.CreateRoleReq
+    for {
+      create <- Roles.createRole(xa, manager, CreateRoleReq("Sneaky", None))
+      del <- Roles.deleteRole(xa, manager, "Gardener")
+    } yield expect(create.left.exists(_._1.code == 403)) and expect(del.left.exists(_._1.code == 403))
+  }
 }

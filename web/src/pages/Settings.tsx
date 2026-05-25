@@ -6,7 +6,8 @@ import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Plus } from "../components/icons";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { useAuth } from "../state/AuthContext";
-import { deletePermission, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
+import { createRole, deletePermission, deleteRole, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
+import { ApiError } from "../services/http";
 
 // "" = no explicit rule (the role falls back to default-deny / the '*' wildcard).
 const LEVELS = ["", "none", "read", "write", "admin"] as const;
@@ -31,6 +32,14 @@ const styles = stylex.create({
   fieldLabel: { fontSize: "11px", color: colors.ink3 },
   input: { padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13px", width: "160px" },
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
+  rolesCard: { marginBottom: "24px" },
+  roleRow: { display: "flex", alignItems: "center", gap: "10px", padding: "10px 16px", borderTop: `1px solid ${colors.line}` },
+  grow: { flex: 1 },
+  roleName: { fontWeight: 600, fontSize: "13px", color: colors.ink },
+  roleDesc: { fontSize: "12px", color: colors.ink3, marginTop: "2px" },
+  sysPill: { marginLeft: "8px", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em", color: colors.ink3, border: `1px solid ${colors.line}`, borderRadius: radius.sm, padding: "1px 6px" },
+  delBtn: { padding: "5px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.danger, cursor: "pointer", fontSize: "12.5px" },
+  err: { fontSize: "12.5px", color: colors.danger, padding: "8px 16px" },
 });
 
 const isRoot = (role: string, resource: string, field: string | null) =>
@@ -43,12 +52,22 @@ export function Settings() {
   const perms = useQuery({ queryKey: ["permissions", token], queryFn: () => getPermissions(token), enabled: can("*", "admin") });
 
   const [draft, setDraft] = useState({ role: "", resource: "", field: "", level: "read" });
+  const [newRole, setNewRole] = useState({ name: "", description: "" });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["permissions"] });
+  const invalidateRoles = () => {
+    qc.invalidateQueries({ queryKey: ["roles"] });
+    qc.invalidateQueries({ queryKey: ["permissions"] });
+  };
   const setMut = useMutation({ mutationFn: (r: RuleInput) => setPermission(token, r), onSuccess: invalidate });
   const delMut = useMutation({
     mutationFn: (r: { role: string; resource: string; field: string | null }) => deletePermission(token, r.role, r.resource, r.field),
     onSuccess: invalidate,
   });
+  const createMut = useMutation({
+    mutationFn: () => createRole(token, newRole.name.trim(), newRole.description.trim() || null),
+    onSuccess: () => { setNewRole({ name: "", description: "" }); invalidateRoles(); },
+  });
+  const deleteRoleMut = useMutation({ mutationFn: (name: string) => deleteRole(token, name), onSuccess: invalidateRoles });
 
   // Rows = the distinct (resource, field) pairs across all rules; columns = roles.
   const rows = useMemo(() => {
@@ -98,6 +117,57 @@ export function Settings() {
           person's UI on their next sign-in, and every edit is audited.
         </p>
       </header>
+
+      <Card style={styles.rolesCard}>
+        <CardHeader><CardTitle>Roles</CardTitle></CardHeader>
+        {roles.isPending ? <Loading /> : roles.isError ? <ErrorState error={roles.error} /> : (
+          <div>
+            {roles.data.map((r) => (
+              <div key={r.name} {...stylex.props(styles.roleRow)}>
+                <div {...stylex.props(styles.grow)}>
+                  <span {...stylex.props(styles.roleName)}>{r.name}</span>
+                  {r.isSystem && <span {...stylex.props(styles.sysPill)}>system</span>}
+                  {r.description && <div {...stylex.props(styles.roleDesc)}>{r.description}</div>}
+                </div>
+                {!r.isSystem && (
+                  <button
+                    type="button"
+                    {...stylex.props(styles.delBtn)}
+                    aria-label={`Delete role ${r.name}`}
+                    disabled={deleteRoleMut.isPending}
+                    onClick={() => { if (window.confirm(`Delete the "${r.name}" role and its permissions?`)) deleteRoleMut.mutate(r.name); }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            ))}
+            {deleteRoleMut.isError && (
+              <div {...stylex.props(styles.err)} role="alert">
+                {deleteRoleMut.error instanceof ApiError ? deleteRoleMut.error.detail : "Couldn't delete the role."}
+              </div>
+            )}
+            <div {...stylex.props(styles.addRow)} style={{ paddingLeft: 16, paddingRight: 16 }}>
+              <div {...stylex.props(styles.fieldGroup)}>
+                <label {...stylex.props(styles.fieldLabel)} htmlFor="new-role-name">New role</label>
+                <input id="new-role-name" {...stylex.props(styles.input)} placeholder="e.g. Chef" value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} />
+              </div>
+              <div {...stylex.props(styles.fieldGroup)}>
+                <label {...stylex.props(styles.fieldLabel)} htmlFor="new-role-desc">Description (optional)</label>
+                <input id="new-role-desc" {...stylex.props(styles.input)} placeholder="what they can do" value={newRole.description} onChange={(e) => setNewRole({ ...newRole, description: e.target.value })} />
+              </div>
+              <button type="button" {...stylex.props(styles.btn)} disabled={!newRole.name.trim() || createMut.isPending} onClick={() => createMut.mutate()}>
+                <Plus size={14} /> Add role
+              </button>
+            </div>
+            {createMut.isError && (
+              <div {...stylex.props(styles.err)} role="alert">
+                {createMut.error instanceof ApiError ? createMut.error.detail : "Couldn't create the role."}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card>
         <CardHeader><CardTitle>Permission matrix</CardTitle></CardHeader>

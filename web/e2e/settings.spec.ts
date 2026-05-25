@@ -9,8 +9,8 @@ test("admin views the matrix, adds a rule, and it persists + can be cleared", as
   // the principal's root admin grant is protected — rendered locked, not as an editable select
   await expect(page.getByText("admin 🔒").first()).toBeVisible();
 
-  // add a fresh rule: staff → read on 'report'
-  await page.getByLabel("Role").selectOption("staff");
+  // add a fresh rule: staff → read on 'report' (exact label — "New role" also contains "Role")
+  await page.getByLabel("Role", { exact: true }).selectOption("staff");
   await page.getByLabel("Resource").fill("report");
   await page.getByLabel("Level").selectOption("read");
   await page.getByRole("button", { name: "Add rule" }).click();
@@ -26,6 +26,29 @@ test("admin views the matrix, adds a rule, and it persists + can be cleared", as
   await expect(page.getByLabel("staff · report")).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel("staff · report")).toHaveCount(0);
+});
+
+// F02 — fully DB-driven roles: the four defaults are seeded (editable, not hardcoded), and an admin
+// can create + delete custom roles on the fly.
+test("admin manages roles — defaults seeded; create + delete a custom role", async ({ page }) => {
+  page.on("dialog", (d) => d.accept()); // accept the delete-confirm prompt
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
+  // the seeded household defaults are present (and non-system → deletable, so they render a Delete)
+  await expect(page.getByText("Personal Assistant").first()).toBeVisible();
+  await expect(page.getByLabel("Delete role Gardener")).toBeVisible();
+  // system roles are protected — no delete control
+  await expect(page.getByLabel("Delete role principal")).toHaveCount(0);
+
+  // create a unique custom role → it appears (in the roles list + as a matrix column)
+  const name = `E2E Role ${Date.now()}`;
+  await page.getByLabel("New role").fill(name);
+  await page.getByRole("button", { name: "Add role" }).click();
+  await expect(page.getByText(name).first()).toBeVisible();
+
+  // delete it (cleanup) → disappears everywhere
+  await page.getByLabel(`Delete role ${name}`).click();
+  await expect(page.getByText(name)).toHaveCount(0);
 });
 
 // Settings is admin-gated — it appears in the nav for the admin (Flavian) principal.

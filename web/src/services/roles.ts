@@ -23,6 +23,14 @@ export type RuleInput = { role: string; resource: string; field: string | null; 
 
 export const getRoles = (token: string | null) => api("/api/admin/roles", z.array(RoleSchema), { token });
 
+/** Create a custom role (starts default-deny; tune its permissions in the matrix). */
+export const createRole = (token: string | null, name: string, description: string | null) =>
+  api("/api/admin/roles", RoleSchema, { method: "POST", token, body: { name, description } });
+
+/** Delete a custom role + its rules (system + in-use roles are protected server-side). */
+export const deleteRole = (token: string | null, name: string) =>
+  api(`/api/admin/roles?${new URLSearchParams({ name }).toString()}`, z.object({ ok: z.boolean() }), { method: "DELETE", token });
+
 export const getPermissions = (token: string | null) =>
   api("/api/admin/permissions", z.array(RuleSchema), { token });
 
