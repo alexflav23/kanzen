@@ -42,11 +42,18 @@ object ListsApiIT extends IOSuite {
       expect(after.exists(i => i.name == "Coffee" && i.status == "added"))
   }
 
-  test("the seeded grocery list is listable with its items") { xa =>
+  test("the seeded grocery list is listable with rich items (cadence, categories, needs-approval, est. cost)") { xa =>
     for {
       lists <- Lists.lists(xa, toby).map(_.toOption.get)
-      gl = lists.find(_.name == "Weekly groceries")
+      gl = lists.find(_.name == "Grocery — Wardian")
       items <- gl.fold(IO.pure(List.empty[Lists.ItemView]))(l => Lists.items(xa, toby, l.id).map(_.toOption.get))
-    } yield expect(gl.isDefined) and expect(items.exists(_.name == "Whole milk"))
+    } yield expect(gl.exists(_.cycle.contains("weekly"))) and expect(gl.exists(_.nextOrder.isDefined)) and
+      expect(items.exists(i => i.name == "Whole milk" && i.category.contains("Dairy"))) and
+      expect(
+        items.exists(i =>
+          i.name == "Truffle (fresh)" && i.status == "needs_approval" && i.estPriceMinor.contains(9500L)
+        )
+      ) and
+      expect(items.exists(_.addedBy.contains("Marcia"))) // resolved from the join
   }
 }

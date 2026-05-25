@@ -15,6 +15,7 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
+import java.time.LocalDate
 import java.util.UUID
 
 /** F08 — shopping lists + items. Staff propose (non-recurring proposals need approval); Manager/Principal manage +
@@ -23,13 +24,56 @@ import java.util.UUID
 object Lists {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
-  final case class ListView(id: UUID, name: String, vendor: Option[String], propertyId: Option[UUID])
-  final case class ItemView(id: UUID, name: String, qty: Int, status: String, recurring: Boolean, url: Option[String])
+  final case class ListView(
+      id: UUID,
+      name: String,
+      vendor: Option[String],
+      propertyId: Option[UUID],
+      `type`: String,
+      cycle: Option[String],
+      nextOrder: Option[LocalDate],
+      status: String
+  )
+  final case class ItemView(
+      id: UUID,
+      name: String,
+      qty: Int,
+      status: String,
+      recurring: Boolean,
+      url: Option[String],
+      category: Option[String],
+      note: Option[String],
+      estPriceMinor: Option[Long],
+      currency: Option[String],
+      addedBy: Option[String]
+  )
   final case class CreateListReq(name: String, vendor: Option[String], propertyId: Option[UUID])
-  final case class AddItemReq(name: String, qty: Option[Int], recurring: Option[Boolean], url: Option[String])
+  final case class AddItemReq(
+      name: String,
+      qty: Option[Int],
+      recurring: Option[Boolean],
+      url: Option[String],
+      category: Option[String] = None,
+      note: Option[String] = None,
+      estPriceMinor: Option[Long] = None
+  )
 
-  private def lv(l: ShoppingList): ListView = ListView(l.id, l.name, l.vendor, l.propertyId)
-  private def iv(i: ListItem): ItemView = ItemView(i.id, i.name, i.qty, i.status, i.recurring, i.url)
+  private def lv(l: ShoppingList): ListView =
+    ListView(l.id, l.name, l.vendor, l.propertyId, l.`type`, l.cycle, l.nextOrder, l.status)
+  private def iv(i: ListItem): ItemView =
+    ItemView(
+      i.id,
+      i.name,
+      i.qty,
+      i.status,
+      i.recurring,
+      i.url,
+      i.category,
+      i.note,
+      i.estPriceMinor,
+      i.currency,
+      i.addedBy
+    )
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to lists"))
@@ -51,7 +95,9 @@ object Lists {
   def createList(xa: Transactor[IO], p: Principal, r: CreateListReq): IO[Out[ListView]] =
     write(
       p,
-      ListRepo.createList(r.propertyId, r.name, r.vendor).map(id => ListView(id, r.name, r.vendor, r.propertyId))
+      ListRepo
+        .createList(r.propertyId, r.name, r.vendor)
+        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active"))
     ).transact(xa)
   def items(xa: Transactor[IO], p: Principal, listId: UUID): IO[Out[List[ItemView]]] =
     read(p, ListRepo.items(listId).map(_.map(iv))).transact(xa)
@@ -61,7 +107,18 @@ object Lists {
     write(
       p,
       ListRepo
-        .addItem(listId, r.name, r.qty.getOrElse(1), r.recurring.getOrElse(false), r.url, p.role == "staff")
+        .addItem(
+          listId,
+          r.name,
+          r.qty.getOrElse(1),
+          r.recurring.getOrElse(false),
+          r.url,
+          r.category,
+          r.note,
+          r.estPriceMinor,
+          Some(p.userId),
+          p.role == "staff"
+        )
         .map(iv)
     ).transact(xa)
 
@@ -79,6 +136,19 @@ object Lists {
   }
   def approve(xa: Transactor[IO], p: Principal, itemId: UUID): IO[Out[Unit]] = decide(xa, p, itemId, ListRepo.approve)
   def decline(xa: Transactor[IO], p: Principal, itemId: UUID): IO[Out[Unit]] = decide(xa, p, itemId, ListRepo.decline)
+
+  /** Place the order — rolls next-order forward by the list's cycle (Manager+). */
+  def placeOrder(xa: Transactor[IO], p: Principal, listId: UUID): IO[Out[Unit]] = {
+    val tx = for {
+      authz <- Authz.authorizer(p.role)
+      exists <- ListRepo.listExists(listId)
+      res <-
+        if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
+        else ListRepo.placeOrder(listId).as(Right(()): Out[Unit])
+    } yield res
+    tx.transact(xa)
+  }
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
@@ -121,6 +191,12 @@ object Lists {
     .errorOut(err)
     .out(jsonBody[Unit])
     .summary("Decline an item (Manager+)")
+  val placeOrderEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "lists" / path[UUID]("id") / "order")
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Place the order — roll the cycle forward (Manager+)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => lists(xa, p)),
@@ -130,9 +206,18 @@ object Lists {
     itemsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => items(xa, p, id)),
     addItemEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addItem(xa, p, id, r) }),
     approveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => approve(xa, p, id)),
-    declineEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => decline(xa, p, id))
+    declineEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => decline(xa, p, id)),
+    placeOrderEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => placeOrder(xa, p, id))
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(listsEndpoint, createListEndpoint, itemsEndpoint, addItemEndpoint, approveEndpoint, declineEndpoint)
+    List(
+      listsEndpoint,
+      createListEndpoint,
+      itemsEndpoint,
+      addItemEndpoint,
+      approveEndpoint,
+      declineEndpoint,
+      placeOrderEndpoint
+    )
 }

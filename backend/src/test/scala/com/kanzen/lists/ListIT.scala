@@ -20,6 +20,10 @@ object ListIT extends IOSuite {
         2,
         recurring = false,
         Some("https://amazon.co.uk/dove"),
+        category = Some("Toiletries"),
+        note = None,
+        estPriceMinor = None,
+        addedBy = None,
         proposedByStaff = true
       )
       _ <- ListRepo.approve(doveProposed.id)
@@ -29,6 +33,10 @@ object ListIT extends IOSuite {
         1,
         recurring = true,
         Some("https://harrods.com/eggs"),
+        category = Some("Dairy"),
+        note = None,
+        estPriceMinor = None,
+        addedBy = None,
         proposedByStaff = true
       )
       items <- ListRepo.items(list)

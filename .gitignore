@@ -21,3 +21,7 @@ node_modules/
 dist/
 build/
 *.log
+
+# Playwright artifacts
+test-results/
+.claude/scheduled_tasks.lock
