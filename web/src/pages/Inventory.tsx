@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Pill } from "../components/Pill";
 import { Card } from "../components/Card";
-import { Plus, Search, Filter, ChevronDown, X } from "../components/icons";
+import { Plus, Search, Filter, ChevronDown, X, Shield } from "../components/icons";
 import { createAsset, listAssets, type AssetView } from "../services/assets";
 import { listCategories, type Category } from "../services/categories";
+import { getRegistryHealth } from "../services/insights";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -68,6 +69,10 @@ const styles = stylex.create({
   primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
   chev: { display: "inline-flex" },
   chevClosed: { transform: "rotate(-90deg)" },
+  dqList: { listStyle: "none", margin: 0, padding: "0 4px", display: "flex", flexDirection: "column", gap: "7px" },
+  dqRow: { display: "flex", alignItems: "center", fontSize: "12.5px", color: colors.ink2 },
+  dqPct: { fontVariantNumeric: "tabular-nums", color: colors.ink3, fontWeight: 500 },
+  dqLink: { display: "inline-block", marginTop: "12px", padding: "0 4px", fontSize: "12px", color: colors.accent, textDecoration: "none" },
 });
 
 function FilterGroup({ label, defaultOpen, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
@@ -162,6 +167,10 @@ export function Inventory() {
 
   const assetsQ = useQuery({ queryKey: ["assets", category, search, token], queryFn: () => listAssets(token, category, search) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token) });
+  // F23 registry health — available to anyone who can read the registry (this page's gate).
+  const healthQ = useQuery({ queryKey: ["registry-health", token], queryFn: () => getRegistryHealth(token) });
+  const h = healthQ.data;
+  const completeness = h ? Math.round((h.photographedPct + h.categorisedPct + h.locatedPct + h.proofPct) / 4) : null;
 
   const categories = catsQ.data ?? [];
   const categoryName = useMemo(() => {
@@ -191,8 +200,16 @@ export function Inventory() {
       <div {...stylex.props(styles.stats)}>
         <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Assets shown</div><div {...stylex.props(styles.statN)}>{shown.length}</div><div {...stylex.props(styles.statSub)}>of {all.length} in registry</div></div>
         <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Categories</div><div {...stylex.props(styles.statN)}>{categories.length}</div><div {...stylex.props(styles.statSub)}>across the registry</div></div>
-        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Estimated value</div><div {...stylex.props(styles.statN)}>—</div><div {...stylex.props(styles.statSub)}>valuation arrives in F20</div></div>
-        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Completeness</div><div {...stylex.props(styles.statN)}>—</div><div {...stylex.props(styles.statSub)}>data quality in F23</div></div>
+        <div {...stylex.props(styles.stat)}>
+          <div {...stylex.props(styles.statL)}>Completeness</div>
+          <div {...stylex.props(styles.statN)}>{completeness != null ? `${completeness}%` : "—"}</div>
+          <div {...stylex.props(styles.statSub)}>across {h?.total ?? all.length} assets</div>
+        </div>
+        <div {...stylex.props(styles.stat)}>
+          <div {...stylex.props(styles.statL)}>Proof of value</div>
+          <div {...stylex.props(styles.statN)}>{h ? `${h.proofPct}%` : "—"}</div>
+          <div {...stylex.props(styles.statSub)}>have documented proof</div>
+        </div>
       </div>
 
       <div {...stylex.props(styles.layout)}>
@@ -219,6 +236,21 @@ export function Inventory() {
               ))}
             </FilterGroup>
           </Card>
+
+          {h && (
+            <Card style={styles.railCard}>
+              <div {...stylex.props(styles.railHead)}>
+                <Shield size={13} /><span {...stylex.props(styles.railTitle)}>Data quality</span>
+              </div>
+              <ul {...stylex.props(styles.dqList)}>
+                <li {...stylex.props(styles.dqRow)}><span {...stylex.props(styles.grow)}>Photographed</span><span {...stylex.props(styles.dqPct)}>{h.photographedPct}%</span></li>
+                <li {...stylex.props(styles.dqRow)}><span {...stylex.props(styles.grow)}>Categorised</span><span {...stylex.props(styles.dqPct)}>{h.categorisedPct}%</span></li>
+                <li {...stylex.props(styles.dqRow)}><span {...stylex.props(styles.grow)}>Located</span><span {...stylex.props(styles.dqPct)}>{h.locatedPct}%</span></li>
+                <li {...stylex.props(styles.dqRow)}><span {...stylex.props(styles.grow)}>Proof of value</span><span {...stylex.props(styles.dqPct)}>{h.proofPct}%</span></li>
+              </ul>
+              <Link to="/insights" {...stylex.props(styles.dqLink)}>View registry health →</Link>
+            </Card>
+          )}
         </aside>
 
         <div {...stylex.props(styles.main)}>

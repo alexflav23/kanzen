@@ -24,6 +24,10 @@ vi.mock("../services/assets", () => ({
 vi.mock("../services/categories", () => ({
   listCategories: vi.fn(async () => [{ id: WATCHES, name: "Watches", parentId: null }]),
 }));
+vi.mock("../services/insights", () => ({
+  // avg(67,100,33,50) = 62.5 → 63%
+  getRegistryHealth: vi.fn(async () => ({ total: 3, photographedPct: 67, categorisedPct: 100, locatedPct: 33, proofPct: 50 })),
+}));
 
 import { Inventory } from "../pages/Inventory";
 
@@ -40,6 +44,12 @@ describe("Inventory", () => {
   it("lists the assets from the API", async () => {
     renderInv();
     expect(await screen.findAllByTestId("asset-card")).toHaveLength(3);
+  });
+
+  it("shows real registry completeness from the health aggregate", async () => {
+    renderInv();
+    expect(await screen.findByText("63%")).toBeInTheDocument(); // avg of the four checks
+    expect(await screen.findByText("Data quality")).toBeInTheDocument(); // the rail nudge
   });
 
   it("filters by a category from the rail", async () => {
