@@ -17,3 +17,15 @@ test("the category filter narrows the agenda to one kind", async ({ page }) => {
   // the maintenance event is filtered out
   await expect(page.getByText("Plumber visit · Wardian")).toBeHidden();
 });
+
+test("New event creates an event that appears in the agenda", async ({ page }) => {
+  const title = `E2E Event ${Date.now()}`;
+  await page.goto("/calendar");
+  await page.getByRole("button", { name: "New event" }).click();
+  const modal = page.getByTestId("new-event");
+  await expect(modal).toBeVisible();
+  await modal.getByLabel("Title").fill(title);
+  await modal.getByRole("button", { name: "Add event" }).click();
+  // window spans today±, and the default date is today → it lands in the agenda
+  await expect(page.getByText(title)).toBeVisible();
+});

@@ -18,3 +18,10 @@ export function listEvents(token: string | null, from: string, to: string, categ
   if (category) qs.set("category", category);
   return api(`/api/calendar/events?${qs.toString()}`, z.array(CalEventSchema), { token });
 }
+
+export type CreateEventReq = { title: string; on: string; category: string | null; propertyId: string | null };
+
+/** Create a native calendar event (Manager+). `on` is a YYYY-MM-DD date. */
+export function createEvent(token: string | null, req: CreateEventReq): Promise<CalEvent> {
+  return api("/api/calendar/events", CalEventSchema, { method: "POST", token, body: req });
+}
