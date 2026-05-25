@@ -89,9 +89,20 @@ object RolesApiIT extends IOSuite {
 
   // --- role CRUD (fully DB-driven roles) ---
 
-  test("the four default staff roles are seeded as editable (non-system) rows") { xa =>
+  test("the default household + estate staff roles are seeded as editable (non-system) rows") { xa =>
     Roles.listRoles(xa, admin).map(_.toOption.get).map { roles =>
-      val defaults = List("Personal Assistant", "Executive Assistant", "Housekeeper", "Gardener")
+      val defaults = List(
+        "Personal Assistant",
+        "Executive Assistant",
+        "Housekeeper",
+        "Gardener", // V2_57
+        "Estate Manager",
+        "Chef",
+        "Butler",
+        "Nanny",
+        "Chauffeur",
+        "Head of Security" // V2_58
+      )
       forEach(defaults)(n => expect(roles.exists(r => r.name == n && !r.isSystem)))
     }
   }

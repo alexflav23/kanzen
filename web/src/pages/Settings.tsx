@@ -18,6 +18,7 @@ const styles = stylex.create({
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px", maxWidth: "640px" },
+  matrixScroll: { overflowX: "auto" }, // many roles → let the matrix scroll rather than break layout
   table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
   th: { textAlign: "left", padding: "10px 12px", borderBottom: `1px solid ${colors.line}`, color: colors.ink3, fontWeight: 600, fontSize: "12px", textTransform: "capitalize" },
   thRole: { textAlign: "center" },
@@ -175,6 +176,7 @@ export function Settings() {
           : perms.isError ? <ErrorState error={perms.error} />
           : roles.isError ? <ErrorState error={roles.error} />
           : (
+            <div {...stylex.props(styles.matrixScroll)}>
             <table {...stylex.props(styles.table)}>
               <thead>
                 <tr>
@@ -215,6 +217,7 @@ export function Settings() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
         {roles.data && (
