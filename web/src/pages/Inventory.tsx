@@ -107,7 +107,7 @@ function FilterChip({ children, onClear }: { children: ReactNode; onClear: () =>
   );
 }
 
-function NewAssetModal({ token, categories, onClose }: { token: string | null; categories: Category[]; onClose: () => void }) {
+function NewAssetModal({ token, categories, vertical, onClose }: { token: string | null; categories: Category[]; vertical?: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [maker, setMaker] = useState("");
@@ -116,7 +116,7 @@ function NewAssetModal({ token, categories, onClose }: { token: string | null; c
   const [quantity, setQuantity] = useState(1);
   const mutation = useMutation({
     mutationFn: () =>
-      createAsset({ title, maker: maker || null, categoryId, vertical: null, trackingMode, quantity,
+      createAsset({ title, maker: maker || null, categoryId, vertical: vertical ?? null, trackingMode, quantity,
         parentAssetId: null, acquisitionCostMinor: null, acquisitionCurrency: null, locationId: null, attributes: null }, token),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["assets"] }); onClose(); },
   });
@@ -156,7 +156,9 @@ function modeBadge(a: AssetView): string | null {
   return null;
 }
 
-export function Inventory() {
+/** The generic registry surface. A `vertical` narrows it to one kind (e.g. Vehicles = the `vehicle`
+  * vertical) — same cards, add-flow, detail and stats; nothing bespoke per asset type. */
+export function Inventory({ vertical, label }: { vertical?: string; label?: string } = {}) {
   const navigate = useNavigate();
   const { token } = useAuth();
   const [search, setSearch] = useState("");
@@ -165,7 +167,7 @@ export function Inventory() {
   const [status, setStatus] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const assetsQ = useQuery({ queryKey: ["assets", category, search, token], queryFn: () => listAssets(token, category, search) });
+  const assetsQ = useQuery({ queryKey: ["assets", category, search, vertical ?? null, token], queryFn: () => listAssets(token, category, search, vertical) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token) });
   // F23 registry health — available to anyone who can read the registry (this page's gate).
   const healthQ = useQuery({ queryKey: ["registry-health", token], queryFn: () => getRegistryHealth(token) });
@@ -189,13 +191,13 @@ export function Inventory() {
       <header {...stylex.props(styles.header)}>
         <div>
           <div {...stylex.props(styles.eyebrow)}>Registry · Principal-private</div>
-          <h1 {...stylex.props(styles.title)}>Inventory</h1>
+          <h1 {...stylex.props(styles.title)}>{label ?? "Inventory"}</h1>
           <div {...stylex.props(styles.desc)}>Every owned object tracked through its life — provenance, valuation, location, custody, condition.</div>
         </div>
-        <button type="button" onClick={() => setAdding(true)} {...stylex.props(styles.btn)}><Plus size={14} /> New asset</button>
+        <button type="button" onClick={() => setAdding(true)} {...stylex.props(styles.btn)}><Plus size={14} /> New {label ? label.replace(/s$/, "").toLowerCase() : "asset"}</button>
       </header>
 
-      {adding && <NewAssetModal token={token} categories={categories} onClose={() => setAdding(false)} />}
+      {adding && <NewAssetModal token={token} categories={categories} vertical={vertical} onClose={() => setAdding(false)} />}
 
       <div {...stylex.props(styles.stats)}>
         <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Assets shown</div><div {...stylex.props(styles.statN)}>{shown.length}</div><div {...stylex.props(styles.statSub)}>of {all.length} in registry</div></div>

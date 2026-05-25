@@ -98,6 +98,16 @@ object AssetsApiIT extends IOSuite {
       expect(staffCat.left.exists(_._1.code == 403))
   }
 
+  test("the vertical filter scopes the registry — Vehicles = the 'vehicle' vertical (generic, not a bespoke module)") {
+    xa =>
+      for {
+        vehicles <- Assets.list(xa, principal("principal"), None, None, Some("vehicle")).map(_.toOption.get)
+        all <- Assets.list(xa, principal("principal"), None, None).map(_.toOption.get)
+      } yield expect(vehicles.exists(_.title == "Range Rover Autobiography")) and
+        expect(vehicles.forall(_.title == "Range Rover Autobiography")) and // only vehicles
+        expect(!vehicles.exists(_.title == "Royal Oak 15500ST")) and expect(all.size > vehicles.size)
+  }
+
   test("create is rejected for a bad tracking mode (400) and missing category (400)") { xa =>
     for {
       cat <- AssetRepo.createCategory("Misc", None).transact(xa)

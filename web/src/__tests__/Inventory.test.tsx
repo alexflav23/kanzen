@@ -30,11 +30,12 @@ vi.mock("../services/insights", () => ({
 }));
 
 import { Inventory } from "../pages/Inventory";
+import { listAssets } from "../services/assets";
 
-const renderInv = () =>
+const renderInv = (props: { vertical?: string; label?: string } = {}) =>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AuthProvider><MemoryRouter><Inventory /></MemoryRouter></AuthProvider>
+      <AuthProvider><MemoryRouter><Inventory {...props} /></MemoryRouter></AuthProvider>
     </QueryClientProvider>,
   );
 
@@ -44,6 +45,13 @@ describe("Inventory", () => {
   it("lists the assets from the API", async () => {
     renderInv();
     expect(await screen.findAllByTestId("asset-card")).toHaveLength(3);
+  });
+
+  it("a vertical narrows the same generic surface (Vehicles = 'vehicle' vertical)", async () => {
+    renderInv({ vertical: "vehicle", label: "Vehicles" });
+    expect(await screen.findByRole("heading", { name: "Vehicles" })).toBeInTheDocument();
+    await screen.findAllByTestId("asset-card");
+    expect(listAssets).toHaveBeenCalledWith("t", null, "", "vehicle");
   });
 
   it("shows real registry completeness from the health aggregate", async () => {

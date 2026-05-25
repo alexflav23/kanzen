@@ -42,10 +42,11 @@ export type CreateAssetReq = {
   attributes: Record<string, unknown> | null;
 };
 
-export function listAssets(token: string | null, category?: string | null, q?: string | null): Promise<AssetView[]> {
+export function listAssets(token: string | null, category?: string | null, q?: string | null, vertical?: string | null): Promise<AssetView[]> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (q) params.set("q", q);
+  if (vertical) params.set("vertical", vertical);
   const qs = params.toString();
   return api(`/api/assets${qs ? `?${qs}` : ""}`, z.array(AssetViewSchema), { token });
 }

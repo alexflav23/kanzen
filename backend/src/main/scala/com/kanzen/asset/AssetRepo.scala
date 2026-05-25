@@ -97,10 +97,15 @@ object AssetRepo {
     (fr"select" ++ cols ++ fr"from assets where category_id = $categoryId and deleted_at is null").query[Asset].to[List]
 
   /** Faceted list: optional category set (caller expands descendants) + a title/maker search. */
-  def list(categoryIds: Option[NonEmptyList[UUID]], q: Option[String]): ConnectionIO[List[Asset]] = {
+  def list(
+      categoryIds: Option[NonEmptyList[UUID]],
+      q: Option[String],
+      vertical: Option[String] = None
+  ): ConnectionIO[List[Asset]] = {
     val conds: List[Fragment] = List(
       Some(fr"deleted_at is null"),
       categoryIds.map(ids => Fragments.in(fr"category_id", ids)),
+      vertical.map(v => fr"vertical = $v"),
       q.map(s => fr"(title ilike ${"%" + s + "%"} or maker ilike ${"%" + s + "%"})")
     ).flatten
     val where = conds.reduce((a, b) => a ++ fr"and" ++ b)

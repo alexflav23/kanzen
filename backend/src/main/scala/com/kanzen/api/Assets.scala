@@ -95,17 +95,24 @@ object Assets {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
   private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
 
-  def list(xa: Transactor[IO], p: Principal, category: Option[UUID], q: Option[String]): IO[Out[List[AssetView]]] = {
+  def list(
+      xa: Transactor[IO],
+      p: Principal,
+      category: Option[UUID],
+      q: Option[String],
+      vertical: Option[String] = None
+  ): IO[Out[List[AssetView]]] = {
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
       else
         category match {
-          case None => AssetRepo.list(None, q).map(as => Right(as.map(view)): Out[List[AssetView]])
+          case None => AssetRepo.list(None, q, vertical).map(as => Right(as.map(view)): Out[List[AssetView]])
           case Some(cid) =>
             AssetRepo.categoryDescendants(cid).flatMap { ds =>
               NonEmptyList.fromList(ds) match {
                 case None => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
-                case Some(nel) => AssetRepo.list(Some(nel), q).map(as => Right(as.map(view)): Out[List[AssetView]])
+                case Some(nel) =>
+                  AssetRepo.list(Some(nel), q, vertical).map(as => Right(as.map(view)): Out[List[AssetView]])
               }
             }
         }
@@ -199,15 +206,17 @@ object Assets {
   // ---- endpoints ----
   private val err = statusCode.and(jsonBody[ApiError])
 
-  val listEndpoint: Endpoint[String, (Option[UUID], Option[String]), (StatusCode, ApiError), List[AssetView], Any] =
+  val listEndpoint
+      : Endpoint[String, (Option[UUID], Option[String], Option[String]), (StatusCode, ApiError), List[AssetView], Any] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
       .in("api" / "assets")
       .in(query[Option[UUID]]("category"))
       .in(query[Option[String]]("q"))
+      .in(query[Option[String]]("vertical"))
       .errorOut(err)
       .out(jsonBody[List[AssetView]])
-      .summary("List assets (Principal-private; faceted by category/q)")
+      .summary("List assets (Principal-private; faceted by category/q/vertical)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), AssetDetail, Any] =
     sttp.tapir.endpoint.get
@@ -235,7 +244,9 @@ object Assets {
       .summary("The asset category tree (Principal-private)")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
-    listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (cat, q) => list(xa, p, cat, q) }),
+    listEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (cat, q, vert) => list(xa, p, cat, q, vert) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     categoriesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => categories(xa, p))

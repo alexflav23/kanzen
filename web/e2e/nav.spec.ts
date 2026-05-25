@@ -8,6 +8,7 @@ const BUILT: [string, RegExp][] = [
   ["Notifications", /Notifications/],
   ["Inventory", /Inventory/],
   ["Collections", /Collections/],
+  ["Vehicles", /Vehicles/],
   ["Properties", /Properties/],
   ["People", /People/],
   ["Finance", /Bills, expenses/],
@@ -22,8 +23,8 @@ const BUILT: [string, RegExp][] = [
   ["Backup", /Backup/],
 ];
 
-// Settings is a real page (admin-gated, covered by settings.spec); Collections is now built too.
-const STUBS = ["Vehicles"];
+// Every nav item now routes to a real page (Vehicles = the asset-registry 'vehicle' vertical).
+// The "Coming soon" stub only remains as the catch-all for genuinely-unknown paths.
 
 test("built nav items route to their pages", async ({ page }) => {
   await page.goto("/");
@@ -34,11 +35,7 @@ test("built nav items route to their pages", async ({ page }) => {
   }
 });
 
-test("every not-yet-built nav item routes to a clean stub", async ({ page }) => {
-  await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "Primary" });
-  for (const item of STUBS) {
-    await nav.getByRole("link", { name: item, exact: true }).click();
-    await expect(page.getByText("Coming soon.")).toBeVisible();
-  }
+test("an unknown route shows the clean 'Coming soon' fallback", async ({ page }) => {
+  await page.goto("/this-route-does-not-exist");
+  await expect(page.getByText("Coming soon.")).toBeVisible();
 });

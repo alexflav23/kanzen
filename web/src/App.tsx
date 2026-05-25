@@ -39,7 +39,7 @@ const NAV: { group: string | null; items: string[] }[] = [
 // F02 — the resource each nav item requires; the nav recalibrates to the principal's permissions.
 // Items absent here are operational/always-shown; registry/finance/wealth are permission-gated.
 const NAV_RESOURCE: Record<string, string> = {
-  Inventory: "asset", Collections: "asset", Insights: "asset",
+  Inventory: "asset", Collections: "asset", Vehicles: "asset", Insights: "asset",
   Finance: "bill", Wealth: "wealth", Backup: "backup",
 };
 
@@ -61,6 +61,7 @@ function routeFor(item: string): string {
   if (item === "Lists") return "/lists";
   if (item === "Maintenance") return "/maintenance";
   if (item === "Calendar") return "/calendar";
+  if (item === "Vehicles") return "/vehicles";
   if (item === "Settings") return "/settings";
   return "/soon";
 }
@@ -155,6 +156,7 @@ export function App() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/collections" element={<Collections />} />
+            <Route path="/vehicles" element={<Inventory vertical="vehicle" label="Vehicles" />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/finance" element={<Finance />} />
