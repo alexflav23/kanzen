@@ -97,8 +97,13 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
 
   // a "Coming soon" stub
   where.v = "stub";
-  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  await nav.getByRole("link", { name: "Vehicles", exact: true }).click();
   await expect(page.getByText("Coming soon.")).toBeVisible();
+
+  // Settings — the real admin role-management page (audited like every other route)
+  where.v = "settings";
+  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("audit-final.png"), fullPage: true });
 
   if (issues.length) {

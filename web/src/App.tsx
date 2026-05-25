@@ -19,6 +19,7 @@ import { Calendar } from "./pages/Calendar";
 import { Insights } from "./pages/Insights";
 import { Backup } from "./pages/Backup";
 import { Notifications } from "./pages/Notifications";
+import { Settings } from "./pages/Settings";
 import { CommandPalette } from "./components/CommandPalette";
 import { ThemeToggle } from "./theme/ThemeContext";
 import { useAuth } from "./state/AuthContext";
@@ -58,6 +59,7 @@ function routeFor(item: string): string {
   if (item === "Lists") return "/lists";
   if (item === "Maintenance") return "/maintenance";
   if (item === "Calendar") return "/calendar";
+  if (item === "Settings") return "/settings";
   return "/soon";
 }
 
@@ -88,6 +90,7 @@ export function App() {
   // F02 — recalibrate the nav to the principal's permissions. While /api/me loads, show only the
   // ungated items (avoids a flash of gated links the principal may not keep).
   const visible = (item: string) => {
+    if (item === "Settings") return !meLoading && can("*", "admin"); // role-management is admin-only
     const resource = NAV_RESOURCE[item];
     return !resource || (!meLoading && can(resource));
   };
@@ -163,6 +166,7 @@ export function App() {
             <Route path="/lists" element={<Lists />} />
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<p>Coming soon.</p>} />
           </Routes>
         </main>
