@@ -22,7 +22,7 @@
 ---
 
 ## A. Minimum to get the app running (M0–M1)
-The must-haves to boot locally and stand up the first deployed environment. (Local dev needs far less — Docker Compose covers Postgres/TigerBeetle/S3; auth can run in dev-mode.)
+The must-haves to boot locally and stand up the first deployed environment. (Local dev needs far less — Docker Compose covers Postgres + LocalStack/S3; auth runs in dev-mode. The general ledger is **Postgres double-entry**, ADR-001 — TigerBeetle was dropped, so no separate ledger infra.)
 
 | # | What | Why | Your action | 🔴/🟡 |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@ The must-haves to boot locally and stand up the first deployed environment. (Loc
 | A7 | **Domain `kanzen.family`** + `app.kanzen.family`, **Route53** zone, **ACM** certs (incl. us-east-1 for CloudFront) | Web app, auth, email | Confirm domain ownership + DNS control | 🔴 |
 | A8 | **AWS Cognito user pool** (TOTP MFA enforced) | Sign-in (F01) | Provisioned by Terraform; for local dev a dev-mode issuer is fine (F00 open Q) | 🔴 |
 | A9 | **AWS SES** — verify `kanzen.family` (DKIM/SPF/DMARC), request **production access**, verified from-address (`no-reply@kanzen.family`) | Invites, reminders | Add DNS records; request SES prod access | 🔴 (for invites) |
-| A10 | **TigerBeetle** instance (local via Docker Compose; deployed mirrors Hypervolt athena) | Ledger skeleton (F00), ledger (F18) | Confirm Kanzen gets a TB host (Terraform) | 🟡 (F18; skeleton local now) |
+| A10 | ~~TigerBeetle instance~~ — **dropped (ADR-001)**; the general ledger is Postgres double-entry on RDS (A5) | Ledger (F18) | **None** — no separate ledger infra to provision | 🟢 |
 | A11 | **Apache Pulsar** (event backbone) — local via Docker Compose; deployed mirrors Hypervolt (Consul `pulsar.service`) | Event queue / notifications (F34) | Confirm Kanzen gets a Pulsar cluster (Terraform/Consul) | 🟡 (F34; local now) |
 | B6+ | **APNs + FCM** keys now needed for **push notifications** (F34), earlier than just mobile | Notifications (F34) + mobile (F31) | Create Firebase (FCM) + Apple APNs auth key | 🟡 F34 |
 
@@ -89,7 +89,7 @@ The must-haves to boot locally and stand up the first deployed environment. (Loc
 | A7 | Domain + Route53 + ACM | web/auth/email | DNS | 🔴 ☐ |
 | A8 | Cognito user pool (MFA) | F01 | Terraform/SSM | 🔴 ☐ |
 | A9 | SES domain verify + prod access | F01/F11 | DNS/SES | 🔴 ☐ |
-| A10 | TigerBeetle host | F00/F18 | Terraform | 🟡 ☐ |
+| A10 | ~~TigerBeetle host~~ — dropped (ADR-001); GL on RDS Postgres | F18 | — | 🟢 n/a |
 | B1a | Google OAuth client (sign-in) | F01 | Secrets Manager | 🟡 ☐ |
 | B1b | Apple Sign in (Services ID + key) | F01 | Secrets Manager | 🟡 ☐ |
 | B3a | Google service account + DWD + APIs | F07/F25 | Secrets Manager | 🟡 ☐ |
@@ -116,4 +116,4 @@ These don't block the build but I'll need them before the named feature ships:
 
 ---
 
-*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. **Last updated: through F32 — planning complete; all integrations captured.** Net-new since F17: nothing fundamental — F25/F27 use the Gmail SA (B3) + Bedrock (B4) already listed; F28 adds pgvector/embeddings (already in A5/B4); F30 needs `age` encryption key management (operator-held); F31 needs FCM/APNs (B6) + Apple Developer/Play (B8).*
+*Maintained by Claude Code alongside the feature specs. When a spec's §7 (integrations) introduces a new external input, it is added here. **Last updated: all 44 features (F00–F43) built in sandbox; integrations captured. Nothing operator-provided has been wired yet — the whole platform currently runs locally (Docker stack, dev-auth JWTs, in-memory blob store, seeded data, in-process event relay).** No net-new external inputs from the Wealth module (F39–F43): it sits on the existing RDS Postgres + FX (B5c). The remaining operator work is the §C checklist — flipping sandbox → real AWS for the Final "Hardening & launch" milestone.*
