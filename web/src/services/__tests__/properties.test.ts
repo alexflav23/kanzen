@@ -9,10 +9,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("properties service (Zod boundary + error mapping)", () => {
   it("parses a valid response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ok([{ id: "1", name: "Wardian", jurisdiction: "GB", currency: "GBP", status: "active" }])));
+    vi.stubGlobal("fetch", vi.fn(async () => ok([{ id: "1", name: "Wardian", jurisdiction: "GB", currency: "GBP", status: "active", rooms: 4, assets: 12, bills: 3, vendors: 5 }])));
     const ps = await listProperties("t");
     expect(ps).toHaveLength(1);
     expect(ps[0].currency).toBe("GBP");
+    expect(ps[0].vendors).toBe(5);
   });
 
   it("maps a 403 to a forbidden ApiError", async () => {

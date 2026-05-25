@@ -83,13 +83,13 @@ export function AssetDetail() {
               <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Insured value</span><span {...stylex.props(styles.kvV)}>{money(a.insuredValueMinor ?? null, a.valuationCurrency ?? null)}</span></div>
             </>
           )}
-          <div {...stylex.props(styles.note)}>Valuation is Principal-only; documents arrive with F05.</div>
+          <div {...stylex.props(styles.note)}>Valuation is Principal-only.</div>
         </Card>
 
         <Card>
           <CardHeader><CardTitle>Specifications</CardTitle></CardHeader>
           {attrs.length === 0 ? (
-            <EmptyState title="No specifications">Add typed attributes for this vertical (F22).</EmptyState>
+            <EmptyState title="No specifications">Add typed attributes for this vertical.</EmptyState>
           ) : (
             attrs.map(([k, v]) => (
               <div key={k} {...stylex.props(styles.kv)} data-testid="spec-row">
