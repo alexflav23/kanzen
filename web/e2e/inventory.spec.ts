@@ -44,6 +44,29 @@ test("opening an asset shows its detail + specifications", async ({ page }) => {
   await expect(page.getByText("Lifetime cost")).toBeVisible();
 });
 
+test("an asset is a living record — log a timeline event + record a valuation", async ({ page }) => {
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+
+  // log a lifecycle event → it appears on the timeline
+  await page.getByRole("button", { name: "Log event" }).click();
+  const ev = page.getByTestId("log-event");
+  await expect(ev).toBeVisible();
+  await ev.getByLabel("Event type").selectOption("serviced");
+  await ev.getByLabel("Note").fill("Annual service");
+  await ev.getByRole("button", { name: "Log event" }).click();
+  await expect(page.getByText("Annual service")).toBeVisible();
+
+  // record a valuation (Principal) → it appears in the Valuations history
+  await page.getByRole("button", { name: "Record valuation" }).click();
+  const val = page.getByTestId("record-valuation");
+  await expect(val).toBeVisible();
+  await val.getByLabel("Amount").fill("38000");
+  await val.getByRole("button", { name: "Record" }).click();
+  await expect(page.getByTestId("valuation-row").first()).toBeVisible();
+});
+
 test("New asset creates an asset that appears", async ({ page }) => {
   const title = `E2E Asset ${Date.now()}`;
   await page.goto("/inventory");

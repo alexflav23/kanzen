@@ -72,6 +72,26 @@ export function getAssetTimeline(id: string, token: string | null): Promise<Asse
   return api(`/api/assets/${id}/events`, AssetTimelineSchema, { token });
 }
 
+export type AssetEvent = z.infer<typeof AssetEventSchema>;
+export type LogEventReq = { eventType: string; costMinor: number | null; currency: string | null; note: string | null };
+
+/** F19 — log a lifecycle event onto the asset's timeline (Manager+). */
+export function logAssetEvent(id: string, token: string | null, req: LogEventReq): Promise<AssetEvent> {
+  return api(`/api/assets/${id}/events`, AssetEventSchema, { method: "POST", token, body: req });
+}
+
+/** F20 — dated valuation snapshots (Principal-only). */
+export const ValuationSchema = z.object({ id: z.string(), assetId: z.string(), kind: z.string(), amountMinor: z.number(), currency: z.string() });
+export type Valuation = z.infer<typeof ValuationSchema>;
+export type RecordValuationReq = { kind: string; amountMinor: number; currency: string; source: string | null };
+
+export function getValuations(id: string, token: string | null): Promise<Valuation[]> {
+  return api(`/api/assets/${id}/valuations`, z.array(ValuationSchema), { token });
+}
+export function recordValuation(id: string, token: string | null, req: RecordValuationReq): Promise<Valuation> {
+  return api(`/api/assets/${id}/valuations`, ValuationSchema, { method: "POST", token, body: req });
+}
+
 /** F21 — warranties + insurance (insurance is Principal-only). */
 export const WarrantySchema = z.object({
   id: z.string(),
