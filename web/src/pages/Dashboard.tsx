@@ -110,7 +110,7 @@ export function Dashboard() {
       {/* Attention strip */}
       <Card style={styles.heroCard}>
         <div {...stylex.props(styles.heroGrid)}>
-          <button type="button" onClick={() => navigate("/soon")} {...stylex.props(styles.heroCell, styles.heroDivider)}>
+          <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.heroCell, styles.heroDivider)}>
             <div {...stylex.props(styles.grow)}>
               <div {...stylex.props(styles.rowGap8)}>
                 <AgentRibbon />
@@ -145,7 +145,7 @@ export function Dashboard() {
                 <CardTitle>Upcoming</CardTitle>
                 <Pill>Next 14 days</Pill>
               </div>
-              <button type="button" onClick={() => navigate("/soon")} {...stylex.props(styles.ghost)}>
+              <button type="button" onClick={() => navigate("/calendar")} {...stylex.props(styles.ghost)}>
                 Open calendar <ArrowRight size={12} />
               </button>
             </CardHeader>
@@ -217,7 +217,7 @@ export function Dashboard() {
           <Card>
             <CardHeader>
               <AgentRibbon>Agent activity</AgentRibbon>
-              <button type="button" onClick={() => navigate("/soon")} {...stylex.props(styles.ghost)}>
+              <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.ghost)}>
                 See all <ArrowRight size={12} />
               </button>
             </CardHeader>
@@ -280,12 +280,12 @@ export function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle>This week's lists</CardTitle>
-              <button type="button" onClick={() => navigate("/soon")} {...stylex.props(styles.ghost)}>
+              <button type="button" onClick={() => navigate("/lists")} {...stylex.props(styles.ghost)}>
                 Lists <ArrowRight size={12} />
               </button>
             </CardHeader>
             {LISTS.map((l) => (
-              <CardRow key={l.id} onClick={() => navigate("/soon")}>
+              <CardRow key={l.id} onClick={() => navigate("/lists")}>
                 <div {...stylex.props(styles.listIcon)}><Box size={15} /></div>
                 <div {...stylex.props(styles.grow)}>
                   <div {...stylex.props(styles.evTitle)}>{l.name}</div>
