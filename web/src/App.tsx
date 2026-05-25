@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { colors, radius } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
+import { Collections } from "./pages/Collections";
 import { AssetDetail } from "./pages/AssetDetail";
 import { Finance } from "./pages/Finance";
 import { Properties } from "./pages/Properties";
@@ -47,6 +48,7 @@ function routeFor(item: string): string {
   if (item === "Inbox") return "/inbox";
   if (item === "Notifications") return "/notifications";
   if (item === "Inventory") return "/inventory";
+  if (item === "Collections") return "/collections";
   if (item === "Insights") return "/insights";
   if (item === "Finance") return "/finance";
   if (item === "Wealth") return "/wealth";
@@ -152,6 +154,7 @@ export function App() {
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/collections" element={<Collections />} />
             <Route path="/inventory/:id" element={<AssetDetail />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/finance" element={<Finance />} />

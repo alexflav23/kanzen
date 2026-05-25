@@ -7,6 +7,7 @@ const BUILT: [string, RegExp][] = [
   ["Inbox", /Inbox/],
   ["Notifications", /Notifications/],
   ["Inventory", /Inventory/],
+  ["Collections", /Collections/],
   ["Properties", /Properties/],
   ["People", /People/],
   ["Finance", /Bills, expenses/],
@@ -21,7 +22,8 @@ const BUILT: [string, RegExp][] = [
   ["Backup", /Backup/],
 ];
 
-const STUBS = ["Collections", "Vehicles", "Settings"];
+// Settings is a real page (admin-gated, covered by settings.spec); Collections is now built too.
+const STUBS = ["Vehicles"];
 
 test("built nav items route to their pages", async ({ page }) => {
   await page.goto("/");

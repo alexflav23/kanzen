@@ -38,9 +38,9 @@ export function CardTitle({ children }: { children: ReactNode }) {
   return <span {...stylex.props(styles.title)}>{children}</span>;
 }
 
-export function CardRow({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+export function CardRow({ children, onClick, testId }: { children: ReactNode; onClick?: () => void; testId?: string }) {
   return (
-    <div {...stylex.props(styles.row)} onClick={onClick} role={onClick ? "button" : undefined}>
+    <div {...stylex.props(styles.row)} onClick={onClick} role={onClick ? "button" : undefined} data-testid={testId}>
       {children}
     </div>
   );
