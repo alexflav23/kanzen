@@ -32,8 +32,10 @@ describe("People", () => {
     expect(await screen.findAllByTestId("person-row")).toHaveLength(3);
   });
 
-  it("warns about an expiring work permit", async () => {
+  it("warns about an expiring work permit in the attention section", async () => {
     renderPeople();
-    expect(await screen.findByText(/Work permit/)).toBeInTheDocument();
+    expect(await screen.findByText("Needs attention")).toBeInTheDocument();
+    expect((await screen.findAllByText(/Permit · \d+d/)).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("attention-row")).toHaveTextContent("Siti");
   });
 });

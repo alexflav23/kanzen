@@ -18,6 +18,20 @@ export function listPeople(token: string | null): Promise<Person[]> {
   return api("/api/people", z.array(PersonSchema), { token });
 }
 
+export type CreatePersonReq = {
+  name: string;
+  role: string | null;
+  jurisdiction: string | null;
+  propertyId: string | null;
+  permitExpiry: string | null;
+  reviewDue: string | null;
+};
+
+/** Add a household team member (Manager+). */
+export function createPerson(req: CreatePersonReq, token: string | null): Promise<Person> {
+  return api("/api/people", PersonSchema, { method: "POST", body: { ...req, userId: null }, token });
+}
+
 /** Whole days from today until an ISO date (negative if past), or null. */
 export function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
