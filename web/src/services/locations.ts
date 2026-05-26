@@ -16,3 +16,10 @@ export type Location = z.infer<typeof LocationSchema>;
 export function listLocations(propertyId: string, token: string | null): Promise<Location[]> {
   return api(`/api/properties/${propertyId}/locations`, z.array(LocationSchema), { token });
 }
+
+export type CreateLocationReq = { propertyId: string; parentId: string | null; kind: string; name: string; floor: string | null; area: string | null; notes: string | null };
+
+/** Add a room/area to a property (Manager+). */
+export function createLocation(req: CreateLocationReq, token: string | null): Promise<Location> {
+  return api("/api/locations", LocationSchema, { method: "POST", body: req, token });
+}

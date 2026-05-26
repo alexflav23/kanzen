@@ -27,12 +27,45 @@ test("opening a property shows its Bible (overview, currency, rooms, defects) fr
   await expect(page.getByText("Particulars")).toBeVisible();
   await expect(page.getByText("At a glance")).toBeVisible();
   await expect(page.getByText("GBP").first()).toBeVisible(); // real per-property currency from the API
-  // Rooms (none seeded yet → empty state)
+  await expect(page.getByText("Open defects")).toBeVisible();
+  // Rooms (seeded location tree)
   await page.getByRole("button", { name: "Rooms" }).click();
-  await expect(page.getByText("No rooms yet")).toBeVisible();
-  // Defects (none seeded yet → empty state)
+  await expect(page.getByText("Living Room")).toBeVisible();
+  await expect(page.getByText("Kitchen")).toBeVisible();
+  // Defects (seeded punch list)
   await page.getByRole("button", { name: "Defects" }).click();
-  await expect(page.getByText("No defects")).toBeVisible();
+  await expect(page.getByTestId("defect-row").filter({ hasText: "Dishwasher not draining" })).toBeVisible();
+});
+
+test("a defect can be reported and moved through its lifecycle (Manager+)", async ({ page }) => {
+  const title = `Leaky tap ${Date.now()}`;
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await page.getByRole("button", { name: "Defects" }).click();
+
+  await page.getByRole("button", { name: "Report defect" }).click();
+  const modal = page.getByTestId("report-defect");
+  await modal.getByLabel("Defect title").fill(title);
+  await modal.getByLabel("Severity").selectOption("high");
+  await modal.getByRole("button", { name: "Report defect" }).click();
+
+  const row = page.getByTestId("defect-row").filter({ hasText: title });
+  await expect(row).toBeVisible();
+  await expect(row.getByText("open")).toBeVisible();
+  await page.getByRole("button", { name: `Resolve ${title}` }).click(); // open → resolved
+  await expect(row.getByText("resolved")).toBeVisible();
+});
+
+test("a room can be added to the property (Manager+)", async ({ page }) => {
+  const name = `Wine Cellar ${Date.now()}`;
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await page.getByRole("button", { name: "Rooms" }).click();
+  await page.getByRole("button", { name: "Add room" }).click();
+  const modal = page.getByTestId("add-room");
+  await modal.getByLabel("Room name").fill(name);
+  await modal.getByRole("button", { name: "Add room" }).click();
+  await expect(page.getByText(name)).toBeVisible();
 });
 
 test("Add property creates a property that appears in the list", async ({ page }) => {
