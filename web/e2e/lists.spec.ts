@@ -23,11 +23,29 @@ test("adding an item to a list makes it appear", async ({ page }) => {
   await expect(page.getByText(item)).toBeVisible();
 });
 
-test("Principal approves a staff-proposed item, moving it out of the queue", async ({ page }) => {
+// Self-seeding + idempotent: impersonate Marcia (Staff) to PROPOSE a unique item (lands as
+// needs_approval), stop impersonating, then approve it as Principal and watch it leave the queue.
+// Doubles as an end-to-end check of the token-derived identity (the propose path runs as Staff).
+test("a Staff proposal needs approval; the Principal approves it out of the queue", async ({ page }) => {
+  const item = `Approve-me ${Date.now()}`;
+
+  await page.goto("/");
+  await page.getByLabel("Impersonate a user").selectOption("marcia@kanzen.local");
+  await expect(page.getByTestId("impersonation-banner")).toBeVisible();
   await page.goto("/lists");
   await page.getByRole("button", { name: /Grocery — Wardian/ }).click();
-  const approvalRow = page.getByTestId("approval-row").filter({ hasText: "Sea bass" });
-  await expect(approvalRow).toBeVisible();
-  await page.getByRole("button", { name: "Approve Sea bass fillets" }).click();
-  await expect(approvalRow).toHaveCount(0); // approved → leaves the awaiting-you queue
+  // As Staff there are no Approve/Decline controls (canDecide is false from the token role).
+  await expect(page.getByRole("button", { name: /^Approve / })).toHaveCount(0);
+  await page.getByLabel("Add to Grocery — Wardian").fill(item);
+  await page.getByRole("button", { name: "Add" }).first().click();
+
+  await page.getByTestId("stop-impersonating").click();
+  await expect(page.getByTestId("impersonation-banner")).toBeHidden();
+
+  await page.goto("/lists");
+  await page.getByRole("button", { name: /Grocery — Wardian/ }).click();
+  const row = page.getByTestId("approval-row").filter({ hasText: item });
+  await expect(row).toBeVisible(); // the staff proposal is awaiting the Principal
+  await page.getByRole("button", { name: `Approve ${item}` }).click();
+  await expect(row).toHaveCount(0); // approved → leaves the awaiting-you queue
 });

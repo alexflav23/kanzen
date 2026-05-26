@@ -284,10 +284,10 @@ function ListRailCard({ list, active, onClick, token }: { list: ShoppingList; ac
 }
 
 export function Lists() {
-  const { token, persona } = useAuth();
+  const { token, role } = useAuth();
   const listsQ = useQuery({ queryKey: ["lists", token], queryFn: () => listLists(token) });
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
-  const canDecide = persona?.role !== "staff";
+  const canDecide = role != null && role !== "staff"; // effective (token-derived) role — correct under impersonation
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
 

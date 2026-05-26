@@ -3,17 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../state/AuthContext";
 import { getSummary } from "../services/dashboard";
+import { listEvents } from "../services/calendar";
+import { listExpenses } from "../services/finance";
+import { listActions } from "../services/inbox";
+import { listProperties } from "../services/properties";
+import { listPeople, daysUntil } from "../services/people";
+import { listLists, listItems } from "../services/lists";
+import { fmtMoney } from "../data/money";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { AgentRibbon } from "../components/AgentRibbon";
-import { Bar } from "../components/Bar";
 import { Pill } from "../components/Pill";
 import { Plus, ChevronRight, ArrowRight, Box } from "../components/icons";
-import { EXPENSES } from "../data/mockExpenses";
-import {
-  TODAY_EYEBROW, UPCOMING, BUDGETS, AGENT_HISTORY, EXPIRING, LISTS, CONNECTED, TRIAGE_COUNT,
-  fmtMoney, fmtDate, fmtDayLong, dayParts, relativeTime,
-} from "../data/mockDashboard";
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "32px" },
@@ -23,43 +24,30 @@ const styles = stylex.create({
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "13px", color: colors.ink },
   heroCard: { marginBottom: "32px" },
   heroGrid: { display: "grid", gridTemplateColumns: "1fr 1fr" },
+  heroSolo: { display: "grid", gridTemplateColumns: "1fr" },
   heroCell: { display: "flex", alignItems: "center", gap: "12px", padding: "22px 28px", borderWidth: 0, backgroundColor: "transparent", textAlign: "left", cursor: "pointer", color: colors.ink },
   heroDivider: { borderRightWidth: "1px", borderRightStyle: "solid", borderRightColor: colors.line },
-  grow: { flex: 1 },
+  grow: { flex: 1, minWidth: 0 },
   rowGap8: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" },
   h2: { fontSize: "20px", fontWeight: 600, letterSpacing: "-0.01em", marginBottom: "4px" },
   small: { fontSize: "12.5px", color: colors.ink3 },
-  body: { display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "24px", alignItems: "start" },
+  body: { display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "24px", alignItems: "start", "@media (max-width: 980px)": { gridTemplateColumns: "1fr" } },
   col: { display: "flex", flexDirection: "column", gap: "24px" },
   ghost: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 8px", borderWidth: 0, backgroundColor: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12.5px" },
-  dateChip: { width: "48px", height: "48px", backgroundColor: colors.bgSunken, borderRadius: radius.md, display: "grid", placeItems: "center", textAlign: "center" },
+  dateChip: { width: "48px", height: "48px", backgroundColor: colors.bgSunken, borderRadius: radius.md, display: "grid", placeItems: "center", textAlign: "center", flexShrink: 0 },
   dateM: { fontSize: "10px", color: colors.ink3, letterSpacing: "0.08em" },
-  dateD: { fontSize: "18px", fontWeight: 600, letterSpacing: "-0.02em", marginTop: "-2px" },
-  evTitle: { fontSize: "14px", fontWeight: 500 },
-  budgetGrid: { padding: "22px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "28px" },
-  bName: { fontSize: "13px", color: colors.ink3, marginBottom: "2px" },
-  bSpent: { fontSize: "22px", fontWeight: 600, letterSpacing: "-0.018em" },
-  monthRow: { display: "flex", gap: "4px", marginTop: "12px" },
-  cover: { width: "40px", height: "40px", borderRadius: radius.md },
-  listIcon: { width: "36px", height: "36px", borderRadius: "10px", backgroundColor: colors.bgSunken, display: "grid", placeItems: "center", color: colors.ink2 },
-  connGrid: { padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" },
-  connItem: { display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", backgroundColor: colors.bgSunken, borderRadius: radius.md },
-  greenDot: { width: "6px", height: "6px", borderRadius: "999px", backgroundColor: colors.positive },
-  colorPill: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "2px 10px", borderRadius: radius.sm, fontSize: "12px", fontWeight: 500, color: colors.ink2, backgroundColor: colors.bgSunken },
-  colorDot: { width: "8px", height: "8px", borderRadius: "999px", flexShrink: 0 },
-  spread: { display: "flex", alignItems: "flex-end", marginBottom: "10px" },
-  rightText: { textAlign: "right" },
-  janMay: { display: "flex", justifyContent: "space-between", marginTop: "6px" },
+  dateD: { fontSize: "18px", fontWeight: 600, letterSpacing: "-0.02em", marginTop: "-2px", fontVariantNumeric: "tabular-nums" },
+  evTitle: { fontSize: "14px", fontWeight: 500, color: colors.ink },
+  cover: { width: "40px", height: "40px", borderRadius: radius.md, flexShrink: 0 },
+  listIcon: { width: "36px", height: "36px", borderRadius: "10px", backgroundColor: colors.bgSunken, display: "grid", placeItems: "center", color: colors.ink2, flexShrink: 0 },
   hRow: { display: "flex", alignItems: "center", gap: "10px" },
-  num: { fontVariantNumeric: "tabular-nums" },
-  body135: { fontSize: "13.5px" },
-  sparkTrack: { flex: 1, height: "24px", backgroundColor: colors.bgSunken, borderRadius: "4px", position: "relative", overflow: "hidden" },
-  sparkFill: { position: "absolute", bottom: 0, left: 0, right: 0, borderRadius: "4px", backgroundColor: colors.ink3 },
-  sparkFillCurrent: { backgroundColor: colors.accent },
+  body135: { fontSize: "13.5px", color: colors.ink },
+  amount: { fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: colors.ink },
+  pillRow: { display: "flex", gap: "6px", marginTop: "4px" },
   coverWardian: { backgroundImage: "linear-gradient(135deg,#1B1F2E,#3B3F55)" },
   coverSingapore: { backgroundImage: "linear-gradient(135deg,#243B47,#3D6B7D)" },
-  connName: { fontSize: "12.5px", fontWeight: 500 },
-  tiny: { fontSize: "11px" },
+  coverAlt: { backgroundImage: "linear-gradient(135deg,#3A2E2E,#6B5340)" },
+  empty: { padding: "20px 22px", fontSize: "13px", color: colors.ink3 },
 });
 
 const glance = stylex.create({
@@ -69,25 +57,99 @@ const glance = stylex.create({
   num: { fontSize: "26px", fontWeight: 600, letterSpacing: "-0.02em", marginTop: "4px", fontVariantNumeric: "tabular-nums" },
 });
 
+const covers = [styles.coverWardian, styles.coverSingapore, styles.coverAlt];
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const dayParts = (s: string) => {
+  const d = new Date(s + "T00:00:00");
+  return { m: d.toLocaleDateString("en-GB", { month: "short" }).toUpperCase(), d: d.getDate() };
+};
+const fmtDate = (s: string) => new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+const fmtDayLong = (s: string) => new Date(s + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+/** One "This week's lists" row — fetches its items to show real count + pending-approval badge. */
+function DashListRow({ id, name, nextOrder, token, onClick }: { id: string; name: string; nextOrder: string | null; token: string | null; onClick: () => void }) {
+  const itemsQ = useQuery({ queryKey: ["list-items", id, token], queryFn: () => listItems(id, token) });
+  const items = itemsQ.data ?? [];
+  const total = items.filter((i) => i.status !== "declined").length;
+  const needs = items.filter((i) => i.status === "needs_approval").length;
+  return (
+    <CardRow onClick={onClick}>
+      <div {...stylex.props(styles.listIcon)}><Box size={15} /></div>
+      <div {...stylex.props(styles.grow)}>
+        <div {...stylex.props(styles.evTitle)}>{name}</div>
+        <div {...stylex.props(styles.small)}>{plural(total, "item")}{nextOrder ? ` · orders ${fmtDayLong(nextOrder)}` : ""}</div>
+      </div>
+      {needs > 0 && <Pill tone="warn">{needs} to review</Pill>}
+    </CardRow>
+  );
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
-  const { token, me } = useAuth();
+  const { token, me, role } = useAuth();
   const firstName = me?.name?.split(" ")[0]; // greet whoever is effectively signed in (incl. the impersonated user)
+  // The review surfaces — triage (agent proposals), expenses, and permit/review expiries — are
+  // Principal/Manager-only (house rule). Staff personas must not even fire those reads, or the
+  // server 403s and the browser logs an error. Gate on the token-derived role so it flips the
+  // instant the bearer changes (e.g. impersonation), with no /api/me lag.
+  const canReview = role != null && role !== "staff";
+
+  const today = new Date();
+  const in14 = new Date(today.getTime() + 14 * 86_400_000);
+
   const summary = useQuery({ queryKey: ["dashboard", token], queryFn: () => getSummary(token) });
-  const pending = EXPENSES.filter((e) => e.status === "pending");
+  const proposed = useQuery({ queryKey: ["agent-actions", "proposed", token], queryFn: () => listActions(token, "proposed"), enabled: !!token && canReview });
+  const pendingExp = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval"), enabled: !!token && canReview });
+  const events = useQuery({ queryKey: ["events", iso(today), iso(in14), token], queryFn: () => listEvents(token, iso(today), iso(in14)) });
+  const props = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const people = useQuery({ queryKey: ["people", token], queryFn: () => listPeople(token), enabled: !!token && canReview });
+  const lists = useQuery({ queryKey: ["lists", token], queryFn: () => listLists(token) });
+
   const s = summary.data;
+  const triage = proposed.data ?? [];
+  const pend = pendingExp.data ?? [];
+
+  // Triage breakdown by category (real).
+  const byCat = triage.reduce<Record<string, number>>((m, a) => {
+    const k = a.category ?? "Other";
+    m[k] = (m[k] ?? 0) + 1;
+    return m;
+  }, {});
+  const triageBreakdown = Object.entries(byCat).map(([c, n]) => plural(n, c.toLowerCase())).join(" · ") || "Nothing waiting";
+
+  const upcoming = (events.data ?? []).filter((e) => e.startOn).sort((a, b) => a.startOn!.localeCompare(b.startOn!)).slice(0, 6);
+
+  // Expiring within 60 days — real permits + staff review cycles.
+  const expiring = (people.data ?? []).flatMap((p) => {
+    const out: { id: string; who: string; kind: string; until: string; days: number }[] = [];
+    const pe = daysUntil(p.permitExpiry);
+    if (p.permitExpiry && pe !== null && pe <= 60) out.push({ id: `${p.id}-permit`, who: `${p.name} — work permit`, kind: "Permit", until: p.permitExpiry, days: pe });
+    const rd = daysUntil(p.reviewDue);
+    if (p.reviewDue && rd !== null && rd <= 60) out.push({ id: `${p.id}-review`, who: `${p.name} — review due`, kind: "Review", until: p.reviewDue, days: rd });
+    return out;
+  }).sort((a, b) => a.days - b.days);
+
+  const properties = (props.data ?? []).slice(0, 4);
+  const weekLists = (lists.data ?? []).slice(0, 4);
+  const topExpenseSummary = pend.slice(0, 2).map((e) => `${fmtMoney(e.amountMinor, e.currency)} · ${e.payee ?? "—"}`).join(" · ");
 
   return (
     <div>
       <header {...stylex.props(styles.header)}>
         <div>
-          <div {...stylex.props(styles.eyebrow)}>{TODAY_EYEBROW}</div>
-          <h1 {...stylex.props(styles.display)}>Good morning{firstName ? `, ${firstName}` : ""}.</h1>
+          <div {...stylex.props(styles.eyebrow)}>{today.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
+          <h1 {...stylex.props(styles.display)}>{greeting()}{firstName ? `, ${firstName}` : ""}.</h1>
           <div {...stylex.props(styles.sub)}>
-            {TRIAGE_COUNT} items awaiting your review, {pending.length} expenses for approval.
+            {plural(triage.length, "item")} awaiting your review, {plural(pend.length, "expense")} for approval.
           </div>
         </div>
-        <button type="button" {...stylex.props(styles.btn)}>
+        <button type="button" {...stylex.props(styles.btn)} onClick={() => navigate("/inbox")}>
           <Plus size={14} /> Quick add
         </button>
       </header>
@@ -107,130 +169,94 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Attention strip */}
-      <Card style={styles.heroCard}>
-        <div {...stylex.props(styles.heroGrid)}>
-          <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.heroCell, styles.heroDivider)}>
-            <div {...stylex.props(styles.grow)}>
-              <div {...stylex.props(styles.rowGap8)}>
-                <AgentRibbon />
-                <span {...stylex.props(styles.small)}>· 5 new since 06:00</span>
+      {/* Attention strip — the Principal/Manager review surface: real triage + expenses awaiting you */}
+      {canReview && (
+        <Card style={styles.heroCard}>
+          <div {...stylex.props(styles.heroGrid)}>
+            <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.heroCell, styles.heroDivider)}>
+              <div {...stylex.props(styles.grow)}>
+                <div {...stylex.props(styles.rowGap8)}><AgentRibbon /></div>
+                <div {...stylex.props(styles.h2)}>{plural(triage.length, "item")} in Triage</div>
+                <div {...stylex.props(styles.small)}>{triageBreakdown}</div>
               </div>
-              <div {...stylex.props(styles.h2)}>{TRIAGE_COUNT} items in Triage</div>
-              <div {...stylex.props(styles.small)}>1 invoice with a +59% variance · 1 delivery · 2 appointments · 1 renewal</div>
-            </div>
-            <ChevronRight size={18} />
-          </button>
-          <button type="button" onClick={() => navigate("/finance")} {...stylex.props(styles.heroCell)}>
-            <div {...stylex.props(styles.grow)}>
-              <div {...stylex.props(styles.rowGap8)}>
-                <Pill tone="warn">Awaiting you</Pill>
+              <ChevronRight size={18} />
+            </button>
+            <button type="button" data-testid="approvals-cta" onClick={() => navigate("/finance")} {...stylex.props(styles.heroCell)}>
+              <div {...stylex.props(styles.grow)}>
+                <div {...stylex.props(styles.rowGap8)}><Pill tone="warn">Awaiting you</Pill></div>
+                <div {...stylex.props(styles.h2)}>{plural(pend.length, "expense")} to approve</div>
+                <div {...stylex.props(styles.small)}>{topExpenseSummary || "Nothing awaiting approval"}</div>
               </div>
-              <div {...stylex.props(styles.h2)}>{pending.length} expenses to approve</div>
-              <div {...stylex.props(styles.small)}>
-                {fmtMoney(184000, "GBP")} · HVAC quarterly · {fmtMoney(264000, "SGD")} · roof tile repair
-              </div>
-            </div>
-            <ChevronRight size={18} />
-          </button>
-        </div>
-      </Card>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </Card>
+      )}
 
       <div {...stylex.props(styles.body)}>
         {/* Left column */}
         <div {...stylex.props(styles.col)}>
           <Card>
             <CardHeader>
-              <div {...stylex.props(styles.hRow)}>
-                <CardTitle>Upcoming</CardTitle>
-                <Pill>Next 14 days</Pill>
-              </div>
-              <button type="button" onClick={() => navigate("/calendar")} {...stylex.props(styles.ghost)}>
-                Open calendar <ArrowRight size={12} />
-              </button>
+              <div {...stylex.props(styles.hRow)}><CardTitle>Upcoming</CardTitle><Pill>Next 14 days</Pill></div>
+              <button type="button" onClick={() => navigate("/calendar")} {...stylex.props(styles.ghost)}>Open calendar <ArrowRight size={12} /></button>
             </CardHeader>
-            {UPCOMING.map((ev) => {
-              const { m, d } = dayParts(ev.date);
+            {upcoming.length === 0 ? <div {...stylex.props(styles.empty)}>Nothing scheduled in the next two weeks.</div> : upcoming.map((ev) => {
+              const { m, d } = dayParts(ev.startOn!);
               return (
-                <CardRow key={ev.id}>
+                <CardRow key={ev.id} onClick={() => navigate("/calendar")}>
                   <div {...stylex.props(styles.dateChip)}>
                     <div {...stylex.props(styles.dateM)}>{m}</div>
-                    <div {...stylex.props(styles.dateD, styles.num)}>{d}</div>
+                    <div {...stylex.props(styles.dateD)}>{d}</div>
                   </div>
                   <div {...stylex.props(styles.grow)}>
                     <div {...stylex.props(styles.evTitle)}>{ev.title}</div>
-                    <div {...stylex.props(styles.small)}>
-                      {ev.time}{ev.property !== "—" && ` · ${ev.property}`}
-                    </div>
+                    <div {...stylex.props(styles.small)}>{fmtDate(ev.startOn!)}{ev.category ? ` · ${ev.category}` : ""}</div>
                   </div>
-                  <span {...stylex.props(styles.colorPill)}>
-                    <span {...stylex.props(styles.colorDot)} style={{ background: ev.color }} />
-                    {ev.category}
-                  </span>
                   {ev.source === "agent" && <AgentRibbon>{""}</AgentRibbon>}
                 </CardRow>
               );
             })}
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>This month · by property</CardTitle>
-              <button type="button" onClick={() => navigate("/finance")} {...stylex.props(styles.ghost)}>
-                Finance <ArrowRight size={12} />
-              </button>
-            </CardHeader>
-            <div {...stylex.props(styles.budgetGrid)}>
-              {BUDGETS.map((b) => {
-                const pct = Math.round((b.spent / b.budget) * 100);
-                return (
-                  <div key={b.propertyId} data-testid="budget">
-                    <div {...stylex.props(styles.spread)}>
-                      <div>
-                        <div {...stylex.props(styles.bName)}>{b.propertyName}</div>
-                        <div {...stylex.props(styles.bSpent, styles.num)}>{fmtMoney(b.spent, b.currency)}</div>
-                      </div>
-                      <div {...stylex.props(styles.grow)} />
-                      <div {...stylex.props(styles.rightText)}>
-                        <div {...stylex.props(styles.small)}>of {fmtMoney(b.budget, b.currency)}</div>
-                        <div {...stylex.props(styles.small)}>{pct}%</div>
-                      </div>
-                    </div>
-                    <Bar pct={pct} />
-                    <div {...stylex.props(styles.monthRow)}>
-                      {b.periods.map((v, i) => (
-                        <div key={i} {...stylex.props(styles.sparkTrack)}>
-                          <div {...stylex.props(styles.sparkFill, i === 4 && styles.sparkFillCurrent)} style={{ height: `${v}%` }} />
-                        </div>
-                      ))}
-                    </div>
-                    <div {...stylex.props(styles.janMay)}>
-                      <span {...stylex.props(styles.small)}>Jan</span>
-                      <span {...stylex.props(styles.small)}>May</span>
+          {canReview && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Expenses to approve</CardTitle>
+                <button type="button" onClick={() => navigate("/finance")} {...stylex.props(styles.ghost)}>Finance <ArrowRight size={12} /></button>
+              </CardHeader>
+              {pend.length === 0 ? <div {...stylex.props(styles.empty)}>No expenses awaiting your approval.</div> : pend.map((e) => (
+                <CardRow key={e.id} testId="dash-expense" onClick={() => navigate("/finance")}>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.body135)}>{e.payee ?? "Expense"}</div>
+                    <div {...stylex.props(styles.pillRow)}>
+                      {e.deductible && <Pill>deductible</Pill>}
+                      {e.vatReclaimable && <Pill>VAT reclaim</Pill>}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
+                  <div {...stylex.props(styles.amount)}>{fmtMoney(e.amountMinor, e.currency)}</div>
+                </CardRow>
+              ))}
+            </Card>
+          )}
 
-          <Card>
-            <CardHeader>
-              <AgentRibbon>Agent activity</AgentRibbon>
-              <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.ghost)}>
-                See all <ArrowRight size={12} />
-              </button>
-            </CardHeader>
-            {AGENT_HISTORY.map((h) => (
-              <CardRow key={h.id}>
-                <div {...stylex.props(styles.grow)}>
-                  <div {...stylex.props(styles.body135)}>{h.title}</div>
-                  <div {...stylex.props(styles.small)}>{h.category} · {h.action} · {h.outcome}</div>
-                </div>
-                <div {...stylex.props(styles.small)}>{relativeTime(h.at)}</div>
-              </CardRow>
-            ))}
-          </Card>
+          {canReview && (
+            <Card>
+              <CardHeader>
+                <AgentRibbon>Awaiting you</AgentRibbon>
+                <button type="button" onClick={() => navigate("/inbox")} {...stylex.props(styles.ghost)}>Open triage <ArrowRight size={12} /></button>
+              </CardHeader>
+              {triage.length === 0 ? <div {...stylex.props(styles.empty)}>The agent has nothing waiting for you.</div> : triage.slice(0, 5).map((a) => (
+                <CardRow key={a.id} onClick={() => navigate("/inbox")}>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.body135)}>{a.subject ?? a.actionType.replace(/_/g, " ")}</div>
+                    <div {...stylex.props(styles.small)}>{[a.category, a.actionType.replace(/_/g, " ")].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <ChevronRight size={14} />
+                </CardRow>
+              ))}
+            </Card>
+          )}
         </div>
 
         {/* Right column */}
@@ -238,80 +264,43 @@ export function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Properties</CardTitle>
-              <button type="button" onClick={() => navigate("/properties")} {...stylex.props(styles.ghost)}>
-                All <ArrowRight size={12} />
-              </button>
+              <button type="button" onClick={() => navigate("/properties")} {...stylex.props(styles.ghost)}>All <ArrowRight size={12} /></button>
             </CardHeader>
-            <CardRow onClick={() => navigate("/properties")}>
-              <div {...stylex.props(styles.cover, styles.coverWardian)} />
-              <div {...stylex.props(styles.grow)}>
-                <div {...stylex.props(styles.evTitle)}>Wardian, Apt 5206</div>
-                <div {...stylex.props(styles.small)}>London E14</div>
-              </div>
-              <ChevronRight size={14} />
-            </CardRow>
-            <CardRow onClick={() => navigate("/properties")}>
-              <div {...stylex.props(styles.cover, styles.coverSingapore)} />
-              <div {...stylex.props(styles.grow)}>
-                <div {...stylex.props(styles.evTitle)}>Singapore</div>
-                <div {...stylex.props(styles.small)}>Marina Bay</div>
-              </div>
-              <ChevronRight size={14} />
-            </CardRow>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Expiring within 60 days</CardTitle>
-            </CardHeader>
-            {EXPIRING.map((x) => (
-              <CardRow key={x.id}>
+            {properties.map((p, i) => (
+              <CardRow key={p.id} onClick={() => navigate("/properties")}>
+                <div {...stylex.props(styles.cover, covers[i % covers.length])} />
                 <div {...stylex.props(styles.grow)}>
-                  <div {...stylex.props(styles.body135)}>{x.item}</div>
-                  <div {...stylex.props(styles.small)}>{x.kind} · expires {fmtDate(x.until)}</div>
+                  <div {...stylex.props(styles.evTitle)}>{p.name}</div>
+                  <div {...stylex.props(styles.small)}>{p.jurisdiction ?? "—"}</div>
                 </div>
-                <Pill tone={x.lapsed ? "danger" : x.days < 45 ? "warn" : "default"}>
-                  {x.lapsed ? "Lapsed" : `${x.days}d`}
-                </Pill>
+                <ChevronRight size={14} />
               </CardRow>
             ))}
           </Card>
+
+          {canReview && (
+            <Card>
+              <CardHeader><CardTitle>Expiring within 60 days</CardTitle></CardHeader>
+              {expiring.length === 0 ? <div {...stylex.props(styles.empty)}>Nothing expiring soon.</div> : expiring.map((x) => (
+                <CardRow key={x.id} testId="dash-expiring">
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.body135)}>{x.who}</div>
+                    <div {...stylex.props(styles.small)}>{x.kind} · {fmtDate(x.until)}</div>
+                  </div>
+                  <Pill tone={x.days < 0 ? "danger" : x.days < 30 ? "warn" : "default"}>{x.days < 0 ? "Lapsed" : `${x.days}d`}</Pill>
+                </CardRow>
+              ))}
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
               <CardTitle>This week's lists</CardTitle>
-              <button type="button" onClick={() => navigate("/lists")} {...stylex.props(styles.ghost)}>
-                Lists <ArrowRight size={12} />
-              </button>
+              <button type="button" onClick={() => navigate("/lists")} {...stylex.props(styles.ghost)}>Lists <ArrowRight size={12} /></button>
             </CardHeader>
-            {LISTS.map((l) => (
-              <CardRow key={l.id} onClick={() => navigate("/lists")}>
-                <div {...stylex.props(styles.listIcon)}><Box size={15} /></div>
-                <div {...stylex.props(styles.grow)}>
-                  <div {...stylex.props(styles.evTitle)}>{l.name}</div>
-                  <div {...stylex.props(styles.small)}>{l.total} items · orders {fmtDayLong(l.nextOrder)}</div>
-                </div>
-                {l.needsApproval > 0 && <Pill tone="warn">{l.needsApproval} to review</Pill>}
-              </CardRow>
+            {weekLists.length === 0 ? <div {...stylex.props(styles.empty)}>No lists yet.</div> : weekLists.map((l) => (
+              <DashListRow key={l.id} id={l.id} name={l.name} nextOrder={l.nextOrder} token={token} onClick={() => navigate("/lists")} />
             ))}
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Connected systems</CardTitle>
-            </CardHeader>
-            <div {...stylex.props(styles.connGrid)}>
-              {CONNECTED.map((s) => (
-                <div key={s.name} {...stylex.props(styles.connItem)}>
-                  <div>
-                    <div {...stylex.props(styles.connName)}>{s.name}</div>
-                    <div {...stylex.props(styles.small, styles.tiny)}>{s.status}</div>
-                  </div>
-                  <div {...stylex.props(styles.grow)} />
-                  <span {...stylex.props(styles.greenDot)} />
-                </div>
-              ))}
-            </div>
           </Card>
         </div>
       </div>

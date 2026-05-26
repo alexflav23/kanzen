@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 // Browser e2e (Playwright): grouped navigation — built pages route to content,
 // every not-yet-built nav item routes cleanly to the "Coming soon" stub.
 const BUILT: [string, RegExp][] = [
-  ["Dashboard", /Good morning, Flavian\./],
+  ["Dashboard", /Good (morning|afternoon|evening), Flavian\./],
   ["Inbox", /Inbox/],
   ["Notifications", /Notifications/],
   ["Inventory", /Inventory/],

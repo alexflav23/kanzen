@@ -28,7 +28,7 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   };
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning, Flavian." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Flavian\./ })).toBeVisible();
   await scan(page, "Dashboard (light)", v);
   // dark theme
   await page.keyboard.press("Meta+d");

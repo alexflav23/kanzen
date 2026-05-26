@@ -1,11 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { can as canFor, devToken, getMe, impersonate as impersonateSvc, type Me, type Persona } from "../services/auth";
+import { decodeToken } from "../auth/claims";
 import { ApiError } from "../services/http";
 
 type AuthState = {
   token: string | null;
   persona: Persona | null;
   me: Me | null;
+  /** The effective principal's role, derived synchronously from the bearer token's claims
+   * (`custom:role`) so coarse role gating recalibrates atomically with the token. */
+  role: string | null;
   /** Resource-level permission check for the *effective* principal (recalibrates the UI). */
   can: (resource: string, level?: "read" | "write" | "admin") => boolean;
   /** True while /api/me is loading (so consumers can avoid flicker). */
@@ -103,11 +107,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (resource: string, level: "read" | "write" | "admin" = "read") => (me ? canFor(me.permissions, resource, level) : false),
     [me],
   );
-  const impersonating = !!me?.impersonatedBy;
+
+  // The token *is* the identity: decode its claims so the effective role + impersonation state
+  // recalibrate synchronously with the bearer (no lag waiting on /api/me). This is what drives
+  // coarse, role-scoped UI gating; `can()` still uses the authoritative permissions from /api/me.
+  const claims = useMemo(() => decodeToken(token), [token]);
+  const role = claims?.role ?? me?.role ?? null;
+  const impersonating = !!(claims?.impersonatedBy ?? me?.impersonatedBy);
 
   const value = useMemo<AuthState>(
-    () => ({ token, persona, me, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken }),
-    [token, persona, me, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken],
+    () => ({ token, persona, me, role, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken }),
+    [token, persona, me, role, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken],
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

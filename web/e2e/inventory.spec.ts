@@ -56,7 +56,7 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await ev.getByLabel("Event type").selectOption("serviced");
   await ev.getByLabel("Note").fill("Annual service");
   await ev.getByRole("button", { name: "Log event" }).click();
-  await expect(page.getByText("Annual service")).toBeVisible();
+  await expect(page.getByText("Annual service").first()).toBeVisible(); // .first(): the dev DB accumulates events across runs
 
   // record a valuation (Principal) → it appears in the Valuations history
   await page.getByRole("button", { name: "Record valuation" }).click();
@@ -92,7 +92,7 @@ test("New asset creates an asset that appears", async ({ page }) => {
 
 test("nav links route from Dashboard to Inventory", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning, Flavian." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Flavian\./ })).toBeVisible();
   await page.getByRole("link", { name: "Inventory" }).click();
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
 });

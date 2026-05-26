@@ -1,27 +1,25 @@
 import { expect, test } from "./fixtures";
 
-// Browser e2e (Playwright): the deepened Dashboard (design parity).
-test("dashboard shows the hero strip, upcoming, budgets and side panels", async ({ page }) => {
+// Browser e2e (Playwright): the Dashboard is now wired entirely to real backend reads
+// (no mock data). Assertions avoid exact counts that other specs mutate (inbox/finance)
+// and instead check the real panels + seeded content.
+test("dashboard shows the real attention strip, upcoming, and side panels", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning, Flavian." })).toBeVisible();
-  await expect(page.getByText("5 items awaiting your review, 2 expenses for approval.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Flavian\./ })).toBeVisible();
 
-  // Attention strip
-  await expect(page.getByText("5 items in Triage")).toBeVisible();
-  await expect(page.getByText("2 expenses to approve")).toBeVisible();
+  // Attention strip (real triage + real expenses awaiting approval)
+  await expect(page.getByText("in Triage")).toBeVisible();
+  await expect(page.getByTestId("approvals-cta")).toContainText("to approve");
 
-  // Left column
+  // Left column — real calendar event seeded within the next 14 days
   await expect(page.getByText("Next 14 days")).toBeVisible();
   await expect(page.getByText("Waitrose delivery")).toBeVisible();
-  await expect(page.getByText("This month · by property")).toBeVisible();
-  await expect(page.getByTestId("budget")).toHaveCount(2);
-  await expect(page.getByText("Agent activity")).toBeVisible();
+  await expect(page.getByTestId("dash-expense").filter({ hasText: "Climatec" })).toBeVisible();
 
-  // Right column
+  // Right column — real expiring permits + lists (the Properties panel order varies with seed)
   await expect(page.getByText("Expiring within 60 days")).toBeVisible();
-  await expect(page.getByText("Lapsed")).toBeVisible();
-  await expect(page.getByText("Connected systems")).toBeVisible();
-  await expect(page.getByText("Todoist")).toBeVisible();
+  await expect(page.getByText(/work permit|review due/).first()).toBeVisible();
+  await expect(page.getByText("Grocery — Wardian")).toBeVisible();
 });
 
 test("the live at-a-glance summary shows real counts (F29)", async ({ page }) => {
@@ -33,8 +31,8 @@ test("the live at-a-glance summary shows real counts (F29)", async ({ page }) =>
   await expect(page.getByTestId("glance-num").first()).toBeVisible(); // a real count rendered
 });
 
-test("the approvals card navigates to Finance", async ({ page }) => {
+test("the approvals CTA navigates to Finance", async ({ page }) => {
   await page.goto("/");
-  await page.getByText("2 expenses to approve").click();
+  await page.getByTestId("approvals-cta").click();
   await expect(page.getByRole("heading", { name: /Bills, expenses/ })).toBeVisible();
 });

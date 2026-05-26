@@ -29,6 +29,11 @@ vi.mock("../services/lists", () => ({
 vi.mock("../services/properties", () => ({
   listProperties: vi.fn(async () => [{ id: "p1", name: "Wardian Apt 5206", jurisdiction: "UK", currency: "GBP", status: "active", rooms: 0, assets: 0, bills: 0, vendors: 0 }]),
 }));
+// The effective role (drives canDecide) now comes from the token identity / /api/me — mock it as Principal.
+vi.mock("../services/auth", async (orig) => ({
+  ...(await orig<typeof import("../services/auth")>()),
+  getMe: vi.fn(async () => ({ userId: "u1", name: "Flavian", email: "flavian@kanzen.local", role: "principal", permissions: [], impersonatedBy: null })),
+}));
 
 import { Lists } from "../pages/Lists";
 

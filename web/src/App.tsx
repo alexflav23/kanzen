@@ -87,7 +87,7 @@ const styles = stylex.create({
 });
 
 export function App() {
-  const { token, persona, signOut, can, meLoading, me, impersonating, impersonate, stopImpersonating } = useAuth();
+  const { token, persona, signOut, can, meLoading, me, role, impersonating, impersonate, stopImpersonating } = useAuth();
   if (!token) return <DevLogin />;
   const canImpersonate = !impersonating && can("*", "admin"); // an admin not already acting-as someone
   // F02 — recalibrate the nav to the principal's permissions. While /api/me loads, show only the
@@ -122,7 +122,7 @@ export function App() {
           <div {...stylex.props(styles.account)}>
             <div {...stylex.props(styles.who)}>
               {persona?.name ?? "Signed in"}
-              <div {...stylex.props(styles.whoRole)}>{me?.role ?? persona?.role}</div>
+              <div {...stylex.props(styles.whoRole)}>{role ?? persona?.role}</div>
             </div>
             <button type="button" onClick={signOut} {...stylex.props(styles.signout)}>Sign out</button>
           </div>
@@ -146,7 +146,7 @@ export function App() {
         <main {...stylex.props(styles.main)}>
           {impersonating && (
             <div {...stylex.props(styles.banner)} role="status" data-testid="impersonation-banner">
-              <span {...stylex.props(styles.bannerGrow)}>Viewing as <strong>{me?.email}</strong> ({me?.role}) — admin impersonation</span>
+              <span {...stylex.props(styles.bannerGrow)}>Viewing as <strong>{me?.email}</strong> ({role}) — admin impersonation</span>
               <button type="button" onClick={stopImpersonating} {...stylex.props(styles.bannerBtn)} data-testid="stop-impersonating">Stop</button>
             </div>
           )}

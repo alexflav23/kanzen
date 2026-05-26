@@ -44,7 +44,7 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   // boot
   where.v = "dashboard";
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Good morning, Flavian." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Flavian\./ })).toBeVisible();
 
   // every nav-reachable page (each asserts its heading; the guard watches throughout)
   await go("Inbox", /^Inbox$/);
