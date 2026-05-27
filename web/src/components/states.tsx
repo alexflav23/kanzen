@@ -2,6 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { ReactNode } from "react";
 import { colors, radius } from "../styles/tokens.stylex";
 import { ApiError } from "../services/http";
+import { KanzenLoader } from "./KanzenLoader";
 
 const styles = stylex.create({
   panel: {
@@ -15,25 +16,14 @@ const styles = stylex.create({
   },
   title: { fontSize: "16px", fontWeight: 600, color: colors.ink2, marginBottom: "6px" },
   detail: { fontSize: "13px", color: colors.ink3 },
-  spinner: {
-    width: "22px",
-    height: "22px",
-    margin: "0 auto 12px",
-    borderRadius: "50%",
-    border: `2.5px solid ${colors.line}`,
-    borderTopColor: colors.accent,
-    animationName: stylex.keyframes({ to: { transform: "rotate(360deg)" } }),
-    animationDuration: "0.7s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "linear",
-  },
+  loaderWrap: { marginBottom: "10px" },
 });
 
 /** The four data states every wired list/detail renders (DoD: loading/empty/error/forbidden). */
 export function Loading({ label = "Loading…" }: { label?: string }) {
   return (
     <div {...stylex.props(styles.panel)} role="status" aria-live="polite" data-testid="state-loading">
-      <div {...stylex.props(styles.spinner)} />
+      <div {...stylex.props(styles.loaderWrap)}><KanzenLoader size={40} /></div>
       {label}
     </div>
   );
