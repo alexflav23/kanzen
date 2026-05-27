@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Authorizer}
+import com.kanzen.authz.{Actions, Authorizer, Authz}
 import com.kanzen.search.{SearchHit, SearchRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -45,7 +45,7 @@ object Search {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("search")) (Left(forbidden): Out[Results]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("search:view"))) (Left(forbidden): Out[Results]).pure[ConnectionIO]
         else
           SearchRepo.hits(q).map { hits =>
             val allowed = hits

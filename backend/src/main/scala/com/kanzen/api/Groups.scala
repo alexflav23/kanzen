@@ -5,7 +5,7 @@ import cats.syntax.all._
 import com.kanzen.asset.GroupRepo
 import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -42,7 +42,7 @@ object Groups {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { authz =>
-        if (!authz.canRead("asset")) (Left(forbidden): Out[List[GroupView]]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[GroupView]]).pure[ConnectionIO]
         else
           GroupRepo.list.map(gs =>
             Right(gs.map(g => GroupView(g.id, g.name, g.kind, g.notes, g.memberCount))): Out[List[GroupView]]
@@ -54,7 +54,7 @@ object Groups {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { authz =>
-        if (!authz.canRead("asset")) (Left(forbidden): Out[List[GroupRef]]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[GroupRef]]).pure[ConnectionIO]
         else
           GroupRepo.forAsset(assetId).map(gs => Right(gs.map(g => GroupRef(g.id, g.name, g.kind))): Out[List[GroupRef]])
       }
@@ -67,7 +67,7 @@ object Groups {
       Authz
         .forUser(p.userId, p.role)
         .flatMap { authz =>
-          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[GroupView]).pure[ConnectionIO]
+          if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[GroupView]).pure[ConnectionIO]
           else
             GroupRepo.create(p.userId, req.name.trim, req.kind, req.notes).flatMap { id =>
               AuditRepo
@@ -90,7 +90,7 @@ object Groups {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- GroupRepo.exists(req.groupId)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
         else
           (GroupRepo.addMember(req.groupId, assetId) *>
@@ -111,7 +111,7 @@ object Groups {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else
           (GroupRepo.removeMember(groupId, assetId) *>
             AuditRepo.write(

@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.maintenance.{MaintenanceRepo, MaintenanceService, PlanRow}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -60,7 +60,7 @@ object Maintenance {
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[PlanView]]] = {
     val today = LocalDate.now()
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("maintenance")) (Left(forbidden): Out[List[PlanView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("maintenance:view"))) (Left(forbidden): Out[List[PlanView]]).pure[ConnectionIO]
       else MaintenanceRepo.list.map(ps => Right(ps.map(view(_, today))): Out[List[PlanView]])
     }
     tx.transact(xa)
@@ -69,7 +69,7 @@ object Maintenance {
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[PlanView]] = {
     val today = LocalDate.now()
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "maintenance")) (Left(forbidden): Out[PlanView]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("maintenance:create"))) (Left(forbidden): Out[PlanView]).pure[ConnectionIO]
       else
         MaintenanceRepo
           .insert(p.userId, r.title, r.propertyId, r.vendor, r.frequency, r.firstDue, r.leadDays.getOrElse(5))
@@ -83,7 +83,7 @@ object Maintenance {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- MaintenanceRepo.exists(id)
       res <-
-        if (!authz.can(Level.Write, "maintenance")) (Left(forbidden): Out[CompleteResult]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("maintenance:edit"))) (Left(forbidden): Out[CompleteResult]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[CompleteResult]).pure[ConnectionIO]
         else
           MaintenanceRepo

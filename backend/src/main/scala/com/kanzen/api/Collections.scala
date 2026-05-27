@@ -5,7 +5,7 @@ import cats.syntax.all._
 import com.kanzen.asset.CollectionRepo
 import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -45,7 +45,7 @@ object Collections {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { authz =>
-        if (!authz.canRead("asset")) (Left(forbidden): Out[List[CollectionView]]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[CollectionView]]).pure[ConnectionIO]
         else
           CollectionRepo.list.map(cs =>
             Right(cs.map(c => CollectionView(c.id, c.name, c.description, c.memberCount))): Out[List[CollectionView]]
@@ -57,7 +57,7 @@ object Collections {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       res <-
-        if (!authz.canRead("asset")) (Left(forbidden): Out[List[MemberView]]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[MemberView]]).pure[ConnectionIO]
         else
           CollectionRepo.exists(id).flatMap {
             case false => (Left(notFound): Out[List[MemberView]]).pure[ConnectionIO]
@@ -75,7 +75,7 @@ object Collections {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { authz =>
-        if (!authz.canRead("asset")) (Left(forbidden): Out[List[CollectionRef]]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[CollectionRef]]).pure[ConnectionIO]
         else
           CollectionRepo
             .forAsset(assetId)
@@ -87,7 +87,7 @@ object Collections {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { authz =>
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[CollectionView]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[CollectionView]).pure[ConnectionIO]
         else if (req.name.trim.isEmpty) (Left(badName): Out[CollectionView]).pure[ConnectionIO]
         else
           CollectionRepo.create(p.userId, req.name.trim, req.description).flatMap { id =>
@@ -110,7 +110,7 @@ object Collections {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else
           CollectionRepo.exists(id).flatMap {
             case false => (Left(notFound): Out[Ok]).pure[ConnectionIO]

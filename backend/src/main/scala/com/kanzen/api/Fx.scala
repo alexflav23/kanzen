@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.fx.{Currency, FxRepo, FxService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -55,7 +55,9 @@ object Fx {
   private def gate[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a => if (a.canRead("fx")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+      .flatMap(a =>
+        if (a.can(Actions.byKey("fx:view"))) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
+      )
 
   private def label(rate: Double, on: LocalDate): String = f"≈ at $on rate (×$rate%.4f)"
 
@@ -67,7 +69,7 @@ object Fx {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("fx")) (Left(forbidden): Out[Conversion]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("fx:view"))) (Left(forbidden): Out[Conversion]).pure[ConnectionIO]
         else
           FxRepo.crossRateOn(r.from, r.to, on).map {
             case None => Left(noRate)
@@ -93,7 +95,7 @@ object Fx {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("fx")) (Left(forbidden): Out[Rollup]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("fx:view"))) (Left(forbidden): Out[Rollup]).pure[ConnectionIO]
         else {
           // group native amounts by currency (per-currency breakdown is the primary truth)
           val byCcy = r.lines.groupMapReduce(_.currency)(_.amountMinor)(_ + _)

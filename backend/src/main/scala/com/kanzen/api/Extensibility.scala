@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.ext.{CustomFieldDef, CustomFieldRepo, Tag, TagRepo, Taxonomy, TaxonomyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -68,45 +68,45 @@ object Extensibility {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "not found"))
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
-  private def gate[A](p: Principal, level: Level, resource: String)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+  private def gate[A](p: Principal, action: Action)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   // ---- tags -------------------------------------------------------------------------------
   def tags(xa: Transactor[IO], p: Principal): IO[Out[List[TagView]]] =
-    gate(p, Level.Read, "tag")(TagRepo.list.map(_.map(tv))).transact(xa)
+    gate(p, Actions.byKey("tag:view"))(TagRepo.list.map(_.map(tv))).transact(xa)
   def createTag(xa: Transactor[IO], p: Principal, r: CreateTagReq): IO[Out[TagView]] =
     if (r.name.trim.isEmpty) IO.pure(Left(badReq("name required")))
-    else gate(p, Level.Write, "tag")(TagRepo.createTag(r.name, None).map(id => TagView(id, r.name))).transact(xa)
+    else
+      gate(p, Actions.byKey("tag:create"))(TagRepo.createTag(r.name, None).map(id => TagView(id, r.name))).transact(xa)
   def tagEntity(xa: Transactor[IO], p: Principal, r: TagLinkReq): IO[Out[Ok]] =
     if (!ENTITIES.contains(r.entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
-    else gate(p, Level.Write, "tag")(TagRepo.tagEntity(r.tagId, r.entityType, r.entityId).as(Ok(true))).transact(xa)
+    else
+      gate(p, Actions.byKey("tag:edit"))(TagRepo.tagEntity(r.tagId, r.entityType, r.entityId).as(Ok(true))).transact(xa)
   def entitiesWithTag(xa: Transactor[IO], p: Principal, tagId: UUID): IO[Out[List[TaggedEntity]]] =
-    gate(p, Level.Read, "tag")(TagRepo.entitiesWithTag(tagId).map(_.map { case (t, i) => TaggedEntity(t, i) }))
+    gate(p, Actions.byKey("tag:view"))(TagRepo.entitiesWithTag(tagId).map(_.map { case (t, i) => TaggedEntity(t, i) }))
       .transact(xa)
 
   /** The tags on a given entity (asset/property/…) — for chip display + removal. */
   def tagsForEntity(xa: Transactor[IO], p: Principal, entityType: String, entityId: UUID): IO[Out[List[TagView]]] =
     if (!ENTITIES.contains(entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
-    else gate(p, Level.Read, "tag")(TagRepo.tagsForEntity(entityType, entityId).map(_.map(tv))).transact(xa)
+    else gate(p, Actions.byKey("tag:view"))(TagRepo.tagsForEntity(entityType, entityId).map(_.map(tv))).transact(xa)
   def untagEntity(xa: Transactor[IO], p: Principal, tagId: UUID, entityType: String, entityId: UUID): IO[Out[Ok]] =
     if (!ENTITIES.contains(entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
-    else gate(p, Level.Write, "tag")(TagRepo.untagEntity(tagId, entityType, entityId).as(Ok(true))).transact(xa)
+    else gate(p, Actions.byKey("tag:edit"))(TagRepo.untagEntity(tagId, entityType, entityId).as(Ok(true))).transact(xa)
 
   // ---- taxonomies -------------------------------------------------------------------------
   def taxonomies(xa: Transactor[IO], p: Principal): IO[Out[List[TaxonomyView]]] =
-    gate(p, Level.Read, "taxonomy")(TaxonomyRepo.list.map(_.map(xv))).transact(xa)
+    gate(p, Actions.byKey("taxonomy:view"))(TaxonomyRepo.list.map(_.map(xv))).transact(xa)
   def createTaxonomy(xa: Transactor[IO], p: Principal, r: CreateTaxonomyReq): IO[Out[TaxonomyView]] =
     if (r.name.trim.isEmpty) IO.pure(Left(badReq("name required")))
     else
-      gate(p, Level.Write, "taxonomy")(
+      gate(p, Actions.byKey("taxonomy:create"))(
         TaxonomyRepo.create(r.name, r.appliesTo).map(id => TaxonomyView(id, r.name, r.appliesTo, isSystem = false))
       ).transact(xa)
   def nodes(xa: Transactor[IO], p: Principal, taxonomyId: UUID): IO[Out[List[NodeView]]] =
-    gate(p, Level.Read, "taxonomy")(
+    gate(p, Actions.byKey("taxonomy:view"))(
       TaxonomyRepo.nodes(taxonomyId).map(_.map { case (id, par, n) => NodeView(id, par, n) })
     ).transact(xa)
   def addNode(xa: Transactor[IO], p: Principal, taxonomyId: UUID, r: NodeReq): IO[Out[NodeView]] = {
@@ -114,7 +114,7 @@ object Extensibility {
       a <- Authz.forUser(p.userId, p.role)
       exists <- TaxonomyRepo.exists(taxonomyId)
       res <-
-        if (!a.can(Level.Write, "taxonomy")) (Left(forbidden): Out[NodeView]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("taxonomy:create"))) (Left(forbidden): Out[NodeView]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[NodeView]).pure[ConnectionIO]
         else
           TaxonomyRepo
@@ -126,24 +126,25 @@ object Extensibility {
   def linkTaxonomy(xa: Transactor[IO], p: Principal, r: TaxonomyLinkReq): IO[Out[Ok]] =
     if (!ENTITIES.contains(r.entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
     else
-      gate(p, Level.Write, "taxonomy")(TaxonomyRepo.link(r.nodeId, r.entityType, r.entityId).as(Ok(true))).transact(xa)
+      gate(p, Actions.byKey("taxonomy:edit"))(TaxonomyRepo.link(r.nodeId, r.entityType, r.entityId).as(Ok(true)))
+        .transact(xa)
 
   // ---- custom fields ----------------------------------------------------------------------
   def customFields(xa: Transactor[IO], p: Principal, entityType: String): IO[Out[List[CustomFieldView]]] =
-    gate(p, Level.Read, "custom_field")(CustomFieldRepo.listFor(entityType).map(_.map(cv))).transact(xa)
+    gate(p, Actions.byKey("custom_field:view"))(CustomFieldRepo.listFor(entityType).map(_.map(cv))).transact(xa)
   def createField(xa: Transactor[IO], p: Principal, r: CreateFieldReq): IO[Out[CustomFieldView]] =
     if (!ENTITIES.contains(r.entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
     else if (!TYPES.contains(r.`type`)) IO.pure(Left(badReq(s"type must be one of ${TYPES.mkString(", ")}")))
     else {
       val enumJson = r.enumValues.map(vs => Json.fromValues(vs.map(Json.fromString)))
-      gate(p, Level.Write, "custom_field")(
+      gate(p, Actions.byKey("custom_field:create"))(
         CustomFieldRepo
           .create(p.userId, r.entityType, r.key, r.label, r.`type`, enumJson, r.sensitive.getOrElse(false))
           .map(cv)
       ).transact(xa)
     }
   def deleteField(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Ok]] =
-    gate(p, Level.Write, "custom_field")(CustomFieldRepo.delete(id).map(n => Ok(n > 0))).transact(xa)
+    gate(p, Actions.byKey("custom_field:delete"))(CustomFieldRepo.delete(id).map(n => Ok(n > 0))).transact(xa)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()

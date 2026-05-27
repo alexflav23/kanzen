@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.quality.{CompletenessService, DataQualityRepo, QualityFlag, RegistryHealth}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -44,18 +44,16 @@ object DataQuality {
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
 
-  private def gate[A](p: Principal, level: Level, resource: String)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+  private def gate[A](p: Principal, action: Action)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def completeness(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[Completeness]] =
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("asset")) (Left(forbidden): Out[Completeness]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[Completeness]).pure[ConnectionIO]
         else
           DataQualityRepo.checksFor(assetId).map {
             case None => Left(notFound)
@@ -65,16 +63,17 @@ object DataQuality {
       .transact(xa)
 
   def registryHealth(xa: Transactor[IO], p: Principal): IO[Out[HealthView]] =
-    gate(p, Level.Read, "asset")(DataQualityRepo.registryHealth.map(hv)).transact(xa)
+    gate(p, Actions.byKey("asset:view"))(DataQualityRepo.registryHealth.map(hv)).transact(xa)
 
   def stream(xa: Transactor[IO], p: Principal): IO[Out[List[FlagView]]] =
-    gate(p, Level.Read, "data_quality")(DataQualityRepo.openFlags.map(_.map(fv))).transact(xa)
+    gate(p, Actions.byKey("data_quality:view"))(DataQualityRepo.openFlags.map(_.map(fv))).transact(xa)
 
   def scan(xa: Transactor[IO], p: Principal): IO[Out[ScanResult]] =
-    gate(p, Level.Write, "data_quality")(DataQualityRepo.scan.map(ScanResult(_))).transact(xa)
+    gate(p, Actions.byKey("data_quality:scan"))(DataQualityRepo.scan.map(ScanResult(_))).transact(xa)
 
   def resolve(xa: Transactor[IO], p: Principal, flagId: UUID, status: String): IO[Out[Ok]] =
-    gate(p, Level.Write, "data_quality")(DataQualityRepo.setStatus(flagId, status).map(n => Ok(n > 0))).transact(xa)
+    gate(p, Actions.byKey("data_quality:edit"))(DataQualityRepo.setStatus(flagId, status).map(n => Ok(n > 0)))
+      .transact(xa)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()

@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{AssetRepo, InsuranceRepo, Warranty}
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz, Level}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -55,7 +55,7 @@ object Provenance {
 
   def warranties(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[WarrantyView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[List[WarrantyView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[WarrantyView]]).pure[ConnectionIO]
       else InsuranceRepo.warranties(assetId).map(ws => Right(ws.map(wview)): Out[List[WarrantyView]])
     }
     tx.transact(xa)
@@ -66,7 +66,7 @@ object Provenance {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(assetId)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
         else
           InsuranceRepo

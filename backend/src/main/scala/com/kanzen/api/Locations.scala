@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.property.{Location, PropertyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -68,7 +68,7 @@ object Locations {
     } yield prop match {
       case None => Left(notFound)
       case Some(pr) if pr.status == "archived" => Left(conflict)
-      case Some(_) if !authz.can(Level.Write, "property") => Left(forbidden)
+      case Some(_) if !authz.can(Actions.byKey("property:edit")) => Left(forbidden)
       case Some(_) => Right(())
     }
 
@@ -91,7 +91,7 @@ object Locations {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.exists(_.id == propertyId))
-      res <- (authz.canRead("property"), visible) match {
+      res <- (authz.can(Actions.byKey("property:view")), visible) match {
         case (false, _) => (Left(forbidden): Out[List[LocationView]]).pure[ConnectionIO]
         case (true, false) => (Left(notFound): Out[List[LocationView]]).pure[ConnectionIO]
         case (true, true) => PropertyRepo.locations(propertyId).map(ls => Right(ls.map(view)): Out[List[LocationView]])

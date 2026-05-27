@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.Authz
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.insights.InsightsRepo
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -36,7 +36,7 @@ object Insights {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("asset")) (Left(forbidden): Out[RegistryAnalytics]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[RegistryAnalytics]).pure[ConnectionIO]
         else
           for {
             total <- InsightsRepo.assetTotal

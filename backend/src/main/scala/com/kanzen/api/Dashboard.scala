@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.Authz
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.finance.ExpenseRepo
 import com.kanzen.people.PeopleRepo
 import com.kanzen.property.PropertyRepo
@@ -30,11 +30,13 @@ object Dashboard {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       props <- PropertyRepo.listForPrincipal(p.userId)
-      assets <- if (authz.canRead("asset")) AssetRepo.list(None, None) else List.empty.pure[ConnectionIO]
+      assets <-
+        if (authz.can(Actions.byKey("asset:view"))) AssetRepo.list(None, None) else List.empty.pure[ConnectionIO]
       pending <-
-        if (authz.canRead("expense")) ExpenseRepo.list(Some("pending_approval")) else List.empty.pure[ConnectionIO]
+        if (authz.can(Actions.byKey("expense:view"))) ExpenseRepo.list(Some("pending_approval"))
+        else List.empty.pure[ConnectionIO]
       permits <-
-        if (p.role != "staff" && authz.canRead("person")) PeopleRepo.expiringPermits(60)
+        if (p.role != "staff" && authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(60)
         else List.empty.pure[ConnectionIO]
     } yield Right(Summary(pending.size, props.size, assets.size, permits.size)): Out[Summary]
     tx.transact(xa)

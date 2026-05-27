@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.finance.{ExpenseRepo, TaxService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -35,7 +35,7 @@ object Tax {
       Authz
         .forUser(p.userId, p.role)
         .map { authz =>
-          if (!authz.can(Level.Read, "ledger")) Left(forbidden)
+          if (!authz.can(Actions.byKey("ledger:view"))) Left(forbidden)
           else {
             val tax = TaxService.estimateIncomeTaxMinor(grossMinor)
             Right(IncomeEstimate(grossMinor, tax, grossMinor - tax, TaxService.effectiveRatePct(grossMinor)))
@@ -47,9 +47,10 @@ object Tax {
   def deductibleReport(xa: Transactor[IO], p: Principal): IO[Out[DeductibleReport]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      summary <- if (authz.can(Level.Read, "ledger")) ExpenseRepo.deductibleSummary else (0L, 0L, 0).pure[ConnectionIO]
+      summary <-
+        if (authz.can(Actions.byKey("ledger:view"))) ExpenseRepo.deductibleSummary else (0L, 0L, 0).pure[ConnectionIO]
     } yield
-      if (!authz.can(Level.Read, "ledger")) Left(forbidden)
+      if (!authz.can(Actions.byKey("ledger:view"))) Left(forbidden)
       else Right(DeductibleReport(summary._1, summary._2, summary._3))
     tx.transact(xa)
   }

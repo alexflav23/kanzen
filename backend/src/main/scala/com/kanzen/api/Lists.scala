@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.lists.{ListItem, ListRepo, ShoppingList}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -90,16 +90,22 @@ object Lists {
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to lists"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such list item."))
 
+  // F02 v2 — list actions (view/create/edit + the operational verbs approve/order). `write` defaults to list:edit;
+  // specific endpoints pass their own verb so a permission set can grant e.g. order-only without edit.
+  private val viewA = Actions.byKey("list:view")
+  private val editA = Actions.byKey("list:edit")
+  private val createA = Actions.byKey("list:create")
+  private val approveA = Actions.byKey("list:approve")
+  private val orderA = Actions.byKey("list:order")
+
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a => if (a.canRead("list")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
-  private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+      .flatMap(a => if (a.can(viewA)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+  private def write[A](p: Principal, q: ConnectionIO[A], action: Action = editA): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Write, "list")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def lists(xa: Transactor[IO], p: Principal): IO[Out[List[ListView]]] =
     read(p, ListRepo.lists.map(_.map(lv))).transact(xa)
@@ -108,7 +114,8 @@ object Lists {
       p,
       ListRepo
         .createList(r.propertyId, r.name, r.vendor)
-        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active"))
+        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active")),
+      createA
     ).transact(xa)
 
   /** Reconfigure a list (Manager+). */
@@ -117,7 +124,7 @@ object Lists {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.listExists(listId)
       res <-
-        if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
+        if (!authz.can(editA)) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[ListView]).pure[ConnectionIO]
         else
           ListRepo
@@ -161,7 +168,7 @@ object Lists {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.itemExists(itemId)
       res <-
-        if (!authz.can(Level.Write, "list") || p.role == "staff") (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        if (!authz.can(approveA) || p.role == "staff") (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
         else op(itemId).as(Right(()): Out[Unit])
     } yield res
@@ -176,7 +183,7 @@ object Lists {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.listExists(listId)
       res <-
-        if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        if (!authz.can(orderA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
         else ListRepo.placeOrder(listId).as(Right(()): Out[Unit])
     } yield res

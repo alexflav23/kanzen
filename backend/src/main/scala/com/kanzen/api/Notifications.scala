@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.notify.{Device, DeviceRepo, Notification, NotificationRepo, Subscription, SubscriptionRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -70,7 +70,7 @@ object Notifications {
     Authz
       .forUser(p.userId, p.role)
       .flatMap(a =>
-        if (a.can(Level.Write, "notification")) q.map(Right(_): Out[A])
+        if (a.can(Actions.byKey("notification:manage"))) q.map(Right(_): Out[A])
         else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
 

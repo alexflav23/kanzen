@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{AssetEvent, AssetEventRepo, AssetRepo}
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -64,9 +64,11 @@ object AssetEvents {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       events <-
-        if (authz.canRead("asset")) AssetEventRepo.timeline(assetId) else List.empty[AssetEvent].pure[ConnectionIO]
-      cost <- if (authz.canRead("asset")) AssetEventRepo.lifetimeCostMinor(assetId) else 0L.pure[ConnectionIO]
-    } yield if (!authz.canRead("asset")) Left(forbidden) else Right(Timeline(events.map(view), cost))
+        if (authz.can(Actions.byKey("asset:view"))) AssetEventRepo.timeline(assetId)
+        else List.empty[AssetEvent].pure[ConnectionIO]
+      cost <-
+        if (authz.can(Actions.byKey("asset:view"))) AssetEventRepo.lifetimeCostMinor(assetId) else 0L.pure[ConnectionIO]
+    } yield if (!authz.can(Actions.byKey("asset:view"))) Left(forbidden) else Right(Timeline(events.map(view), cost))
     tx.transact(xa)
   }
 
@@ -77,7 +79,7 @@ object AssetEvents {
         authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(assetId)
         res <-
-          if (!authz.can(Level.Write, "asset_event")) (Left(forbidden): Out[EventView]).pure[ConnectionIO]
+          if (!authz.can(Actions.byKey("asset_event:create"))) (Left(forbidden): Out[EventView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[EventView]).pure[ConnectionIO]
           else
             AssetEventRepo

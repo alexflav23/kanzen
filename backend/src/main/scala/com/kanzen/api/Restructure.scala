@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{AssetRepo, RestructureRepo, RestructureService}
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -49,7 +49,7 @@ object Restructure {
   private def conflict(m: String): (StatusCode, ApiError) = (StatusCode.Conflict, ApiError(409, "conflict", m))
 
   private def canWrite(p: Principal): ConnectionIO[Boolean] =
-    Authz.forUser(p.userId, p.role).map(_.can(Level.Write, "asset"))
+    Authz.forUser(p.userId, p.role).map(_.can(Actions.byKey("asset:restructure")))
 
   /** AC1 — legacy create: approximate fields + uncertainty note, no receipt; valid but flaggable. */
   def legacyCreate(xa: Transactor[IO], p: Principal, r: LegacyCreateReq): IO[Out[Created]] =

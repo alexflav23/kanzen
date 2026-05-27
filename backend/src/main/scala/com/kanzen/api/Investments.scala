@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.wealth.{Holding, InvestmentRepo, InvestmentService, Security}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -62,19 +62,22 @@ object Investments {
   private def hv(h: Holding): HoldingView =
     HoldingView(h.securityId, h.symbol, h.quantity, h.costBasisMinor, h.marketValueMinor, h.unrealizedGainMinor)
 
-  private def principal[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+  // F02 v2 — investments authorize as part of `wealth` (Principal-grade, admin-level + sensitive).
+  private val viewA = Actions.byKey("wealth:view")
+  private val createA = Actions.byKey("wealth:create")
+  private val editA = Actions.byKey("wealth:edit")
+
+  private def principal[A](p: Principal, action: Action = viewA)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Admin, "wealth")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def securities(xa: Transactor[IO], p: Principal): IO[Out[List[SecurityView]]] =
     principal(p)(InvestmentRepo.securities.map(_.map(sv))).transact(xa)
   def createSecurity(xa: Transactor[IO], p: Principal, r: CreateSecurityReq): IO[Out[SecurityView]] =
     if (r.symbol.trim.isEmpty) IO.pure(Left(badReq("symbol required")))
     else
-      principal(p)(
+      principal(p, createA)(
         InvestmentRepo
           .createSecurity(r.symbol, r.name, r.currency.getOrElse("GBP"), r.assetClass.getOrElse("equity"))
           .map(id => SecurityView(id, r.symbol, r.name, r.currency.getOrElse("GBP"), r.assetClass.getOrElse("equity")))
@@ -85,7 +88,7 @@ object Investments {
       a <- Authz.forUser(p.userId, p.role)
       exists <- InvestmentRepo.securityExists(securityId)
       res <-
-        if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!a.can(editA)) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
         else
           InvestmentRepo
@@ -119,7 +122,7 @@ object Investments {
         a <- Authz.forUser(p.userId, p.role)
         lots <- InvestmentRepo.openLots(r.entityId, r.securityId)
         res <-
-          if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[SellResult]).pure[ConnectionIO]
+          if (!a.can(editA)) (Left(forbidden): Out[SellResult]).pure[ConnectionIO]
           else {
             val available = lots.map(_.quantity).sum
             if (available + 1e-9 < r.quantity)

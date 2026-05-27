@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.property.{Property, PropertyCounts, PropertyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -84,7 +84,7 @@ object Properties {
   def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] = {
     val tx: ConnectionIO[(Boolean, List[(Property, PropertyCounts)])] = for {
       authz <- Authz.forUser(p.userId, p.role)
-      allowed = authz.canRead("property")
+      allowed = authz.can(Actions.byKey("property:view"))
       props <-
         if (allowed) PropertyRepo.listForPrincipalWithCounts(p.userId)
         else List.empty[(Property, PropertyCounts)].pure[ConnectionIO]
@@ -99,7 +99,7 @@ object Properties {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[PropertyView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("property:create"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
       else
         PropertyRepo
           .insert(p.userId, req.name, req.address, req.jurisdiction, req.propType, req.ownership, req.currency)
@@ -116,7 +116,7 @@ object Properties {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
         case Some(pr) =>
           if (pr.status == "archived") (Left(conflict): Out[PropertyView]).pure[ConnectionIO]
-          else if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+          else if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else
             PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
               PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
@@ -132,7 +132,7 @@ object Properties {
       res <- visible match {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
         case Some(_) =>
-          if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
+          if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
@@ -146,9 +146,9 @@ object Properties {
     val tx: ConnectionIO[Either[(StatusCode, ApiError), PropertyDetail]] = for {
       authz <- Authz.forUser(p.userId, p.role)
       visible <-
-        if (authz.canRead("property")) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+        if (authz.can(Actions.byKey("property:view"))) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
         else Option.empty[Property].pure[ConnectionIO]
-      result <- (authz.canRead("property"), visible) match {
+      result <- (authz.can(Actions.byKey("property:view")), visible) match {
         case (false, _) => (Left(forbidden): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, None) => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, Some(pr)) =>

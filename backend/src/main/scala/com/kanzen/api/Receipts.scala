@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.receipt.{LineItem, Receipt, ReceiptRepo, ReceiptService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -81,7 +81,7 @@ object Receipts {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[ReceiptDetail]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[ReceiptDetail]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("receipt:create"))) (Left(forbidden): Out[ReceiptDetail]).pure[ConnectionIO]
       else
         for {
           r <- ReceiptRepo.create(p.userId, req.kind.getOrElse("receipt"), req.merchant, req.totalMinor, req.currency)
@@ -96,7 +96,7 @@ object Receipts {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[ReceiptView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("receipt")) (Left(forbidden): Out[List[ReceiptView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("receipt:view"))) (Left(forbidden): Out[List[ReceiptView]]).pure[ConnectionIO]
       else ReceiptRepo.list.map(rs => Right(rs.map(rv)): Out[List[ReceiptView]])
     }
     tx.transact(xa)
@@ -108,7 +108,7 @@ object Receipts {
       r <- ReceiptRepo.get(id)
       ls <- r.fold(List.empty[LineItem].pure[ConnectionIO])(_ => ReceiptRepo.lines(id))
     } yield
-      if (!authz.canRead("receipt")) Left(forbidden)
+      if (!authz.can(Actions.byKey("receipt:view"))) Left(forbidden)
       else r.map(rr => ReceiptDetail(rv(rr), ls.map(lv))).toRight(notFound)
     tx.transact(xa)
   }
@@ -124,7 +124,7 @@ object Receipts {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- ReceiptRepo.lineExists(lineId, receiptId)
       res <-
-        if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("receipt:edit"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
         else ReceiptRepo.confirmLine(lineId, category).as(Right(OkResult(true)): Out[OkResult])
     } yield res
@@ -135,7 +135,7 @@ object Receipts {
   def spend(xa: Transactor[IO], p: Principal, brand: String): IO[Out[SpendResult]] = {
     val key = ReceiptService.brandNorm(brand)
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("receipt")) (Left(forbidden): Out[SpendResult]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("receipt:view"))) (Left(forbidden): Out[SpendResult]).pure[ConnectionIO]
       else ReceiptRepo.spendByBrand(key).map(total => Right(SpendResult(key, total)): Out[SpendResult])
     }
     tx.transact(xa)

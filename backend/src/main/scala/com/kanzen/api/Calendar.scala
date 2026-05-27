@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.calendar.{CalEvent, CalendarRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -53,18 +53,19 @@ object Calendar {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such event."))
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
+  // F02 v2 — calendar actions.
+  private val viewA = Actions.byKey("calendar:view")
+  private val editA = Actions.byKey("calendar:edit")
+  private val createA = Actions.byKey("calendar:create")
+
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.canRead("calendar")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
-  private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+      .flatMap(a => if (a.can(viewA)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+  private def write[A](p: Principal, q: ConnectionIO[A], action: Action = editA): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Write, "calendar")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def events(
       xa: Transactor[IO],
@@ -84,7 +85,8 @@ object Calendar {
         p,
         CalendarRepo
           .createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None)
-          .map(id => EventView(id, r.title, Some(r.on), cat, "manual", readOnly = false))
+          .map(id => EventView(id, r.title, Some(r.on), cat, "manual", readOnly = false)),
+        createA
       ).transact(xa)
   }
 
@@ -93,7 +95,7 @@ object Calendar {
       a <- Authz.forUser(p.userId, p.role)
       exists <- CalendarRepo.exists(id)
       res <-
-        if (!a.can(Level.Write, "calendar")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!a.can(editA)) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
         else CalendarRepo.update(id, r.title, r.on, r.category).map(n => Right(Ok(n > 0)): Out[Ok])
     } yield res

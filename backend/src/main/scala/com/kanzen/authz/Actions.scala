@@ -29,20 +29,23 @@ object Actions {
       Action("asset", "move", Write),
       Action("asset", "custody", Write),
       Action("asset", "set_hero", Write),
-      Action("asset", "log_event", Write),
       Action("asset", "restructure", Write),
       Action("asset", "value", Admin, sensitive = true) // record a valuation (Principal-grade)
     ) ++
+      // `asset_event` is its own gated resource (the maintenance carve-out: log an event without seeing valuations).
+      List(Action("asset_event", "view", Read), Action("asset_event", "create", Write)) ++
       List(
         Action("market_value", "view", Admin, sensitive = true),
         Action("insured_value", "view", Admin, sensitive = true)
       ) ++
-      crud("collection") ++ crud("asset_group") ++ crud("tag") ++ crud("taxonomy") ++ crud("custom_field") ++
+      // collections + asset groups are authorized as part of the `asset` resource (no separate seed rules), so they
+      // are not independent catalogue entries — a future slice can split them out with a matching seed mapping.
+      crud("tag") ++ crud("taxonomy") ++ crud("custom_field") ++
       crud("brand") ++ List(Action("brand", "add", Write)) ++
       // ── Documents (F05) ──
       crud("document") ++ List(Action("document", "upload", Write), Action("document", "download", Read)) ++
-      // ── Property (F03) ──
-      crud("property") ++ crud("location") ++ crud("defect") ++
+      // ── Property (F03) ── (locations are authorized as part of the `property` resource)
+      crud("property") ++ crud("defect") ++
       // ── Operations ──
       crud("list") ++ List(
         Action("list", "propose", Write),
@@ -51,20 +54,37 @@ object Actions {
       ) ++
       crud("task") ++ crud("calendar") ++ crud("maintenance") ++ crud("product") ++
       crud("vendor") ++ crud("person") ++
-      // ── Finance ──
-      crud("bill") ++ List(Action("bill", "approve", Write), Action("bill", "pay", Write)) ++
+      // ── Finance ── (the pay queue + payment methods are authorized as part of `bill`; bank sync/reconcile as part
+      // of `bank_account` — matching the real gating resources, so grants bite without a separate seed mapping)
+      crud("bill") ++ List(
+        Action("bill", "approve", Write),
+        Action("bill", "pay", Write),
+        Action("bill", "schedule", Write)
+      ) ++
       crud("expense") ++ List(Action("expense", "approve", Write), Action("expense", "export", Read)) ++
-      crud("payment_method") ++ List(Action("payment", "schedule", Write)) ++
-      crud("bank_account") ++ List(Action("bank", "sync", Write), Action("bank", "reconcile", Write)) ++
+      crud("bank_account") ++ List(Action("bank_account", "sync", Write), Action("bank_account", "reconcile", Write)) ++
       crud("receipt") ++ List(Action("receipt", "parse", Write)) ++
-      List(Action("ledger", "view", Read), Action("fx", "view", Read), Action("tax", "view", Read)) ++
-      // ── Wealth ──
-      crud("wealth") ++ crud("investment") ++
-      // ── System ──
-      List(Action("search", "view", Read), Action("data_quality", "view", Read), Action("insights", "view", Read)) ++
+      List(Action("ledger", "view", Read), Action("fx", "view", Read)) ++
+      // ── Wealth ── (Principal-grade: even viewing is admin-level + sensitive. Investments authorize as part of
+      // `wealth`; tax view as part of `ledger`.)
+      List(
+        Action("wealth", "view", Admin, sensitive = true),
+        Action("wealth", "create", Admin, sensitive = true),
+        Action("wealth", "edit", Admin, sensitive = true),
+        Action("wealth", "delete", Admin, sensitive = true)
+      ) ++
+      // ── System ── (registry-health + insights views are authorized as part of the `asset` resource; the
+      // data-quality flag stream + scan/resolve is its own resource)
+      List(Action("search", "view", Read)) ++
+      List(
+        Action("data_quality", "view", Read),
+        Action("data_quality", "scan", Write),
+        Action("data_quality", "edit", Write)
+      ) ++
       List(Action("notification", "view", Read), Action("notification", "manage", Write)) ++
-      List(Action("backup", "view", Read), Action("backup", "run", Admin), Action("backup", "restore", Admin)) ++
-      List(Action("agent", "use", Write)) ++
+      // backups are admin-only, including listing them.
+      List(Action("backup", "view", Admin), Action("backup", "run", Admin), Action("backup", "restore", Admin)) ++
+      List(Action("agent", "view", Read), Action("agent", "use", Write)) ++
       // ── Admin (authz itself) ──
       List(
         Action("role", "view", Admin),

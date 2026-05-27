@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
 import com.kanzen.tasks.{TaskProject, TaskRepo, TaskRow}
 import io.circe.Json
@@ -46,16 +46,19 @@ object Tasks {
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to tasks"))
 
+  // F02 v2 — task actions.
+  private val viewA = Actions.byKey("task:view")
+  private val editA = Actions.byKey("task:edit")
+  private val createA = Actions.byKey("task:create")
+
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a => if (a.canRead("task")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
-  private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+      .flatMap(a => if (a.can(viewA)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+  private def write[A](p: Principal, q: ConnectionIO[A], action: Action = editA): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Write, "task")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def projects(xa: Transactor[IO], p: Principal): IO[Out[List[ProjectView]]] =
     read(p, TaskRepo.listProjects.map(_.map(pv))).transact(xa)
@@ -66,7 +69,8 @@ object Tasks {
         .createProject(r.name, r.propertyId)
         .flatMap(id =>
           TaskRepo.listProjects.map(_.find(_.id == id).map(pv).getOrElse(ProjectView(id, r.name, r.propertyId)))
-        )
+        ),
+      createA
     ).transact(xa)
   def list(xa: Transactor[IO], p: Principal, project: Option[UUID]): IO[Out[List[TaskView]]] =
     read(p, TaskRepo.listTasks(project).map(_.map(tv))).transact(xa)
@@ -75,7 +79,8 @@ object Tasks {
       p,
       TaskRepo
         .createTask(r.projectId, r.title, r.dueOn, r.recurrence)
-        .map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence))
+        .map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence)),
+      createA
     ).transact(xa)
   def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =
     write(

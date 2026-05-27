@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{TemplateRepo, TemplateService}
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -41,7 +41,7 @@ object Templates {
 
   def schema(xa: Transactor[IO], p: Principal, vertical: String): IO[Out[List[FieldView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[List[FieldView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("asset:view"))) (Left(forbidden): Out[List[FieldView]]).pure[ConnectionIO]
       else
         TemplateRepo.schemaFor(vertical).map { s =>
           val fields = s.fold(List.empty[FieldView])(j =>
@@ -55,7 +55,7 @@ object Templates {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[List[FieldView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[List[FieldView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[List[FieldView]]).pure[ConnectionIO]
       else
         TemplateRepo.create(req.verticalKey, req.name, toJson(req.fields)).as(Right(req.fields): Out[List[FieldView]])
     }

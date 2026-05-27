@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.people.{Person, PeopleRepo}
 import com.kanzen.property.PropertyRepo
 import doobie.ConnectionIO
@@ -61,10 +61,10 @@ object People {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       rows <-
-        if (!authz.canRead("person")) List.empty[Person].pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("person:view"))) List.empty[Person].pure[ConnectionIO]
         else if (p.role == "staff") PeopleRepo.listForUser(p.userId)
         else PeopleRepo.list.map(_.filter(_.propertyId.forall(scoped.contains)))
-    } yield if (!authz.canRead("person")) Left(forbidden) else Right(rows.map(view))
+    } yield if (!authz.can(Actions.byKey("person:view"))) Left(forbidden) else Right(rows.map(view))
     tx.transact(xa)
   }
 
@@ -74,7 +74,7 @@ object People {
       scoped <- scopedSet(p)
       person <- PeopleRepo.find(id)
     } yield
-      if (!authz.canRead("person")) Left(forbidden)
+      if (!authz.can(Actions.byKey("person:view"))) Left(forbidden)
       else
         person match {
           case None => Left(notFound)
@@ -90,7 +90,7 @@ object People {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[PersonView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "person")) (Left(forbidden): Out[PersonView]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("person:create"))) (Left(forbidden): Out[PersonView]).pure[ConnectionIO]
       else
         PeopleRepo
           .insert(
@@ -112,9 +112,11 @@ object People {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
-      rows <- if (authz.canRead("person")) PeopleRepo.expiringPermits(days) else List.empty[Person].pure[ConnectionIO]
+      rows <-
+        if (authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(days)
+        else List.empty[Person].pure[ConnectionIO]
     } yield
-      if (!authz.canRead("person")) Left(forbidden)
+      if (!authz.can(Actions.byKey("person:view"))) Left(forbidden)
       else {
         val visible = rows.filter(per =>
           if (p.role == "staff") per.userId.contains(p.userId) else per.propertyId.forall(scoped.contains)

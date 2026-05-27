@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.agent.{AgentActionRow, AgentRepo, AgentService, TrustRepo, TrustService}
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.inbox.InboxRepo
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -47,12 +47,15 @@ object Agent {
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a => if (a.canRead("agent")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+      .flatMap(a =>
+        if (a.can(Actions.byKey("agent:view"))) q.map(Right(_): Out[A])
+        else (Left(forbidden): Out[A]).pure[ConnectionIO]
+      )
   private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
       .flatMap(a =>
-        if (a.can(Level.Write, "agent")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
+        if (a.can(Actions.byKey("agent:use"))) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
 
   /** Ingest an email → classify → propose its mapped actions (all start `proposed`). */
@@ -84,7 +87,7 @@ object Agent {
       a <- Authz.forUser(p.userId, p.role)
       cat <- AgentRepo.actionCategory(id)
       res <-
-        if (!a.can(Level.Write, "agent")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("agent:use"))) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else
           cat match {
             case None => (Left(notFound): Out[Ok]).pure[ConnectionIO]
@@ -105,7 +108,7 @@ object Agent {
       a <- Authz.forUser(p.userId, p.role)
       cat <- AgentRepo.actionCategory(id)
       res <-
-        if (!a.can(Level.Write, "agent")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
+        if (!a.can(Actions.byKey("agent:use"))) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else
           cat match {
             case None => (Left(notFound): Out[Ok]).pure[ConnectionIO]

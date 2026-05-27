@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.backup.{BackupRepo, BackupService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -38,16 +38,18 @@ object Backup {
   private val invalid: (StatusCode, ApiError) =
     (StatusCode.UnprocessableEntity, ApiError(422, "invalid_archive", "Archive failed validation."))
 
-  private def principalOnly[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+  private val viewA = Actions.byKey("backup:view")
+  private val runA = Actions.byKey("backup:run")
+  private val restoreA = Actions.byKey("backup:restore")
+
+  private def principalOnly[A](p: Principal, action: Action = viewA)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Admin, "backup")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   /** AC1 — full export: dependency-ordered sections + a manifest (counts, per-section sha256). */
   def export(xa: Transactor[IO], p: Principal): IO[Out[ExportResult]] =
-    principalOnly(p) {
+    principalOnly(p, runA) {
       for {
         sections <- BackupRepo.exportAll
         manifest = BackupService.archiveManifest(sections)
@@ -75,7 +77,7 @@ object Backup {
       val tx = for {
         a <- Authz.forUser(p.userId, p.role)
         res <-
-          if (!a.can(Level.Admin, "backup")) (Left(forbidden): Out[RestoreResult]).pure[ConnectionIO]
+          if (!a.can(restoreA)) (Left(forbidden): Out[RestoreResult]).pure[ConnectionIO]
           else {
             val (ok, _) = BackupService.validate(r.archive.data, r.archive.manifest, BackupService.schemaVersion)
             if (!ok) (Left(invalid): Out[RestoreResult]).pure[ConnectionIO]

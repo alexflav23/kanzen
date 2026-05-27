@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.property.PropertyRepo
 import com.kanzen.vendor.{Vendor, VendorRepo}
 import doobie.ConnectionIO
@@ -63,11 +63,11 @@ object Vendors {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       rows <-
-        if (!authz.canRead("vendor")) List.empty[Vendor].pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("vendor:view"))) List.empty[Vendor].pure[ConnectionIO]
         else if (p.role == "staff")
           NonEmptyList.fromList(scoped.toList).fold(List.empty[Vendor].pure[ConnectionIO])(VendorRepo.listForProperties)
         else VendorRepo.listAll
-    } yield if (!authz.canRead("vendor")) Left(forbidden) else Right(rows.map(view))
+    } yield if (!authz.can(Actions.byKey("vendor:view"))) Left(forbidden) else Right(rows.map(view))
     tx.transact(xa)
   }
 
@@ -78,7 +78,7 @@ object Vendors {
       vendor <- VendorRepo.find(id)
       props <- vendor.fold(List.empty[UUID].pure[ConnectionIO])(v => VendorRepo.propertiesOf(v.id))
     } yield
-      if (!authz.canRead("vendor")) Left(forbidden)
+      if (!authz.can(Actions.byKey("vendor:view"))) Left(forbidden)
       else
         vendor match {
           case None => Left(notFound)
@@ -92,7 +92,7 @@ object Vendors {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[VendorView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "vendor")) (Left(forbidden): Out[VendorView]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("vendor:create"))) (Left(forbidden): Out[VendorView]).pure[ConnectionIO]
       else
         VendorRepo
           .insert(
@@ -115,7 +115,7 @@ object Vendors {
       scoped <- scopedIds(p)
       vendor <- VendorRepo.find(vendorId)
       res <-
-        if (!authz.can(Level.Write, "vendor")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("vendor:edit"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (vendor.isEmpty) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
         else if (!scoped.contains(propertyId)) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
         else VendorRepo.approveForProperty(vendorId, propertyId).as(Right(OkResult(true)): Out[OkResult])
@@ -128,10 +128,10 @@ object Vendors {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       rows <-
-        if (authz.canRead("vendor") && scoped.contains(propertyId)) VendorRepo.selectableFor(propertyId)
+        if (authz.can(Actions.byKey("vendor:view")) && scoped.contains(propertyId)) VendorRepo.selectableFor(propertyId)
         else List.empty[Vendor].pure[ConnectionIO]
     } yield
-      if (!authz.canRead("vendor")) Left(forbidden)
+      if (!authz.can(Actions.byKey("vendor:view"))) Left(forbidden)
       else if (!scoped.contains(propertyId)) Left(notFound)
       else Right(rows.map(view))
     tx.transact(xa)

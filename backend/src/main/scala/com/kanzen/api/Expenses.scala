@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.finance.{Expense, ExpenseRepo, ExpenseService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -56,7 +56,7 @@ object Expenses {
 
   def submit(xa: Transactor[IO], p: Principal, req: SubmitReq): IO[Out[ExpenseView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.can(Level.Write, "expense")) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("expense:create"))) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
       else
         ExpenseRepo
           .submit(
@@ -79,7 +79,7 @@ object Expenses {
 
   def list(xa: Transactor[IO], p: Principal, status: Option[String]): IO[Out[List[ExpenseView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("expense")) (Left(forbidden): Out[List[ExpenseView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("expense:view"))) (Left(forbidden): Out[List[ExpenseView]]).pure[ConnectionIO]
       else ExpenseRepo.list(status).map(es => Right(es.map(view)): Out[List[ExpenseView]])
     }
     tx.transact(xa)
@@ -98,7 +98,7 @@ object Expenses {
       res <- exp match {
         case None => (Left(notFound): Out[ExpenseView]).pure[ConnectionIO]
         case Some(e) =>
-          if (!authz.can(Level.Write, "expense")) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
+          if (!authz.can(Actions.byKey("expense:approve"))) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
           else if (ExpenseService.needsApproval(e.amountMinor, e.currency) && p.role != "principal")
             (Left(needsPrincipal): Out[ExpenseView]).pure[ConnectionIO]
           else action(id, p.userId) *> ExpenseRepo.get(id).map(_.map(view).toRight(notFound))

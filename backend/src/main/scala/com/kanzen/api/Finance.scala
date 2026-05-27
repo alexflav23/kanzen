@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.finance.{Bill, BillPayment, BillRepo, PayQueueService, PaymentRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -67,22 +67,28 @@ object Finance {
       )
     )
 
+  // F02 v2 — bill + pay-queue actions (the pay queue and payment methods are authorized as part of `bill`).
+  private val viewA = Actions.byKey("bill:view")
+  private val editA = Actions.byKey("bill:edit")
+  private val createA = Actions.byKey("bill:create")
+  private val scheduleA = Actions.byKey("bill:schedule")
+  private val payA = Actions.byKey("bill:pay")
+
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a => if (a.canRead("bill")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
-  private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+      .flatMap(a => if (a.can(viewA)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
+  private def write[A](p: Principal, q: ConnectionIO[A], action: Action = editA): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Write, "bill")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   // ---- bills (F15) ----
   def listBills(xa: Transactor[IO], p: Principal): IO[Out[List[BillView]]] =
     read(p, BillRepo.list.map(_.map(bv))).transact(xa)
   def createBill(xa: Transactor[IO], p: Principal, r: CreateBillReq): IO[Out[BillView]] =
-    write(p, BillRepo.create(r.payee, r.propertyId, r.amountMinor, r.currency, r.frequency).map(bv)).transact(xa)
+    write(p, BillRepo.create(r.payee, r.propertyId, r.amountMinor, r.currency, r.frequency).map(bv), createA)
+      .transact(xa)
   def recordSeen(xa: Transactor[IO], p: Principal, id: UUID, seenMinor: Long): IO[Out[SeenResult]] =
     write(p, BillRepo.recordSeen(id, seenMinor).map(SeenResult)).transact(xa)
 
@@ -90,7 +96,8 @@ object Finance {
   def queue(xa: Transactor[IO], p: Principal): IO[Out[List[QueueItem]]] =
     read(p, PaymentRepo.queue.map(_.map(q => QueueItem(q.id, q.amountMinor, q.currency, q.mode, q.state)))).transact(xa)
   def schedule(xa: Transactor[IO], p: Principal, r: ScheduleReq): IO[Out[PaymentView]] =
-    write(p, PaymentRepo.schedule(r.billId, r.methodId, r.amountMinor, r.currency, r.mode).map(pv)).transact(xa)
+    write(p, PaymentRepo.schedule(r.billId, r.methodId, r.amountMinor, r.currency, r.mode).map(pv), scheduleA)
+      .transact(xa)
   def createMethod(xa: Transactor[IO], p: Principal, r: MethodReq): IO[Out[MethodView]] =
     write(
       p,
@@ -109,7 +116,7 @@ object Finance {
       res <- pay match {
         case None => (Left(notFound): Out[PaymentView]).pure[ConnectionIO]
         case Some(bp) =>
-          if (!authz.can(Level.Write, "bill")) (Left(forbidden): Out[PaymentView]).pure[ConnectionIO]
+          if (!authz.can(payA)) (Left(forbidden): Out[PaymentView]).pure[ConnectionIO]
           else if (!PayQueueService.canMarkPaid(bp.mode)) (Left(notMarkable): Out[PaymentView]).pure[ConnectionIO]
           else PaymentRepo.markPaid(id) *> PaymentRepo.get(id).map(_.map(pv).toRight(notFound))
       }

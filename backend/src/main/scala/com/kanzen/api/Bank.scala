@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.bank.{BankAccount, BankRepo, BankTx, TxIn}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -78,7 +78,7 @@ object Bank {
 
   def accounts(xa: Transactor[IO], p: Principal): IO[Out[List[AccountView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[AccountView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("bank_account:view"))) (Left(forbidden): Out[List[AccountView]]).pure[ConnectionIO]
       else BankRepo.listAccounts.map(as => Right(as.map(av)): Out[List[AccountView]])
     }
     tx.transact(xa)
@@ -86,7 +86,7 @@ object Bank {
 
   def transactions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[TxView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[TxView]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("bank_account:view"))) (Left(forbidden): Out[List[TxView]]).pure[ConnectionIO]
       else BankRepo.list(accountId).map(ts => Right(ts.map(tv)): Out[List[TxView]])
     }
     tx.transact(xa)
@@ -100,7 +100,7 @@ object Bank {
           authz <- Authz.forUser(p.userId, p.role)
           exists <- BankRepo.accountExists(accountId)
           res <-
-            if (!authz.can(Level.Write, "bank_account")) (Left(forbidden): Out[ImportResult]).pure[ConnectionIO]
+            if (!authz.can(Actions.byKey("bank_account:sync"))) (Left(forbidden): Out[ImportResult]).pure[ConnectionIO]
             else if (!exists) (Left(notFound): Out[ImportResult]).pure[ConnectionIO]
             else BankRepo.ingest(accountId, txs).map(n => Right(ImportResult(txs.size, n)): Out[ImportResult])
         } yield res

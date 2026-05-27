@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.bank.BankRepo
 import com.kanzen.finance.{ReconciliationRepo, ReconciliationService}
 import com.kanzen.receipt.{ReceiptRepo => ReceiptStore}
@@ -59,7 +59,7 @@ object Reconciliation {
 
   def unmatched(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[MatchableTx]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[MatchableTx]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("bank_account:view"))) (Left(forbidden): Out[List[MatchableTx]]).pure[ConnectionIO]
       else
         BankRepo
           .unmatched(accountId)
@@ -77,7 +77,7 @@ object Reconciliation {
     */
   def suggestions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[Suggestion]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[Suggestion]]).pure[ConnectionIO]
+      if (!authz.can(Actions.byKey("bank_account:view"))) (Left(forbidden): Out[List[Suggestion]]).pure[ConnectionIO]
       else
         for {
           txns <- BankRepo.unmatched(accountId)
@@ -115,7 +115,7 @@ object Reconciliation {
       txn <- BankRepo.findTx(req.txnId)
       receipt <- ReceiptStore.get(req.receiptId)
       res <-
-        if (!authz.can(Level.Write, "bank_account")) (Left(forbidden): Out[MatchResult]).pure[ConnectionIO]
+        if (!authz.can(Actions.byKey("bank_account:reconcile"))) (Left(forbidden): Out[MatchResult]).pure[ConnectionIO]
         else
           (txn, receipt) match {
             case (None, _) => (Left(notFound): Out[MatchResult]).pure[ConnectionIO]

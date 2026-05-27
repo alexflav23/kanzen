@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.ledger.{GeneralLedger, GlRepo}
 import com.kanzen.wealth.{Entity, InvestmentRepo, WealthAccount, WealthRepo}
 import doobie.ConnectionIO
@@ -104,19 +104,22 @@ object Wealth {
   private def av(a: WealthAccount): AccountView =
     AccountView(a.id, a.code, a.name, a.accountType, a.currency, a.balanceMinor, a.subkind)
 
-  private def principal[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
+  // F02 v2 — wealth is Principal-grade (admin-level + sensitive) across the board.
+  private val viewA = Actions.byKey("wealth:view")
+  private val createA = Actions.byKey("wealth:create")
+  private val editA = Actions.byKey("wealth:edit")
+
+  private def principal[A](p: Principal, action: Action = viewA)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
       .forUser(p.userId, p.role)
-      .flatMap(a =>
-        if (a.can(Level.Admin, "wealth")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
-      )
+      .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def entities(xa: Transactor[IO], p: Principal): IO[Out[List[EntityView]]] =
     principal(p)(WealthRepo.entities(p.userId).map(_.map(ev))).transact(xa)
   def createEntity(xa: Transactor[IO], p: Principal, r: CreateEntityReq): IO[Out[EntityView]] =
     if (r.name.trim.isEmpty) IO.pure(Left(badReq("name required")))
     else
-      principal(p)(
+      principal(p, createA)(
         WealthRepo
           .createEntity(p.userId, r.name, r.kind, r.jurisdiction, r.baseCurrency.getOrElse("GBP"), r.parentEntityId)
           .map(id => EntityView(id, r.name, r.kind, r.jurisdiction, r.baseCurrency.getOrElse("GBP"), r.parentEntityId))
@@ -128,7 +131,7 @@ object Wealth {
     if (!ACCOUNT_TYPES.contains(r.accountType))
       IO.pure(Left(badReq(s"type must be one of ${ACCOUNT_TYPES.mkString(", ")}")))
     else
-      principal(p)(
+      principal(p, createA)(
         WealthRepo
           .createAccount(p.userId, r.entityId, r.code, r.name, r.accountType, r.currency.getOrElse("GBP"), r.subkind)
           .map(id => AccountView(id, r.code, r.name, r.accountType, r.currency.getOrElse("GBP"), 0L, r.subkind))
@@ -139,7 +142,7 @@ object Wealth {
     val tx = for {
       a <- Authz.forUser(p.userId, p.role)
       res <-
-        if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[PostResult]).pure[ConnectionIO]
+        if (!a.can(editA)) (Left(forbidden): Out[PostResult]).pure[ConnectionIO]
         else if (!GeneralLedger.balanced(r.splits.map(_.amountMinor)))
           (Left(unbalanced): Out[PostResult]).pure[ConnectionIO]
         else

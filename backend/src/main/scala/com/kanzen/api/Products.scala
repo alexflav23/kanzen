@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
 import com.kanzen.product.{Product, ProductRepo, ProductService}
 import com.kanzen.replenishment.ReplenishmentService
@@ -51,7 +51,7 @@ object Products {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
-      if (!a.canRead("product")) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
+      if (!a.can(Actions.byKey("product:view"))) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
       else ProductRepo.list.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
     }
     tx.transact(xa)
@@ -59,7 +59,7 @@ object Products {
 
   def reorder(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
-      if (!a.canRead("product")) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
+      if (!a.can(Actions.byKey("product:view"))) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
       else ProductRepo.needingReorder.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
     }
     tx.transact(xa)
@@ -67,7 +67,7 @@ object Products {
 
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[ProductView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
-      if (!a.can(Level.Write, "product")) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
+      if (!a.can(Actions.byKey("product:create"))) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
       else ProductRepo.insertOwned(p.userId, r.name, r.preferredSpec, r.unit).map(x => Right(pv(x)): Out[ProductView])
     }
     tx.transact(xa)
@@ -80,7 +80,7 @@ object Products {
         authz <- Authz.forUser(p.userId, p.role)
         exists <- ProductRepo.exists(id)
         res <-
-          if (!authz.can(Level.Write, "product")) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
+          if (!authz.can(Actions.byKey("product:edit"))) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[ProductView]).pure[ConnectionIO]
           else
             ProductRepo.setStock(id, status) *>
@@ -115,7 +115,7 @@ object Products {
   def forecast(xa: Transactor[IO], p: Principal, r: ForecastReq): IO[Out[ForecastResult]] = {
     val parsed = r.purchaseDates.flatMap(s => Try(LocalDate.parse(s)).toOption).sorted
     val tx = Authz.forUser(p.userId, p.role).map { a =>
-      if (!a.canRead("product")) Left(forbidden)
+      if (!a.can(Actions.byKey("product:view"))) Left(forbidden)
       else {
         val avg = ReplenishmentService.avgIntervalDays(parsed)
         val predicted = for { last <- parsed.lastOption; d <- avg } yield ReplenishmentService.predictedNext(last, d)

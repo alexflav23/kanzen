@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.Authz
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.nl.{NlQueryRepo, NlQueryService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -33,7 +33,7 @@ object NlQuery {
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.canRead("asset"))
+        if (!a.can(Actions.byKey("asset:view")))
           (Left(forbidden): Out[QueryResult]).pure[ConnectionIO] // NL reads the registry → registry read
         else
           NlQueryService.translate(prompt) match {
