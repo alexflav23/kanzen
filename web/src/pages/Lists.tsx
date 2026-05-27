@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { Plus, Check, X, Alert, ArrowRight, Box } from "../components/icons";
+import { Plus, Check, X, Alert, ArrowRight, Box, Settings } from "../components/icons";
 import {
   addItem,
   approveItem,
   createList,
+  editList,
   declineItem,
   listItems,
   listLists,
@@ -86,6 +87,7 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
   const { token } = useAuth();
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  const [editing, setEditing] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const itemsQ = useQuery({ queryKey: ["list-items", list.id, token], queryFn: () => listItems(list.id, token) });
 
@@ -142,6 +144,11 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
           )}
           <span {...stylex.props(styles.chip)}>{recurringCount} recurring</span>
           <span {...stylex.props(styles.spacer)} />
+          {canDecide && (
+            <button type="button" {...stylex.props(styles.btn, styles.btnSm)} data-testid="configure-list" onClick={() => setEditing(true)}>
+              <Settings size={12} /> Configure
+            </button>
+          )}
           {list.vendor && (
             <button type="button" {...stylex.props(styles.btn, styles.btnSm)} onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(list.vendor!)}`, "_blank", "noopener")}>
               <ArrowRight size={12} /> Open with {list.vendor}
@@ -230,6 +237,57 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
           )}
         </>
       )}
+
+      {editing && <EditListModal list={list} onClose={() => setEditing(false)} />}
+    </div>
+  );
+}
+
+const CYCLES = ["weekly", "fortnightly", "monthly"];
+const LIST_TYPES = ["grocery", "supplies", "other"];
+
+function EditListModal({ list, onClose }: { list: ShoppingList; onClose: () => void }) {
+  const { token } = useAuth();
+  const qc = useQueryClient();
+  const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const [name, setName] = useState(list.name);
+  const [vendor, setVendor] = useState(list.vendor ?? "");
+  const [propertyId, setPropertyId] = useState(list.propertyId ?? "");
+  const [cycle, setCycle] = useState(list.cycle ?? "weekly");
+  const [nextOrder, setNextOrder] = useState(list.nextOrder ?? "");
+  const [type, setType] = useState(list.type);
+  const save = useMutation({
+    mutationFn: () => editList(list.id, { name: name.trim(), vendor: vendor.trim() || null, propertyId: propertyId || null, cycle: cycle || null, nextOrder: nextOrder || null, type }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["lists"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="edit-list" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (name.trim()) save.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Configure list</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Name</span>
+          <input {...stylex.props(styles.control)} aria-label="List name" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Property</span>
+          <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">—</option>
+            {(propsQ.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Vendor</span>
+          <input {...stylex.props(styles.control)} aria-label="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Waitrose" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Order frequency</span>
+          <select {...stylex.props(styles.control)} aria-label="Frequency" value={cycle} onChange={(e) => setCycle(e.target.value)}>
+            {CYCLES.map((c) => <option key={c} value={c}>{cap(c)}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Next order</span>
+          <input {...stylex.props(styles.control)} type="date" aria-label="Next order" value={nextOrder} onChange={(e) => setNextOrder(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Type</span>
+          <select {...stylex.props(styles.control)} aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
+            {LIST_TYPES.map((t) => <option key={t} value={t}>{cap(t)}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.btn)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.btn, styles.btnAccent)} disabled={!name.trim() || save.isPending}>{save.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
     </div>
   );
 }

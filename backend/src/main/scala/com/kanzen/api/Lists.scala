@@ -48,6 +48,14 @@ object Lists {
       addedBy: Option[String]
   )
   final case class CreateListReq(name: String, vendor: Option[String], propertyId: Option[UUID])
+  final case class EditListReq(
+      name: String,
+      vendor: Option[String],
+      propertyId: Option[UUID],
+      cycle: Option[String],
+      nextOrder: Option[LocalDate],
+      `type`: String
+  )
   final case class AddItemReq(
       name: String,
       qty: Option[Int],
@@ -99,6 +107,22 @@ object Lists {
         .createList(r.propertyId, r.name, r.vendor)
         .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active"))
     ).transact(xa)
+  /** Reconfigure a list (Manager+). */
+  def update(xa: Transactor[IO], p: Principal, listId: UUID, r: EditListReq): IO[Out[ListView]] = {
+    val tx = for {
+      authz <- Authz.authorizer(p.role)
+      exists <- ListRepo.listExists(listId)
+      res <-
+        if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
+        else if (!exists) (Left(notFound): Out[ListView]).pure[ConnectionIO]
+        else
+          ListRepo
+            .update(listId, r.name, r.propertyId, r.vendor, r.cycle, r.nextOrder, r.`type`)
+            .as(Right(ListView(listId, r.name, r.vendor, r.propertyId, r.`type`, r.cycle, r.nextOrder, "active")): Out[ListView])
+    } yield res
+    tx.transact(xa)
+  }
+
   def items(xa: Transactor[IO], p: Principal, listId: UUID): IO[Out[List[ItemView]]] =
     read(p, ListRepo.items(listId).map(_.map(iv))).transact(xa)
 
@@ -166,6 +190,13 @@ object Lists {
     .errorOut(err)
     .out(jsonBody[ListView])
     .summary("Create a list")
+  val editListEndpoint = sttp.tapir.endpoint.patch
+    .securityIn(bearer)
+    .in("api" / "lists" / path[UUID]("id"))
+    .in(jsonBody[EditListReq])
+    .errorOut(err)
+    .out(jsonBody[ListView])
+    .summary("Reconfigure a list — property/vendor/cycle/next-order (Manager+)")
   val itemsEndpoint = sttp.tapir.endpoint.get
     .securityIn(bearer)
     .in("api" / "lists" / path[UUID]("id") / "items")
@@ -203,6 +234,7 @@ object Lists {
     createListEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => (r: CreateListReq) => createList(xa, p, r)),
+    editListEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => update(xa, p, id, r) }),
     itemsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => items(xa, p, id)),
     addItemEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addItem(xa, p, id, r) }),
     approveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => approve(xa, p, id)),
@@ -214,6 +246,7 @@ object Lists {
     List(
       listsEndpoint,
       createListEndpoint,
+      editListEndpoint,
       itemsEndpoint,
       addItemEndpoint,
       approveEndpoint,

@@ -38,6 +38,20 @@ object ListRepo {
       .query[UUID]
       .unique
 
+  /** Reconfigure a list — its property, vendor, ordering cadence + next-order day, type, name. */
+  def update(
+      listId: UUID,
+      name: String,
+      propertyId: Option[UUID],
+      vendor: Option[String],
+      cycle: Option[String],
+      nextOrder: Option[LocalDate],
+      typ: String
+  ): ConnectionIO[Int] =
+    sql"""update shopping_lists set name = $name, property_id = $propertyId, vendor = $vendor,
+            cycle = $cycle, next_order = $nextOrder, type = $typ
+          where id = $listId and deleted_at is null""".update.run
+
   def lists: ConnectionIO[List[ShoppingList]] =
     sql"""select id, name, vendor, property_id, type, cycle, next_order, status
           from shopping_lists where deleted_at is null order by name"""

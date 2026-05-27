@@ -14,6 +14,26 @@ test("lists page shows the seeded grocery list with its approval queue", async (
   await expect(page.getByText(/est\. £95/)).toBeVisible();
 });
 
+test("a list can be reconfigured (property · frequency · vendor)", async ({ page }) => {
+  const name = `Config List ${Date.now()}`;
+  await page.goto("/lists");
+  await page.getByRole("button", { name: "New list" }).click();
+  await page.getByTestId("new-list").getByLabel("List name").fill(name);
+  await page.getByTestId("new-list").getByRole("button", { name: "Create list" }).click();
+  await page.getByRole("button", { name: new RegExp(name) }).click();
+
+  await page.getByTestId("configure-list").click();
+  const m = page.getByTestId("edit-list");
+  await m.getByLabel("Frequency").selectOption("fortnightly");
+  await m.getByLabel("Vendor").fill("Ocado");
+  await m.getByRole("button", { name: "Save" }).click();
+
+  // reopen → the change persisted server-side
+  await page.getByTestId("configure-list").click();
+  await expect(page.getByTestId("edit-list").getByLabel("Frequency")).toHaveValue("fortnightly");
+  await expect(page.getByTestId("edit-list").getByLabel("Vendor")).toHaveValue("Ocado");
+});
+
 test("adding an item to a list makes it appear", async ({ page }) => {
   const item = `E2E item ${Date.now()}`;
   await page.goto("/lists");

@@ -67,3 +67,9 @@ export const createList = (
   body: { name: string; vendor: string | null; propertyId: string | null },
   token: string | null,
 ) => api("/api/lists", ListSchema, { method: "POST", body, token });
+
+export type EditListReq = { name: string; vendor: string | null; propertyId: string | null; cycle: string | null; nextOrder: string | null; type: string };
+
+/** Reconfigure a list — property, vendor, ordering cadence + next-order, type (Manager+). */
+export const editList = (id: string, body: EditListReq, token: string | null) =>
+  api(`/api/lists/${id}`, ListSchema, { method: "PATCH", body, token });
