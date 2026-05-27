@@ -22,6 +22,7 @@ import { Insights } from "./pages/Insights";
 import { Backup } from "./pages/Backup";
 import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
+import { Customization } from "./pages/Customization";
 import { CommandPalette } from "./components/CommandPalette";
 import { BootSplash } from "./components/BootSplash";
 import { useTheme } from "./theme/ThemeContext";
@@ -60,6 +61,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
     { label: "Finance", route: "/finance", icon: I.Finance },
     { label: "Wealth", route: "/wealth", icon: I.Trending },
     { label: "Backup", route: "/backup", icon: I.Database },
+    { label: "Customization", route: "/customization", icon: I.Layers },
     { label: "Settings", route: "/settings", icon: I.Settings },
   ] },
 ];
@@ -67,7 +69,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
 // F02 — the resource each nav item requires; the nav recalibrates to the principal's permissions.
 const NAV_RESOURCE: Record<string, string> = {
   Inventory: "asset", Collections: "asset", Vehicles: "asset", Insights: "asset",
-  Finance: "bill", Wealth: "wealth", Backup: "backup",
+  Finance: "bill", Wealth: "wealth", Backup: "backup", Customization: "custom_field",
 };
 
 const styles = stylex.create({
@@ -229,6 +231,7 @@ function Shell() {
                 <Route path="/lists" element={<Lists />} />
                 <Route path="/maintenance" element={<Maintenance />} />
                 <Route path="/calendar" element={<Calendar />} />
+                <Route path="/customization" element={<Customization />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<p>Coming soon.</p>} />
               </Routes>
