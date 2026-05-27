@@ -27,10 +27,13 @@ object AssetEventRepo {
       eventType: String,
       costMinor: Option[Long],
       currency: Option[String],
-      note: Option[String]
+      note: Option[String],
+      party: Option[String] = None,
+      occurredAt: Option[String] = None // ISO date/timestamp; None = now() (so backdated events re-sort, F19 AC5)
   ): ConnectionIO[AssetEvent] =
-    (fr"""insert into asset_events (asset_id, type, cost_minor, currency, note)
-          values ($assetId, $eventType, $costMinor, $currency, $note)
+    (fr"""insert into asset_events (asset_id, type, cost_minor, currency, note, party, occurred_at)
+          values ($assetId, $eventType, $costMinor, $currency, $note, $party,
+                  coalesce($occurredAt::timestamptz, now()))
           returning""" ++ cols).query[AssetEvent].unique
 
   def timeline(assetId: UUID): ConnectionIO[List[AssetEvent]] =

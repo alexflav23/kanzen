@@ -92,7 +92,14 @@ export function getAssetTimeline(id: string, token: string | null): Promise<Asse
 }
 
 export type AssetEvent = z.infer<typeof AssetEventSchema>;
-export type LogEventReq = { eventType: string; costMinor: number | null; currency: string | null; note: string | null };
+export type LogEventReq = {
+  eventType: string;
+  costMinor: number | null;
+  currency: string | null;
+  note: string | null;
+  party?: string | null;
+  occurredAt?: string | null; // ISO date — backdate to record retroactively (F19 AC5)
+};
 
 /** F19 — log a lifecycle event onto the asset's timeline (Manager+). */
 export function logAssetEvent(id: string, token: string | null, req: LogEventReq): Promise<AssetEvent> {

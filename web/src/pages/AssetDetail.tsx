@@ -85,6 +85,8 @@ function LogEventModal({ id, token, onClose }: { id: string; token: string | nul
   const [eventType, setEventType] = useState("serviced");
   const [cost, setCost] = useState("");
   const [note, setNote] = useState("");
+  const [party, setParty] = useState("");
+  const [date, setDate] = useState("");
   const mutation = useMutation({
     mutationFn: () =>
       logAssetEvent(id, token, {
@@ -92,6 +94,8 @@ function LogEventModal({ id, token, onClose }: { id: string; token: string | nul
         costMinor: cost.trim() ? Math.round(parseFloat(cost) * 100) : null,
         currency: cost.trim() ? "GBP" : null,
         note: note.trim() || null,
+        party: party.trim() || null,
+        occurredAt: date || null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["asset-timeline", id] });
@@ -108,8 +112,12 @@ function LogEventModal({ id, token, onClose }: { id: string; token: string | nul
           <select {...stylex.props(styles.control)} aria-label="Event type" value={eventType} onChange={(e) => setEventType(e.target.value)}>
             {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Date (optional — backdate to record retroactively)</span>
+          <input {...stylex.props(styles.control)} aria-label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Cost (£, optional)</span>
           <input {...stylex.props(styles.control)} aria-label="Cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 450" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Party (vendor/person, optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Party" value={party} onChange={(e) => setParty(e.target.value)} placeholder="e.g. AP Service Centre" /></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Note</span>
           <input {...stylex.props(styles.control)} aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Annual service at AP" autoFocus /></label>
         <div {...stylex.props(styles.actions)}>

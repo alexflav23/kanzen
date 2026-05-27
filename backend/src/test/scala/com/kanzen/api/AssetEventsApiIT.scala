@@ -3,6 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import com.kanzen.api.AssetEvents.LogReq
 import com.kanzen.asset.AssetRepo
+import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import doobie.implicits._
@@ -59,5 +60,48 @@ object AssetEventsApiIT extends IOSuite {
     AssetEvents
       .log(xa, lorna, UUID.randomUUID(), LogReq("cleaned", None, None, None))
       .map(r => expect(r.left.exists(_._1.code == 404)))
+  }
+
+  // ── W2.2 (F19 §6) — rich log-event: party, backdate, ownership side-effects, audit ──
+  test("AC3 — a disposal event closes the asset (sold → ownership_status)") { xa =>
+    for {
+      id <- newAsset(xa)
+      _ <- AssetEvents.log(
+        xa,
+        toby,
+        id,
+        LogReq("sold", Some(4_000_000L), Some("GBP"), Some("Auction"), party = Some("Christie's"))
+      )
+      a <- AssetRepo.get(id).transact(xa)
+    } yield expect(a.exists(_.ownershipStatus == "sold"))
+  }
+
+  test("AC5 — a backdated event re-sorts into the timeline; party persists") { xa =>
+    for {
+      id <- newAsset(xa)
+      _ <- AssetEvents.log(
+        xa,
+        lorna,
+        id,
+        LogReq("serviced", Some(45_000L), Some("GBP"), Some("Annual"), party = Some("AP Service"))
+      )
+      _ <- AssetEvents.log(
+        xa,
+        lorna,
+        id,
+        LogReq("acquired", Some(3_500_000L), Some("GBP"), None, occurredAt = Some("2019-04-02"))
+      )
+      tl <- AssetEvents.timeline(xa, toby, id).map(_.toOption.get)
+    } yield expect(tl.events.head.eventType == "serviced") and // now > the backdated 2019 acquisition
+      expect(tl.events.last.eventType == "acquired") and
+      expect(tl.events.exists(_.party.contains("AP Service")))
+  }
+
+  test("§11 — a logged event is audited → it shows in the asset's activity feed") { xa =>
+    for {
+      id <- newAsset(xa)
+      _ <- AssetEvents.log(xa, lorna, id, LogReq("serviced", Some(1000L), Some("GBP"), None))
+      rows <- AuditRepo.forTarget("asset", id, 50).transact(xa)
+    } yield expect(rows.exists(_.action == "asset.serviced"))
   }
 }

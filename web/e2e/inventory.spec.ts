@@ -88,11 +88,13 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await expect(ev).toBeVisible();
   await ev.getByLabel("Event type").selectOption("serviced");
   await ev.getByLabel("Note").fill("Annual service");
+  await ev.getByLabel("Party").fill("AP Service Centre"); // F19 — party (vendor/person)
   await ev.getByRole("button", { name: "Log event" }).click();
-  // the new entry lands on the typed timeline as a service event (cyan = info tone)
+  // the new entry lands on the typed timeline as a service event (cyan = info tone) with the party shown
   const serviceRow = page.getByTestId("timeline-row").filter({ hasText: "Annual service" }).first();
   await expect(serviceRow).toBeVisible();
   await expect(serviceRow).toHaveAttribute("data-tone", "info");
+  await expect(serviceRow).toContainText("AP Service Centre");
 
   // record a valuation (Principal) → it appears in the Valuations history
   await page.getByRole("button", { name: "Record valuation" }).click();

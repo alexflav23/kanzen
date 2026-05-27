@@ -3,8 +3,11 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{AssetEvent, AssetEventRepo, AssetRepo}
+import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
+import io.circe.Json
+import io.circe.syntax._
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -50,7 +53,17 @@ object AssetEvents {
       party: Option[String]
   )
   final case class Timeline(events: List[EventView], lifetimeCostMinor: Long)
-  final case class LogReq(eventType: String, costMinor: Option[Long], currency: Option[String], note: Option[String])
+  final case class LogReq(
+      eventType: String,
+      costMinor: Option[Long],
+      currency: Option[String],
+      note: Option[String],
+      party: Option[String] = None, // vendor/party name (F09)
+      occurredAt: Option[String] = None // ISO date — backdate retroactively (F19 AC5)
+  )
+
+  /** Disposal/loss events close the asset (set its ownership_status). F19 §6 / AC3. */
+  private val CLOSING = Set("sold", "gifted", "lost", "stolen")
 
   private def view(e: AssetEvent): EventView =
     EventView(e.id, e.eventType, e.occurredAt, e.costMinor, e.currency, e.note, e.party)
@@ -82,9 +95,31 @@ object AssetEvents {
           if (!authz.can(Actions.byKey("asset_event:create"))) (Left(forbidden): Out[EventView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[EventView]).pure[ConnectionIO]
           else
-            AssetEventRepo
-              .add(assetId, req.eventType, req.costMinor, req.currency, req.note)
-              .map(e => Right(view(e)): Out[EventView])
+            for {
+              e <- AssetEventRepo.add(
+                assetId,
+                req.eventType,
+                req.costMinor,
+                req.currency,
+                req.note,
+                req.party,
+                req.occurredAt
+              )
+              // disposal/loss closes the asset (F19 §6 / AC3)
+              _ <-
+                if (CLOSING(req.eventType)) AssetRepo.setOwnershipStatus(assetId, req.eventType)
+                else 0.pure[ConnectionIO]
+              // audit every event (F19 §11) → also surfaces in the asset's Activity feed
+              _ <- AuditRepo.write(
+                "user",
+                Some(p.userId),
+                s"asset.${req.eventType}",
+                Some("asset"),
+                Some(assetId),
+                Json.obj("cost" -> req.costMinor.asJson, "party" -> req.party.asJson, "note" -> req.note.asJson),
+                Some(p.userId)
+              )
+            } yield Right(view(e)): Out[EventView]
       } yield res
       tx.transact(xa)
     }

@@ -216,6 +216,10 @@ object AssetRepo {
                  values ($assetId, $status, $actor, $note)""".update.run
     } yield n
 
+  /** F19 — a disposal/loss lifecycle event closes the asset (sets `ownership_status`). */
+  def setOwnershipStatus(assetId: UUID, status: String): ConnectionIO[Int] =
+    sql"update assets set ownership_status = $status, updated_at = now() where id = $assetId and deleted_at is null".update.run
+
   /** Set the asset's hero photo to a document (F05). */
   def setHero(assetId: UUID, documentId: UUID): ConnectionIO[Int] =
     sql"update assets set hero_document_id = $documentId, updated_at = now() where id = $assetId and deleted_at is null".update.run
