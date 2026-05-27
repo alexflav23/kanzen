@@ -55,12 +55,11 @@ const renderDash = () =>
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
 describe("Dashboard", () => {
-  it("greets and shows the live at-a-glance summary", async () => {
+  it("greets the signed-in user (time-of-day aware) + the attention strip", async () => {
     renderDash();
     // greeting resolves once /api/me loads (dynamic — recalibrates to the signed-in user; time-of-day aware)
     expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Flavian\./ })).toBeInTheDocument();
-    expect(await screen.findByText("Assets")).toBeInTheDocument();
-    expect(await screen.findByText("15")).toBeInTheDocument(); // real asset count from /api/dashboard
+    expect(await screen.findByText(/in Triage/)).toBeInTheDocument();
   });
 
   it("renders real panels: upcoming event, pending expense, triage and expiring", async () => {

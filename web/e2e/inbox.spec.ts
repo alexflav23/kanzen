@@ -21,7 +21,7 @@ test("⌘K opens the command palette and returns permission-filtered hits", asyn
     await page.keyboard.press("Control+k");
   }
   await expect(page.getByTestId("command-palette")).toBeVisible();
-  await page.getByLabel("Search").fill("guitar");
+  await page.getByLabel("Search", { exact: true }).fill("guitar");
   await expect(page.getByTestId("cmdk-result").first()).toBeVisible();
   await expect(page.getByText("Les Paul Standard")).toBeVisible();
   await page.keyboard.press("Escape");

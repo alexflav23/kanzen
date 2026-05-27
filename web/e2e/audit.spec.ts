@@ -86,7 +86,7 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
   await page.keyboard.press("Meta+k");
   if (!(await page.getByTestId("command-palette").isVisible().catch(() => false))) await page.keyboard.press("Control+k");
   await expect(page.getByTestId("command-palette")).toBeVisible();
-  await page.getByLabel("Search").fill("guitar");
+  await page.getByLabel("Search", { exact: true }).fill("guitar"); // exact: the top-bar "Search Kanzen" button also has a Search label
   await expect(page.getByTestId("cmdk-result").first()).toBeVisible();
   await page.keyboard.press("Escape");
 

@@ -2,7 +2,6 @@ import * as stylex from "@stylexjs/stylex";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../state/AuthContext";
-import { getSummary } from "../services/dashboard";
 import { listEvents } from "../services/calendar";
 import { listExpenses } from "../services/finance";
 import { listActions } from "../services/inbox";
@@ -17,9 +16,9 @@ import { Pill } from "../components/Pill";
 import { Plus, ChevronRight, ArrowRight, Box } from "../components/icons";
 
 const styles = stylex.create({
-  header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "32px" },
-  eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
-  display: { fontSize: "36px", fontWeight: 600, letterSpacing: "-0.022em", color: colors.ink },
+  header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "36px", gap: "16px" },
+  eyebrow: { fontSize: "11px", letterSpacing: "0.10em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
+  display: { fontSize: "44px", lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.028em", color: colors.ink },
   sub: { color: colors.ink3, marginTop: "8px", fontSize: "14px" },
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "13px", color: colors.ink },
   heroCard: { marginBottom: "32px" },
@@ -31,7 +30,7 @@ const styles = stylex.create({
   rowGap8: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" },
   h2: { fontSize: "20px", fontWeight: 600, letterSpacing: "-0.01em", marginBottom: "4px" },
   small: { fontSize: "12.5px", color: colors.ink3 },
-  body: { display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "24px", alignItems: "start", "@media (max-width: 980px)": { gridTemplateColumns: "1fr" } },
+  body: { display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "28px", alignItems: "start", "@media (max-width: 980px)": { gridTemplateColumns: "1fr" } },
   col: { display: "flex", flexDirection: "column", gap: "24px" },
   ghost: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 8px", borderWidth: 0, backgroundColor: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12.5px" },
   dateChip: { width: "48px", height: "48px", backgroundColor: colors.bgSunken, borderRadius: radius.md, display: "grid", placeItems: "center", textAlign: "center", flexShrink: 0 },
@@ -48,13 +47,6 @@ const styles = stylex.create({
   coverSingapore: { backgroundImage: "linear-gradient(135deg,#243B47,#3D6B7D)" },
   coverAlt: { backgroundImage: "linear-gradient(135deg,#3A2E2E,#6B5340)" },
   empty: { padding: "20px 22px", fontSize: "13px", color: colors.ink3 },
-});
-
-const glance = stylex.create({
-  card: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, display: "grid", gridTemplateColumns: "repeat(4,1fr)", marginBottom: "32px" },
-  cell: { padding: "18px 22px", borderRight: `1px solid ${colors.line}` },
-  label: { fontSize: "12px", color: colors.ink3 },
-  num: { fontSize: "26px", fontWeight: 600, letterSpacing: "-0.02em", marginTop: "4px", fontVariantNumeric: "tabular-nums" },
 });
 
 const covers = [styles.coverWardian, styles.coverSingapore, styles.coverAlt];
@@ -103,7 +95,6 @@ export function Dashboard() {
   const today = new Date();
   const in14 = new Date(today.getTime() + 14 * 86_400_000);
 
-  const summary = useQuery({ queryKey: ["dashboard", token], queryFn: () => getSummary(token) });
   const proposed = useQuery({ queryKey: ["agent-actions", "proposed", token], queryFn: () => listActions(token, "proposed"), enabled: !!token && canReview });
   const pendingExp = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval"), enabled: !!token && canReview });
   const events = useQuery({ queryKey: ["events", iso(today), iso(in14), token], queryFn: () => listEvents(token, iso(today), iso(in14)) });
@@ -111,7 +102,6 @@ export function Dashboard() {
   const people = useQuery({ queryKey: ["people", token], queryFn: () => listPeople(token), enabled: !!token && canReview });
   const lists = useQuery({ queryKey: ["lists", token], queryFn: () => listLists(token) });
 
-  const s = summary.data;
   const triage = proposed.data ?? [];
   const pend = pendingExp.data ?? [];
 
@@ -153,21 +143,6 @@ export function Dashboard() {
           <Plus size={14} /> Quick add
         </button>
       </header>
-
-      {/* F29 — live At-a-glance summary (real counts from /api/dashboard) */}
-      <div {...stylex.props(glance.card)} data-testid="glance">
-        {([
-          ["Properties", s?.properties],
-          ["Assets", s?.assets],
-          ["To approve", s?.pendingApprovals],
-          ["Permits expiring", s?.expiringPermits],
-        ] as const).map(([label, n]) => (
-          <div key={label} {...stylex.props(glance.cell)}>
-            <div {...stylex.props(glance.label)}>{label}</div>
-            <div {...stylex.props(glance.num)} data-testid="glance-num">{n ?? "—"}</div>
-          </div>
-        ))}
-      </div>
 
       {/* Attention strip — the Principal/Manager review surface: real triage + expenses awaiting you */}
       {canReview && (

@@ -22,13 +22,10 @@ test("dashboard shows the real attention strip, upcoming, and side panels", asyn
   await expect(page.getByText("Grocery — Wardian")).toBeVisible();
 });
 
-test("the live at-a-glance summary shows real counts (F29)", async ({ page }) => {
+test("the top bar exposes the ⌘K search + opens the command palette", async ({ page }) => {
   await page.goto("/");
-  const glance = page.getByTestId("glance");
-  await expect(glance).toBeVisible();
-  await expect(glance.getByText("Properties")).toBeVisible();
-  await expect(glance.getByText("To approve")).toBeVisible();
-  await expect(page.getByTestId("glance-num").first()).toBeVisible(); // a real count rendered
+  await page.getByRole("button", { name: "Search Kanzen" }).click();
+  await expect(page.getByTestId("command-palette")).toBeVisible(); // palette opened
 });
 
 test("the approvals CTA navigates to Finance", async ({ page }) => {

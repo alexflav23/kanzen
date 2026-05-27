@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
+import type { ComponentType } from "react";
 import { colors, radius } from "./styles/tokens.stylex";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
@@ -22,119 +23,163 @@ import { Backup } from "./pages/Backup";
 import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
 import { CommandPalette } from "./components/CommandPalette";
-import { ThemeToggle } from "./theme/ThemeContext";
+import { useTheme } from "./theme/ThemeContext";
+import * as I from "./components/icons";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
 import { PERSONAS } from "./services/auth";
 
-// F00 app shell — grouped left navigation (SPEC §5) + routed content.
-const NAV: { group: string | null; items: string[] }[] = [
-  { group: null, items: ["Dashboard", "Inbox", "Notifications"] },
-  { group: "INVENTORY", items: ["Inventory", "Collections", "Insights"] },
-  { group: "OPERATIONS", items: ["Properties", "Tasks", "Calendar", "Lists", "Maintenance"] },
-  { group: "RECORDS", items: ["People", "Vendors", "Vehicles", "Documents"] },
-  { group: "FINANCE & SYSTEM", items: ["Finance", "Wealth", "Backup", "Settings"] },
+// F00 app shell — grouped left navigation (SPEC §5; design: input/app.jsx) + routed content.
+type NavItem = { label: string; route: string; icon: ComponentType<{ size?: number }>; external?: boolean };
+const NAV: { group: string | null; items: NavItem[] }[] = [
+  { group: null, items: [
+    { label: "Dashboard", route: "/", icon: I.Grid },
+    { label: "Inbox", route: "/inbox", icon: I.Inbox },
+    { label: "Notifications", route: "/notifications", icon: I.Bell },
+  ] },
+  { group: "INVENTORY", items: [
+    { label: "Inventory", route: "/inventory", icon: I.Box },
+    { label: "Collections", route: "/collections", icon: I.Layers },
+    { label: "Insights", route: "/insights", icon: I.PieChart },
+  ] },
+  { group: "OPERATIONS", items: [
+    { label: "Properties", route: "/properties", icon: I.Home },
+    { label: "Tasks", route: "/tasks", icon: I.Tasks, external: true },
+    { label: "Calendar", route: "/calendar", icon: I.Calendar, external: true },
+    { label: "Lists", route: "/lists", icon: I.Receipt },
+    { label: "Maintenance", route: "/maintenance", icon: I.Wrench },
+  ] },
+  { group: "RECORDS", items: [
+    { label: "People", route: "/people", icon: I.People },
+    { label: "Vendors", route: "/vendors", icon: I.Vendors },
+    { label: "Vehicles", route: "/vehicles", icon: I.Vehicle },
+    { label: "Documents", route: "/documents", icon: I.Documents, external: true },
+  ] },
+  { group: "FINANCE & SYSTEM", items: [
+    { label: "Finance", route: "/finance", icon: I.Finance },
+    { label: "Wealth", route: "/wealth", icon: I.Trending },
+    { label: "Backup", route: "/backup", icon: I.Database },
+    { label: "Settings", route: "/settings", icon: I.Settings },
+  ] },
 ];
 
 // F02 — the resource each nav item requires; the nav recalibrates to the principal's permissions.
-// Items absent here are operational/always-shown; registry/finance/wealth are permission-gated.
 const NAV_RESOURCE: Record<string, string> = {
   Inventory: "asset", Collections: "asset", Vehicles: "asset", Insights: "asset",
   Finance: "bill", Wealth: "wealth", Backup: "backup",
 };
 
-function routeFor(item: string): string {
-  if (item === "Dashboard") return "/";
-  if (item === "Inbox") return "/inbox";
-  if (item === "Notifications") return "/notifications";
-  if (item === "Inventory") return "/inventory";
-  if (item === "Collections") return "/collections";
-  if (item === "Insights") return "/insights";
-  if (item === "Finance") return "/finance";
-  if (item === "Wealth") return "/wealth";
-  if (item === "Backup") return "/backup";
-  if (item === "Properties") return "/properties";
-  if (item === "People") return "/people";
-  if (item === "Documents") return "/documents";
-  if (item === "Vendors") return "/vendors";
-  if (item === "Tasks") return "/tasks";
-  if (item === "Lists") return "/lists";
-  if (item === "Maintenance") return "/maintenance";
-  if (item === "Calendar") return "/calendar";
-  if (item === "Vehicles") return "/vehicles";
-  if (item === "Settings") return "/settings";
-  return "/soon";
-}
-
 const styles = stylex.create({
-  app: { display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "100vh", backgroundColor: colors.bg, color: colors.ink, fontFamily: "system-ui, -apple-system, sans-serif" },
-  nav: { borderRight: `1px solid ${colors.line}`, padding: "20px 12px", backgroundColor: colors.bgElev },
-  brand: { display: "flex", alignItems: "center", gap: "10px", padding: "0 8px 18px", fontWeight: 600, fontSize: "16px" },
-  mark: { width: "26px", height: "26px", borderRadius: "8px", backgroundColor: colors.ink, color: colors.bgElev, display: "grid", placeItems: "center", fontSize: "14px" },
-  group: { fontSize: "10.5px", letterSpacing: "0.08em", color: colors.ink3, textTransform: "uppercase", padding: "16px 8px 4px" },
-  item: { display: "block", padding: "7px 8px", borderRadius: "8px", fontSize: "13.5px", color: colors.ink2, textDecoration: "none" },
-  main: { padding: "32px" },
-  account: { marginTop: "16px", paddingTop: "14px", borderTop: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
-  who: { fontSize: "13px", color: colors.ink2, lineHeight: 1.25 },
+  app: { display: "grid", gridTemplateColumns: "248px 1fr", gridTemplateRows: "100vh", backgroundColor: colors.bg, color: colors.ink },
+  // sidebar
+  sidebar: { borderRight: `1px solid ${colors.line}`, backgroundColor: colors.bg, padding: "22px 14px", display: "flex", flexDirection: "column", gap: "16px", height: "100vh", position: "sticky", top: 0, overflowY: "auto" },
+  brand: { display: "flex", alignItems: "center", gap: "10px", padding: "4px 8px 2px" },
+  mark: { width: "26px", height: "26px", borderRadius: "7px", backgroundColor: colors.ink, color: colors.bg, display: "grid", placeItems: "center", fontWeight: 700, fontSize: "13px" },
+  brandName: { fontWeight: 600, fontSize: "15px", letterSpacing: "-0.01em" },
+  section: { display: "flex", flexDirection: "column", gap: "2px" },
+  group: { padding: "8px 10px 4px", fontSize: "10.5px", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, color: colors.ink3 },
+  item: { display: "flex", alignItems: "center", gap: "10px", padding: "7px 10px", borderRadius: "8px", fontSize: "13.5px", color: colors.ink2, textDecoration: "none" },
+  itemActive: { backgroundColor: colors.bgElev, color: colors.ink, boxShadow: colors.shadow1 },
+  icon: { color: colors.ink3, flexShrink: 0, display: "inline-flex" },
+  ext: { marginLeft: "auto", color: colors.ink4, display: "inline-flex" },
+  spacer: { flex: 1 },
+  // account card
+  account: { backgroundColor: colors.bgElev, borderRadius: radius.md, padding: "12px 14px", border: `1px solid ${colors.line}`, display: "flex", alignItems: "center", gap: "10px" },
+  avatar: { width: "28px", height: "28px", borderRadius: "999px", backgroundColor: colors.accent, color: colors.accentInk, display: "grid", placeItems: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 },
+  who: { flex: 1, minWidth: 0 },
+  whoName: { fontSize: "13px", fontWeight: 500, color: colors.ink },
   whoRole: { fontSize: "11px", color: colors.ink3, textTransform: "capitalize" },
-  signout: { padding: "5px 9px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "12px", color: colors.ink2 },
-  impersonate: { marginTop: "12px" },
-  impersonateLabel: { fontSize: "10.5px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, marginBottom: "6px" },
+  iconBtn: { width: "30px", height: "30px", display: "inline-grid", placeItems: "center", borderRadius: "8px", border: 0, backgroundColor: "transparent", color: colors.ink3, cursor: "pointer" },
+  signout: { padding: "5px 9px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bg, cursor: "pointer", fontSize: "12px", color: colors.ink2 },
+  impersonate: { display: "flex", flexDirection: "column", gap: "6px" },
+  impersonateLabel: { fontSize: "10.5px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600 },
   impersonateSelect: { width: "100%", padding: "6px 8px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, fontSize: "12.5px", cursor: "pointer" },
+  // main
+  main: { display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
+  topbar: { height: "56px", display: "flex", alignItems: "center", gap: "12px", padding: "0 28px", borderBottom: `1px solid ${colors.line}`, backgroundColor: colors.bgOverlay, position: "sticky", top: 0, zIndex: 10, backdropFilter: "saturate(180%) blur(20px)" },
+  search: { display: "flex", alignItems: "center", gap: "8px", height: "34px", padding: "0 12px", borderRadius: "10px", backgroundColor: colors.bgSunken, color: colors.ink3, fontSize: "13px", width: "320px", cursor: "text", border: `1px solid transparent`, textAlign: "left" },
+  kbd: { marginLeft: "auto", fontSize: "11px", color: colors.ink3, backgroundColor: colors.bgElev, border: `1px solid ${colors.line}`, borderRadius: "4px", padding: "1px 5px" },
+  topRight: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" },
+  content: { overflowY: "auto", flex: 1 },
+  page: { maxWidth: "1280px", margin: "0 auto", padding: "40px 40px 80px" },
+  // impersonation banner
   banner: { display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", backgroundColor: colors.warnSoft, color: colors.warn, fontSize: "13px", borderRadius: radius.sm, marginBottom: "20px", fontWeight: 500 },
   bannerGrow: { flex: 1 },
   bannerBtn: { padding: "5px 12px", borderRadius: "7px", border: `1px solid ${colors.warn}`, backgroundColor: "transparent", color: colors.warn, cursor: "pointer", fontSize: "12.5px", fontWeight: 600 },
 });
 
+const openPalette = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+const initials = (name?: string) => (name ?? "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
 export function App() {
-  const { token, persona, signOut, can, meLoading, me, role, impersonating, impersonate, stopImpersonating } = useAuth();
+  const { token } = useAuth();
   if (!token) return <DevLogin />;
-  const canImpersonate = !impersonating && can("*", "admin"); // an admin not already acting-as someone
-  // F02 — recalibrate the nav to the principal's permissions. While /api/me loads, show only the
-  // ungated items (avoids a flash of gated links the principal may not keep).
-  const visible = (item: string) => {
-    if (item === "Settings") return !meLoading && can("*", "admin"); // role-management is admin-only
-    const resource = NAV_RESOURCE[item];
+  return (
+    <BrowserRouter>
+      <Shell />
+    </BrowserRouter>
+  );
+}
+
+function Shell() {
+  const { persona, signOut, can, meLoading, me, role, impersonating, impersonate, stopImpersonating } = useAuth();
+  const { theme, toggle } = useTheme();
+  const { pathname } = useLocation();
+  const canImpersonate = !impersonating && can("*", "admin");
+  const visible = (label: string) => {
+    if (label === "Settings") return !meLoading && can("*", "admin");
+    const resource = NAV_RESOURCE[label];
     return !resource || (!meLoading && can(resource));
   };
   return (
-    <BrowserRouter>
+    <>
       <div {...stylex.props(styles.app)}>
-        <nav {...stylex.props(styles.nav)} aria-label="Primary">
+        <nav {...stylex.props(styles.sidebar)} aria-label="Primary">
           <div {...stylex.props(styles.brand)}>
-            <span {...stylex.props(styles.mark)}>完</span> Kanzen
+            <span {...stylex.props(styles.mark)}>完</span>
+            <span {...stylex.props(styles.brandName)}>Kanzen</span>
           </div>
+
           {NAV.map((section) => {
-            const items = section.items.filter(visible);
+            const items = section.items.filter((it) => visible(it.label));
             if (items.length === 0) return null;
             return (
-            <div key={section.group ?? "top"}>
-              {section.group && <div {...stylex.props(styles.group)}>{section.group}</div>}
-              {items.map((item) => (
-                <Link key={item} to={routeFor(item)} {...stylex.props(styles.item)}>
-                  {item}
-                </Link>
-              ))}
-            </div>
+              <div key={section.group ?? "top"} {...stylex.props(styles.section)}>
+                {section.group && <div {...stylex.props(styles.group)}>{section.group}</div>}
+                {items.map((it) => {
+                  const active = it.route === "/" ? pathname === "/" : pathname.startsWith(it.route);
+                  const Icon = it.icon;
+                  return (
+                    <Link key={it.label} to={it.route} aria-current={active ? "page" : undefined} {...stylex.props(styles.item, active && styles.itemActive)}>
+                      <span {...stylex.props(styles.icon)}><Icon size={16} /></span>
+                      <span>{it.label}</span>
+                      {it.external && <span {...stylex.props(styles.ext)}><I.External size={12} /></span>}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
-          <ThemeToggle />
+
+          <span {...stylex.props(styles.spacer)} />
+
           <div {...stylex.props(styles.account)}>
+            <span {...stylex.props(styles.avatar)}>{initials(persona?.name)}</span>
             <div {...stylex.props(styles.who)}>
-              {persona?.name ?? "Signed in"}
+              <div {...stylex.props(styles.whoName)}>{persona?.name ?? "Signed in"}</div>
               <div {...stylex.props(styles.whoRole)}>{role ?? persona?.role}</div>
             </div>
+            <button type="button" onClick={toggle} {...stylex.props(styles.iconBtn)} data-testid="theme-toggle" aria-label="Toggle light/dark theme">
+              {theme === "dark" ? <I.Sun size={15} /> : <I.Moon size={15} />}
+            </button>
             <button type="button" onClick={signOut} {...stylex.props(styles.signout)}>Sign out</button>
           </div>
+
           {canImpersonate && (
             <div {...stylex.props(styles.impersonate)} data-testid="impersonate">
               <div {...stylex.props(styles.impersonateLabel)}>View as</div>
-              <select
-                {...stylex.props(styles.impersonateSelect)}
-                aria-label="Impersonate a user"
-                value=""
-                onChange={(e) => { if (e.target.value) void impersonate(e.target.value); }}
-              >
+              <select {...stylex.props(styles.impersonateSelect)} aria-label="Impersonate a user" value=""
+                onChange={(e) => { if (e.target.value) void impersonate(e.target.value); }}>
                 <option value="">Impersonate…</option>
                 {PERSONAS.filter((p) => p.email !== me?.email).map((p) => (
                   <option key={p.email} value={p.email}>{p.name} ({p.role})</option>
@@ -143,40 +188,54 @@ export function App() {
             </div>
           )}
         </nav>
+
         <main {...stylex.props(styles.main)}>
-          {impersonating && (
-            <div {...stylex.props(styles.banner)} role="status" data-testid="impersonation-banner">
-              <span {...stylex.props(styles.bannerGrow)}>Viewing as <strong>{me?.email}</strong> ({role}) — admin impersonation</span>
-              <button type="button" onClick={stopImpersonating} {...stylex.props(styles.bannerBtn)} data-testid="stop-impersonating">Stop</button>
+          <div {...stylex.props(styles.topbar)}>
+            <button type="button" {...stylex.props(styles.search)} onClick={openPalette} aria-label="Search Kanzen">
+              <I.Search size={14} /> <span>Search Kanzen…</span><span {...stylex.props(styles.kbd)}>⌘K</span>
+            </button>
+            <span {...stylex.props(styles.topRight)}>
+              <Link to="/notifications" {...stylex.props(styles.iconBtn)} aria-label="Notifications"><I.Bell size={16} /></Link>
+            </span>
+          </div>
+
+          <div {...stylex.props(styles.content)}>
+            <div {...stylex.props(styles.page)}>
+              {impersonating && (
+                <div {...stylex.props(styles.banner)} role="status" data-testid="impersonation-banner">
+                  <span {...stylex.props(styles.bannerGrow)}>Viewing as <strong>{me?.email}</strong> ({role}) — admin impersonation</span>
+                  <button type="button" onClick={stopImpersonating} {...stylex.props(styles.bannerBtn)} data-testid="stop-impersonating">Stop</button>
+                </div>
+              )}
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/inbox" element={<Inbox />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/collections" element={<Collections />} />
+                <Route path="/vehicles" element={<Inventory vertical="vehicle" label="Vehicles" />} />
+                <Route path="/inventory/:id" element={<AssetDetail />} />
+                <Route path="/insights" element={<Insights />} />
+                <Route path="/finance" element={<Finance />} />
+                <Route path="/wealth" element={<Wealth />} />
+                <Route path="/backup" element={<Backup />} />
+                <Route path="/properties" element={<Properties />} />
+                <Route path="/properties/:id" element={<PropertyBible />} />
+                <Route path="/people" element={<People />} />
+                <Route path="/documents" element={<Documents />} />
+                <Route path="/vendors" element={<Vendors />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/lists" element={<Lists />} />
+                <Route path="/maintenance" element={<Maintenance />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="*" element={<p>Coming soon.</p>} />
+              </Routes>
             </div>
-          )}
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/inbox" element={<Inbox />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/collections" element={<Collections />} />
-            <Route path="/vehicles" element={<Inventory vertical="vehicle" label="Vehicles" />} />
-            <Route path="/inventory/:id" element={<AssetDetail />} />
-            <Route path="/insights" element={<Insights />} />
-            <Route path="/finance" element={<Finance />} />
-            <Route path="/wealth" element={<Wealth />} />
-            <Route path="/backup" element={<Backup />} />
-            <Route path="/properties" element={<Properties />} />
-            <Route path="/properties/:id" element={<PropertyBible />} />
-            <Route path="/people" element={<People />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/vendors" element={<Vendors />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/lists" element={<Lists />} />
-            <Route path="/maintenance" element={<Maintenance />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<p>Coming soon.</p>} />
-          </Routes>
+          </div>
         </main>
-        <CommandPalette />
       </div>
-    </BrowserRouter>
+      <CommandPalette />
+    </>
   );
 }
