@@ -12,6 +12,7 @@ import { getRegistryHealth } from "../services/insights";
 import { listProperties } from "../services/properties";
 import { listLocations } from "../services/locations";
 import { listCollections, addMember } from "../services/collections";
+import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -56,6 +57,9 @@ const styles = stylex.create({
   amaker: { fontSize: "11.5px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3 },
   atitle: { fontSize: "15px", fontWeight: 600, letterSpacing: "-0.01em" },
   arow: { display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" },
+  afoot: { display: "flex", alignItems: "baseline", gap: "8px", marginTop: "6px" },
+  avalue: { fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: colors.ink },
+  aloc: { fontSize: "11.5px", color: colors.ink3, marginLeft: "auto" },
   table: { width: "100%", borderCollapse: "collapse" },
   th: { textAlign: "left", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3, padding: "12px 16px", borderBottom: `1px solid ${colors.line}` },
   td: { padding: "12px 16px", borderBottom: `1px solid ${colors.line}`, fontSize: "13.5px", cursor: "pointer" },
@@ -242,10 +246,17 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
   const [view, setView] = useState<"grid" | "list">("grid");
   const [category, setCategory] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [property, setProperty] = useState<string | null>(null);
+  const [collection, setCollection] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const assetsQ = useQuery({ queryKey: ["assets", category, search, vertical ?? null, token], queryFn: () => listAssets(token, category, search, vertical) });
+  const assetsQ = useQuery({
+    queryKey: ["assets", { category, q: search, vertical: vertical ?? null, property, collection, status }, token],
+    queryFn: () => listAssets(token, { category, q: search, vertical, property, collection, status }),
+  });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token) });
+  const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const collsQ = useQuery({ queryKey: ["collections", token], queryFn: () => listCollections(token) });
   // F23 registry health — available to anyone who can read the registry (this page's gate).
   const healthQ = useQuery({ queryKey: ["registry-health", token], queryFn: () => getRegistryHealth(token) });
   const h = healthQ.data;
@@ -256,11 +267,19 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
     const m = new Map(categories.map((c) => [c.id, c.name]));
     return (id: string | null) => (id ? m.get(id) ?? "—" : "—");
   }, [categories]);
+  const propName = (id: string | null) => propsQ.data?.find((p) => p.id === id)?.name ?? "—";
+  const collName = (id: string | null) => collsQ.data?.find((c) => c.id === id)?.name ?? "—";
 
   const all = assetsQ.data ?? [];
-  const shown = status ? all.filter((a) => a.ownershipStatus === status) : all;
-  const active = [category, status, search].filter(Boolean).length;
-  const clearAll = () => { setCategory(null); setStatus(null); setSearch(""); };
+  const shown = all; // the server applies every facet (category/status/property/collection/q/vertical)
+  // Acquisition-cost rollup, per currency (no silent FX — F37 display conversion lands later).
+  const valueByCcy = all.reduce<Record<string, number>>((m, a) => {
+    if (a.acquisitionCostMinor != null) { const c = a.acquisitionCurrency ?? "GBP"; m[c] = (m[c] ?? 0) + a.acquisitionCostMinor; }
+    return m;
+  }, {});
+  const valueLabel = Object.entries(valueByCcy).map(([c, v]) => fmtMoney(v, c)).join(" · ") || "—";
+  const active = [category, status, search, property, collection].filter(Boolean).length;
+  const clearAll = () => { setCategory(null); setStatus(null); setSearch(""); setProperty(null); setCollection(null); };
   const topCats = categories.filter((c) => !c.parentId);
 
   return (
@@ -277,8 +296,8 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
       {adding && <NewAssetModal token={token} categories={categories} vertical={vertical} onClose={() => setAdding(false)} />}
 
       <div {...stylex.props(styles.stats)}>
-        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Assets shown</div><div {...stylex.props(styles.statN)}>{shown.length}</div><div {...stylex.props(styles.statSub)}>of {all.length} in registry</div></div>
-        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Categories</div><div {...stylex.props(styles.statN)}>{categories.length}</div><div {...stylex.props(styles.statSub)}>across the registry</div></div>
+        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Assets shown</div><div {...stylex.props(styles.statN)}>{shown.length}</div><div {...stylex.props(styles.statSub)}>of {h?.total ?? all.length} in registry</div></div>
+        <div {...stylex.props(styles.stat)}><div {...stylex.props(styles.statL)}>Acquisition value</div><div {...stylex.props(styles.statN)} data-testid="value-total">{valueLabel}</div><div {...stylex.props(styles.statSub)}>cost basis · market est. with F20</div></div>
         <div {...stylex.props(styles.stat)}>
           <div {...stylex.props(styles.statL)}>Completeness</div>
           <div {...stylex.props(styles.statN)}>{completeness != null ? `${completeness}%` : "—"}</div>
@@ -309,9 +328,19 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
                 </div>
               ))}
             </FilterGroup>
+            <FilterGroup label="Property">
+              {(propsQ.data ?? []).map((p) => (
+                <FilterRow key={p.id} active={property === p.id} onClick={() => setProperty(property === p.id ? null : p.id)}>{p.name}</FilterRow>
+              ))}
+            </FilterGroup>
             <FilterGroup label="Status">
               {STATUS_OPTIONS.map((s) => (
                 <FilterRow key={s} active={status === s} onClick={() => setStatus(status === s ? null : s)}>{s}</FilterRow>
+              ))}
+            </FilterGroup>
+            <FilterGroup label="Collection">
+              {(collsQ.data ?? []).map((c) => (
+                <FilterRow key={c.id} active={collection === c.id} onClick={() => setCollection(collection === c.id ? null : c.id)}>{c.name}</FilterRow>
               ))}
             </FilterGroup>
           </Card>
@@ -345,6 +374,8 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
           {active > 0 && (
             <div {...stylex.props(styles.chips)}>
               {category && <FilterChip onClear={() => setCategory(null)}>Category · {categoryName(category)}</FilterChip>}
+              {property && <FilterChip onClear={() => setProperty(null)}>Property · {propName(property)}</FilterChip>}
+              {collection && <FilterChip onClear={() => setCollection(null)}>Collection · {collName(collection)}</FilterChip>}
               {status && <FilterChip onClear={() => setStatus(null)}>Status · {status}</FilterChip>}
               {search && <FilterChip onClear={() => setSearch("")}>Search · "{search}"</FilterChip>}
             </div>
@@ -363,6 +394,10 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
                       <Pill>{categoryName(a.categoryId)}</Pill>
                       {modeBadge(a) && <Pill tone="accent">{modeBadge(a)}</Pill>}
                     </div>
+                    <div {...stylex.props(styles.afoot)}>
+                      <span {...stylex.props(styles.avalue)}>{a.acquisitionCostMinor != null ? fmtMoney(a.acquisitionCostMinor, a.acquisitionCurrency ?? "GBP") : "—"}</span>
+                      {a.propertyId && <span {...stylex.props(styles.aloc)}>{propName(a.propertyId)}</span>}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -371,15 +406,17 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
                 <table {...stylex.props(styles.table)}>
                   <thead><tr>
                     <th {...stylex.props(styles.th)}>Asset</th><th {...stylex.props(styles.th)}>Category</th>
-                    <th {...stylex.props(styles.th)}>Mode</th><th {...stylex.props(styles.th)}>Status</th>
+                    <th {...stylex.props(styles.th)}>Location</th><th {...stylex.props(styles.th)}>Status</th>
+                    <th {...stylex.props(styles.th)}>Value</th>
                   </tr></thead>
                   <tbody>
                     {shown.map((a) => (
                       <tr key={a.id} data-testid="asset-row" onClick={() => navigate(`/inventory/${a.id}`)}>
                         <td {...stylex.props(styles.td)}><div {...stylex.props(styles.bold)}>{a.title}</div><div {...stylex.props(styles.statL)}>{a.maker}</div></td>
                         <td {...stylex.props(styles.td)}>{categoryName(a.categoryId)}</td>
-                        <td {...stylex.props(styles.td)}>{a.trackingMode.replace("_", " ")}{modeBadge(a) ? ` · ${modeBadge(a)}` : ""}</td>
+                        <td {...stylex.props(styles.td)}>{a.propertyId ? propName(a.propertyId) : "—"}</td>
                         <td {...stylex.props(styles.td)}><Pill>{a.ownershipStatus}</Pill></td>
+                        <td {...stylex.props(styles.td, styles.bold)}>{a.acquisitionCostMinor != null ? fmtMoney(a.acquisitionCostMinor, a.acquisitionCurrency ?? "GBP") : "—"}</td>
                       </tr>
                     ))}
                   </tbody>

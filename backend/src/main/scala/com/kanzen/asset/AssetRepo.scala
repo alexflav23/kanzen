@@ -114,18 +114,37 @@ object AssetRepo {
     (fr"select" ++ cols ++ fr"from assets where category_id = $categoryId and deleted_at is null").query[Asset].to[List]
 
   /** Faceted list: optional category set (caller expands descendants) + a title/maker search. */
+  // Asset card columns, qualified to the `a` alias (same order as `Asset`), plus the resolved property.
+  private val cardCols =
+    fr"""a.id, a.title, a.maker, a.category_id, a.vertical, a.tracking_mode, a.quantity, a.parent_asset_id,
+         a.acquisition_cost_minor, a.acquisition_currency, a.acquisition_date, a.ownership_status, a.location_id,
+         a.attributes, loc.property_id"""
+
+  /** Faceted list for the Inventory grid. Joins locations to resolve the property (for the Property
+    * facet + value rollups) and collection_members when a collection facet is applied. Returns each
+    * asset paired with its resolved `property_id`.
+    */
   def list(
       categoryIds: Option[NonEmptyList[UUID]],
       q: Option[String],
-      vertical: Option[String] = None
-  ): ConnectionIO[List[Asset]] = {
+      vertical: Option[String] = None,
+      propertyId: Option[UUID] = None,
+      collectionId: Option[UUID] = None,
+      status: Option[String] = None
+  ): ConnectionIO[List[(Asset, Option[UUID])]] = {
+    val join =
+      collectionId.map(_ => fr"join collection_members cm on cm.asset_id = a.id").getOrElse(Fragment.empty)
     val conds: List[Fragment] = List(
-      Some(fr"deleted_at is null"),
-      categoryIds.map(ids => Fragments.in(fr"category_id", ids)),
-      vertical.map(v => fr"vertical = $v"),
-      q.map(s => fr"(title ilike ${"%" + s + "%"} or maker ilike ${"%" + s + "%"})")
+      Some(fr"a.deleted_at is null"),
+      categoryIds.map(ids => Fragments.in(fr"a.category_id", ids)),
+      vertical.map(v => fr"a.vertical = $v"),
+      propertyId.map(pid => fr"loc.property_id = $pid"),
+      collectionId.map(cid => fr"cm.collection_id = $cid"),
+      status.map(s => fr"a.ownership_status = $s"),
+      q.map(s => fr"(a.title ilike ${"%" + s + "%"} or a.maker ilike ${"%" + s + "%"})")
     ).flatten
-    val where = conds.reduce((a, b) => a ++ fr"and" ++ b)
-    (fr"select" ++ cols ++ fr"from assets where" ++ where ++ fr"order by title").query[Asset].to[List]
+    val where = conds.reduce((x, y) => x ++ fr"and" ++ y)
+    (fr"select" ++ cardCols ++ fr"from assets a left join locations loc on loc.id = a.location_id" ++ join ++
+      fr"where" ++ where ++ fr"order by a.title").query[(Asset, Option[UUID])].to[List]
   }
 }

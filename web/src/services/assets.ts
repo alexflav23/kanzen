@@ -10,6 +10,9 @@ export const AssetViewSchema = z.object({
   trackingMode: z.string(),
   quantity: z.number(),
   ownershipStatus: z.string(),
+  acquisitionCostMinor: z.number().nullable(),
+  acquisitionCurrency: z.string().nullable(),
+  propertyId: z.string().nullable().optional(), // list-card only (resolved via location); absent on the detail view
 });
 export type AssetView = z.infer<typeof AssetViewSchema>;
 
@@ -44,11 +47,18 @@ export type CreateAssetReq = {
   attributes: Record<string, unknown> | null;
 };
 
-export function listAssets(token: string | null, category?: string | null, q?: string | null, vertical?: string | null): Promise<AssetView[]> {
+export type AssetFilters = {
+  category?: string | null;
+  q?: string | null;
+  vertical?: string | null;
+  property?: string | null;
+  collection?: string | null;
+  status?: string | null;
+};
+
+export function listAssets(token: string | null, filters: AssetFilters = {}): Promise<AssetView[]> {
   const params = new URLSearchParams();
-  if (category) params.set("category", category);
-  if (q) params.set("q", q);
-  if (vertical) params.set("vertical", vertical);
+  for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
   const qs = params.toString();
   return api(`/api/assets${qs ? `?${qs}` : ""}`, z.array(AssetViewSchema), { token });
 }

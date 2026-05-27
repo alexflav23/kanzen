@@ -37,7 +37,10 @@ object Assets {
       categoryId: Option[UUID],
       trackingMode: String,
       quantity: Int,
-      ownershipStatus: String
+      ownershipStatus: String,
+      acquisitionCostMinor: Option[Long],
+      acquisitionCurrency: Option[String],
+      propertyId: Option[UUID]
   )
   final case class AssetDetail(
       id: UUID,
@@ -76,8 +79,11 @@ object Assets {
   )
   final case class EditReq(title: String, maker: Option[String], categoryId: UUID, ownershipStatus: String)
 
-  private def view(a: Asset): AssetView =
-    AssetView(a.id, a.title, a.maker, a.categoryId, a.trackingMode, a.quantity, a.ownershipStatus)
+  private def view(card: (Asset, Option[UUID])): AssetView = {
+    val a = card._1
+    AssetView(a.id, a.title, a.maker, a.categoryId, a.trackingMode, a.quantity, a.ownershipStatus,
+      a.acquisitionCostMinor, a.acquisitionCurrency, card._2)
+  }
   private def detailOf(a: Asset): AssetDetail =
     AssetDetail(
       a.id,
@@ -106,19 +112,23 @@ object Assets {
       p: Principal,
       category: Option[UUID],
       q: Option[String],
-      vertical: Option[String] = None
+      vertical: Option[String] = None,
+      property: Option[UUID] = None,
+      collection: Option[UUID] = None,
+      status: Option[String] = None
   ): IO[Out[List[AssetView]]] = {
+    def run(cats: Option[NonEmptyList[UUID]]) =
+      AssetRepo.list(cats, q, vertical, property, collection, status).map(as => Right(as.map(view)): Out[List[AssetView]])
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
       else
         category match {
-          case None => AssetRepo.list(None, q, vertical).map(as => Right(as.map(view)): Out[List[AssetView]])
+          case None => run(None)
           case Some(cid) =>
             AssetRepo.categoryDescendants(cid).flatMap { ds =>
               NonEmptyList.fromList(ds) match {
-                case None => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
-                case Some(nel) =>
-                  AssetRepo.list(Some(nel), q, vertical).map(as => Right(as.map(view)): Out[List[AssetView]])
+                case None      => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
+                case Some(nel) => run(Some(nel))
               }
             }
         }
@@ -235,17 +245,21 @@ object Assets {
   // ---- endpoints ----
   private val err = statusCode.and(jsonBody[ApiError])
 
-  val listEndpoint
-      : Endpoint[String, (Option[UUID], Option[String], Option[String]), (StatusCode, ApiError), List[AssetView], Any] =
+  val listEndpoint: Endpoint[String, (Option[UUID], Option[String], Option[String], Option[UUID], Option[
+    UUID
+  ], Option[String]), (StatusCode, ApiError), List[AssetView], Any] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
       .in("api" / "assets")
       .in(query[Option[UUID]]("category"))
       .in(query[Option[String]]("q"))
       .in(query[Option[String]]("vertical"))
+      .in(query[Option[UUID]]("property"))
+      .in(query[Option[UUID]]("collection"))
+      .in(query[Option[String]]("status"))
       .errorOut(err)
       .out(jsonBody[List[AssetView]])
-      .summary("List assets (Principal-private; faceted by category/q/vertical)")
+      .summary("List assets (Principal-private; faceted by category/q/vertical/property/collection/status)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), AssetDetail, Any] =
     sttp.tapir.endpoint.get
@@ -284,7 +298,7 @@ object Assets {
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (cat, q, vert) => list(xa, p, cat, q, vert) }),
+      .serverLogic(p => { case (cat, q, vert, prop, coll, st) => list(xa, p, cat, q, vert, prop, coll, st) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     patchEndpoint

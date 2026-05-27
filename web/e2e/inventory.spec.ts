@@ -79,6 +79,17 @@ test("an asset's key facts can be edited", async ({ page }) => {
   await expect(page.getByText(maker)).toBeVisible();
 });
 
+test("the filter rail facets by property + shows the acquisition-value rollup", async ({ page }) => {
+  await page.goto("/inventory");
+  await expect(page.getByTestId("value-total")).toBeVisible(); // acquisition-value summary strip
+  // Property facet (collapsed by default) → expand → pick Wardian → active chip
+  await page.getByRole("button", { name: "Property", exact: true }).click();
+  await page.getByRole("button", { name: "Wardian — Apt 5206", exact: true }).click();
+  await expect(page.getByText(/Property · Wardian/)).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click(); // clears all facets
+  await expect(page.getByText(/Property · Wardian/)).toHaveCount(0);
+});
+
 test("New asset: full create form (location + acquisition) round-trips to detail", async ({ page }) => {
   const title = `E2E Asset ${Date.now()}`;
   await page.goto("/inventory");
