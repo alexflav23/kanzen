@@ -150,9 +150,19 @@ Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + mi
 ## Forward build plan — actionable slices (2026-05-27)
 The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. Each `[ ]` is one **vertical-slice** (DB/seed → API gap if any → service+Zod → UI+states → tests → verify live at :3020), the same loop used for Lists/Dashboard/PropertyBible/People/Wealth. Waves are value+dependency ordered; one slice in flight; check off as shipped. 🔒 = **operator-gated** (needs SETUP.md provisioning — can't be completed in the sandbox).
 
+**Design coverage (`input/` from Claude Design — build to the view, not just the spec text).** `styles.css` (tokens) is implemented. Screen → design source: Dashboard `dashboard.jsx` · Inbox `inbox.jsx` · Triage `triage.jsx` · Inventory `assets.jsx` · Asset detail `asset-detail.jsx` · Collections `collections.jsx` · Insights `insights.jsx` · Properties/Bible `properties.jsx` · Finance `finance.jsx` · Calendar `calendar.jsx` · Lists `lists.jsx` · Backup `backup.jsx` · ⌘K `search.jsx` · Maintenance modal `add-maintenance.jsx` · Mobile `mobile.jsx`; **People · Vendors · Documents · Tasks · Vehicles · Settings · Directory** + the role×module **PermissionsMatrix** all live in `stubs.jsx`; shell/nav/topbar `app.jsx`; sample shapes `data.jsx`/`data-inventory.jsx`. **Every slice below must match its design view.**
+
+**Design-driven items the spec-only plan missed (now folded in):**
+- **Vehicles** is a *bespoke card view* (garage · name · colour · reg + MOT/Tax/Insurance meta-grid), not a generic Inventory filter → W3.
+- **Directory** screen (operational mailboxes + role addresses) — we don't have it at all → W8 (new).
+- **Documents** design is rich: 4 KPI tiles (docs/storage/parse-runs/line-items) + search + category segmented filter + table with attached-to + immutable/parse-run badges + agent ribbon → W8 (ours is simpler).
+- **Settings** is 4 tabs in the design — Integrations (connected-systems health) · Permissions (role×module matrix, have it) · Preferences (thresholds/security) · Audit log → W8.
+- **Shell** (`app.jsx`): grouped nav incl. a **Directory** item + **external-integration markers** on Tasks/Calendar + a **Mobile-preview** toggle (have brand/⌘K/theme) → W8.
+- Intentional divergences to KEEP: **People/Vendors** already exceed the simple stub design; **Wealth/Notifications** are real features the design snapshot predates.
+
 **Registry & property core comes FIRST** (W1–W4): it's the spine of Kanzen — everything-is-an-asset-in-a-location-with-a-timeline — and the audit under-weighted it. Finance and the rest follow. Within a wave the slices are top-to-bottom order.
 
-### W1 · Asset registry depth (F04 — the create/browse/detail spine)
+### W1 · Asset registry depth (F04 — the create/browse/detail spine) — design: `assets.jsx`, `asset-detail.jsx`, `collections.jsx`
 The Inventory create is unique-only (title/maker/category); filters are Category/Status only; detail lacks docs/comments/tags/collections/move. Per F04 §5.
 - [ ] **F04** **Full create form** — tracking mode (unique / **grouped_quantity** +qty / **structured_set** +children), **location picker** (F03 tree), acquisition date/cost/currency, **tags**, **collection**; card badges (×N / set / "At service").
 - [ ] **F04** **Faceted filter rail** — add **Property**, **Collection**, **Tag** facets (have Category/Status) + active-filter chips; **value-totals** summary strip (acquisition-cost sums until F20, labelled).
@@ -160,7 +170,7 @@ The Inventory create is unique-only (title/maker/category); filters are Category
 - [ ] **F04** **Move / custody** actions — move asset via location-tree picker + custody change → writes `asset_location_history` / `asset_custody_history`; **hero photo** from a document.
 - [ ] **F04** **Asset groups** (order / set / rig) — peer groupings UI (distinct from structured sets + collections).
 
-### W2 · Asset timeline & lifecycle (F19 + F20/F21 — the provenance heart)
+### W2 · Asset timeline & lifecycle (F19 + F20/F21 — the provenance heart) — design: `asset-detail.jsx` (TimelineTab + EventDot)
 Current AssetDetail has a basic event log; the spec is a typed, side-effecting timeline. Per F19 §5/§6.
 - [ ] **F19** **Full timeline** — typed colour-coded event dots (acquired=accent · valuation=green · service/clean=cyan · move/custody=purple · damage=red · doc=grey), cost/party/value-delta pills, chronological (retroactive) insert; upgrade the Lifecycle card to this.
 - [ ] **F19** **Rich log-event** — type · date · **cost** · **vendor party** (F09) · **documents** · condition delta · location/custody · valuation delta; with side-effects: `moved`→location history, cost→lifetime cost (→F17/F18), `sold/gifted/lost`→closes asset + ownership status.
@@ -168,11 +178,11 @@ Current AssetDetail has a basic event log; the spec is a typed, side-effecting t
 
 ### W3 · Verticals, vehicles, tags & restructure (F22 / F33 / F24)
 - [ ] **F22** **Template-driven typed create + Specifications** — New-asset + Specs render typed fields from the vertical's category template (validation already server-side).
-- [ ] **Vehicles** — flesh the `vehicle` vertical: typed attributes (reg/VIN/mileage/MOT/road-tax/insurance), vehicle-specific timeline events + due-soon reminders (ties F11); promote the Vehicles view beyond a generic vertical filter.
+- [ ] **Vehicles** (design: `stubs.jsx` VehiclesView) — **bespoke card view** (garage eyebrow · name · colour · reg + MOT/Tax/Insurance meta-grid), not a generic Inventory filter; typed attributes (reg/VIN/mileage/MOT/road-tax/insurance) via the `vehicle` template; vehicle-specific timeline events + due-soon reminders (ties F11).
 - [ ] **F33** **Tags + custom fields + taxonomies** — tag chips manager; Principal **custom-field-definition** editor; user-defined **taxonomy tree** editor.
 - [ ] **F24** **Restructure flow** — guided **merge / split / regroup** UI + **legacy bulk-import** staging (backend merge/split/legacy already done).
 
-### W4 · Property administration — the full Bible (F03)
+### W4 · Property administration — the full Bible (F03) — design: `properties.jsx`
 Bible has only Overview/Rooms/Defects; spec wants the full record. Per F03 §5.
 - [ ] **F03** **Bible tabs** — add **Assets** (F04 table scoped to the property), **Utilities** (bills, F15), **Maintenance** (plans, F11), **Documents** (F05).
 - [ ] **F03** **Overview depth** — full Particulars (address · country · type · ownership · building-mgmt · jurisdiction) + **Linked systems** card (native task project · Calendar · Drive folder · 1Password vault — *reference only, never a secret*).
@@ -197,9 +207,12 @@ Bible has only Overview/Rooms/Defects; spec wants the full record. Per F03 §5.
 - [ ] **F42** **Entity management** UI (create/edit legal entities + ownership tree). · [ ] **F37** **FX display-currency selector** (persisted).
 - [ ] **F40** Investments — **dividends + corporate actions** + record-a-lot/trade UI; TWR/IRR. · [ ] **F41** pull illiquid valuations into the book.
 
-### W8 · Agent, search & system
-- [ ] **F34** Notifications **top-bar bell** + quiet-hours. · [ ] **F05** Documents **embedded tabs** on asset/property.
-- [ ] **F32** **NL query UI** + Drive export. · [ ] **F18/F39** Principal-only **statements/registers** view. · [ ] **F23/F29** **spend-trend** time-series.
+### W8 · Agent, search, system & design-only screens
+- [ ] **Directory** (design: `stubs.jsx` DirectoryView) — new screen: operational mailboxes + role addresses; add to nav.
+- [ ] **F05** Documents → match `stubs.jsx` DocumentsView: 4 KPI tiles + search + category segmented filter + table (attached-to · immutable/parse-run badges · agent ribbon); embedded doc tabs on asset/property.
+- [ ] **Settings** → match `stubs.jsx` SettingsView 4 tabs: **Integrations** (connected-systems health), Permissions (have it), **Preferences** (thresholds/security), **Audit log**.
+- [ ] **Shell** (design: `app.jsx`) — grouped-nav **Directory** item + **external-integration markers** on Tasks/Calendar + **Mobile-preview** toggle.
+- [ ] **F34** Notifications **top-bar bell** + quiet-hours. · [ ] **F32** **NL query UI** + Drive export. · [ ] **F18/F39** Principal-only **statements/registers** view. · [ ] **F23/F29** **spend-trend** time-series.
 
 ### Operator-gated track (🔒 — needs you, per SETUP.md; blocks Done(prod))
 - [ ] 🔒 **F01/F00** real Cognito pool + JWKS swap · real AWS apply (Terraform/NixOS) · prod-cred swap.
