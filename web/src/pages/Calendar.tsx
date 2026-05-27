@@ -10,6 +10,7 @@ import { Loading, EmptyState, ErrorState } from "../components/states";
 import { createEvent, listEvents } from "../services/calendar";
 
 const styles = stylex.create({
+  errorText: { color: colors.danger, fontSize: "12.5px" },
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "20px", gap: "16px" },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
@@ -63,7 +64,7 @@ function NewEventModal({ token, onClose }: { token: string | null; onClose: () =
           <select {...stylex.props(styles.control)} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
             {NEW_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select></label>
-        {mutation.isError && <div style={{ color: colors.danger, fontSize: "12.5px" }} role="alert">Couldn't create the event.</div>}
+        {mutation.isError && <div {...stylex.props(styles.errorText)} role="alert">Couldn't create the event.</div>}
         <div {...stylex.props(styles.actions)}>
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
           <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending || !title.trim()}>

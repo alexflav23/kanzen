@@ -20,7 +20,7 @@ const styles = stylex.create({
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "13px", color: colors.ink },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" },
   card: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, overflow: "hidden", padding: 0, textAlign: "left", cursor: "pointer", color: colors.ink },
-  cover: { height: "180px", position: "relative", color: "#fff" },
+  cover: (bg: string) => ({ height: "180px", position: "relative", color: "#fff", backgroundImage: bg }),
   coverTop: { position: "absolute", top: "16px", left: "18px", right: "18px", display: "flex", justifyContent: "space-between" },
   coverBottom: { position: "absolute", bottom: "18px", left: "20px", right: "20px" },
   coverName: { fontSize: "24px", fontWeight: 600, letterSpacing: "-0.018em" },
@@ -49,7 +49,7 @@ function PropertyCard({ p, cover, onOpen }: { p: Property; cover: string; onOpen
   ];
   return (
     <button type="button" data-testid="property-card" onClick={onOpen} {...stylex.props(styles.card)}>
-      <div {...stylex.props(styles.cover)} style={{ background: cover }}>
+      <div {...stylex.props(styles.cover(cover))}>
         <div {...stylex.props(styles.coverTop)}>
           <span {...stylex.props(styles.outlinePill)}>{p.jurisdiction ?? "—"}</span>
           <span {...stylex.props(styles.outlinePill)}>{p.status}</span>

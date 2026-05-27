@@ -10,7 +10,7 @@ function Dashboard({ onNav, onOpenTriage }) {
       <header style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 36 }}>
         <div>
           <div className="t-eyebrow" style={{ marginBottom: 8 }}>Friday · 22 May 2026</div>
-          <div className="t-display">Good morning, Toby.</div>
+          <div className="t-display">Good morning, Lorna.</div>
           <div className="muted t-body" style={{ marginTop: 8 }}>
             {pendingTriage} item{pendingTriage === 1 ? "" : "s"} awaiting your review,{" "}
             {pendingApprovals.length} expense{pendingApprovals.length === 1 ? "" : "s"} for approval.

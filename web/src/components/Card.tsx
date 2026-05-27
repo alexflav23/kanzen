@@ -7,6 +7,7 @@ const styles = stylex.create({
     border: `1px solid ${colors.line}`,
     borderRadius: radius.lg,
     backgroundColor: colors.bgElev,
+    boxShadow: colors.shadow1, // design's subtle card elevation (--shadow-1), themed globally
     overflow: "hidden",
   },
   header: {

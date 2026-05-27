@@ -27,7 +27,8 @@ const NEXT: Record<string, { status: string; label: string }[]> = {
 
 const styles = stylex.create({
   back: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "14px" },
-  cover: { height: "200px", borderRadius: radius.lg, position: "relative", color: "#fff", marginBottom: "24px" },
+  cover: (bg: string) => ({ height: "200px", borderRadius: radius.lg, position: "relative", color: "#fff", marginBottom: "24px", backgroundImage: bg }),
+  indent: (px: number) => ({ width: `${px}px`, flexShrink: 0 }),
   coverTop: { position: "absolute", top: "22px", left: "24px", display: "flex", gap: "8px" },
   coverBottom: { position: "absolute", bottom: "26px", left: "28px", right: "28px" },
   coverName: { fontSize: "34px", fontWeight: 600, letterSpacing: "-0.025em" },
@@ -80,7 +81,7 @@ function RoomNodes({ nodes, parentId, depth }: { nodes: Location[]; parentId: st
       {here.map((n) => (
         <div key={n.id}>
           <CardRow>
-            <div style={{ width: `${depth * 22}px` }} />
+            <div {...stylex.props(styles.indent(depth * 22))} />
             <div {...stylex.props(styles.roomIco)}><Box size={16} /></div>
             <div {...stylex.props(styles.grow)}>
               <div {...stylex.props(styles.rowTitle)}>{n.name}</div>
@@ -195,7 +196,7 @@ export function PropertyBible() {
   return (
     <div>
       {back}
-      <div {...stylex.props(styles.cover)} style={{ background: coverFor(p.id) }}>
+      <div {...stylex.props(styles.cover(coverFor(p.id)))}>
         <div {...stylex.props(styles.coverTop)}>
           <span {...stylex.props(styles.outlinePill)}>{p.jurisdiction ?? "—"}</span>
           <span {...stylex.props(styles.outlinePill)}>{p.currency}</span>

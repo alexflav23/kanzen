@@ -35,6 +35,7 @@ const styles = stylex.create({
   approve: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
   amount: { fontWeight: 600, fontVariantNumeric: "tabular-nums" },
   note: { padding: "16px 18px", fontSize: "13px", color: colors.ink3 },
+  spacer24: { height: "24px" },
   input: { width: "140px", padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink, fontSize: "13.5px", textAlign: "right", fontVariantNumeric: "tabular-nums" },
   reconItem: { padding: "14px 18px", borderBottom: `1px solid ${colors.line}` },
   reconTop: { display: "flex", alignItems: "center", gap: "12px" },
@@ -147,7 +148,7 @@ export function Finance() {
                   </div>
                 ))}
           </Card>
-          <div style={{ height: "24px" }} />
+          <div {...stylex.props(styles.spacer24)} />
           <Card>
             <CardHeader><CardTitle>All expenses · {allExp.data?.length ?? 0}</CardTitle></CardHeader>
             {allExp.isPending ? <Loading /> : allExp.isError ? <ErrorState error={allExp.error} />
@@ -310,7 +311,7 @@ export function Finance() {
             )}
             <div {...stylex.props(styles.note)}>Kanzen never files — this is guidance only.</div>
           </Card>
-          <div style={{ height: "24px" }} />
+          <div {...stylex.props(styles.spacer24)} />
           <Card>
             <CardHeader><CardTitle>Deductible &amp; VAT-reclaimable</CardTitle></CardHeader>
             {deductible.isPending ? <Loading /> : deductible.isError ? <ErrorState error={deductible.error} /> : (

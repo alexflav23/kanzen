@@ -29,6 +29,8 @@ const styles = stylex.create({
   select: { padding: "5px 8px", borderRadius: "7px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, fontSize: "12.5px", cursor: "pointer", minWidth: "72px" },
   locked: { fontSize: "12px", color: colors.ink3, fontStyle: "italic" },
   addRow: { display: "flex", gap: "8px", alignItems: "flex-end", flexWrap: "wrap", padding: "16px 0 4px" },
+  addRowInset: { paddingLeft: "16px", paddingRight: "16px" }, // composed with addRow where the row sits inside a card
+
   fieldGroup: { display: "flex", flexDirection: "column", gap: "4px" },
   fieldLabel: { fontSize: "11px", color: colors.ink3 },
   input: { padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13px", width: "160px" },
@@ -148,7 +150,7 @@ export function Settings() {
                 {deleteRoleMut.error instanceof ApiError ? deleteRoleMut.error.detail : "Couldn't delete the role."}
               </div>
             )}
-            <div {...stylex.props(styles.addRow)} style={{ paddingLeft: 16, paddingRight: 16 }}>
+            <div {...stylex.props(styles.addRow, styles.addRowInset)}>
               <div {...stylex.props(styles.fieldGroup)}>
                 <label {...stylex.props(styles.fieldLabel)} htmlFor="new-role-name">New role</label>
                 <input id="new-role-name" {...stylex.props(styles.input)} placeholder="e.g. Chef" value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} />

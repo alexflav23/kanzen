@@ -14,7 +14,7 @@ function Triage() {
       id: "h" + Date.now(),
       at: new Date().toISOString(),
       category: item.category,
-      action: "Confirmed by Toby",
+      action: "Confirmed by Flavian",
       title: item.subject.split("·")[0].trim(),
       outcome: item.proposedActions.map(a => a.target.split(" ")[0]).join(" + ") + " created",
     };
@@ -30,7 +30,7 @@ function Triage() {
       id: "h" + Date.now(),
       at: new Date().toISOString(),
       category: item.category,
-      action: "Rejected by Toby",
+      action: "Rejected by Flavian",
       title: item.subject.split("·")[0].trim(),
       outcome: "Dismissed, sender learning",
     }, ...history]);

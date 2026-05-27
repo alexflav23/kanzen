@@ -243,7 +243,7 @@ function DirectoryView() {
         <div className="card card-pad-lg">
           <div className="t-eyebrow" style={{ marginBottom: 14 }}>Role addresses</div>
           <dl className="meta-grid">
-            <dt>Principal</dt><dd className="t-mono">toby@kanzen.family</dd>
+            <dt>Principal</dt><dd className="t-mono">flavian@kanzen.family</dd>
             <dt>Chief of Staff</dt><dd className="t-mono">lorna@kanzen.family</dd>
             <dt>Wardian</dt><dd className="t-mono">wardian@kanzen.family</dd>
             <dt>Singapore</dt><dd className="t-mono">singapore@kanzen.family</dd>

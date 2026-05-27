@@ -17,7 +17,8 @@ const styles = stylex.create({
   bar: { display: "flex", alignItems: "center", gap: "14px", padding: "10px 16px" },
   barLabel: { width: "130px", flexShrink: 0, fontSize: "13px", color: colors.ink2 },
   track: { flex: 1, height: "10px", borderRadius: "999px", backgroundColor: colors.bgSunken, overflow: "hidden" },
-  fill: { height: "100%", borderRadius: "999px", backgroundColor: colors.accent },
+  fill: (pct: number) => ({ height: "100%", borderRadius: "999px", backgroundColor: colors.accent, width: `${pct}%` }),
+  spacer24: { height: "24px" },
   pct: { width: "44px", textAlign: "right", fontSize: "13px", fontWeight: 600, color: colors.ink, fontVariantNumeric: "tabular-nums" },
   scanRow: { display: "flex", alignItems: "center", gap: "10px" },
   btn: { padding: "7px 13px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "13px", color: colors.ink },
@@ -32,9 +33,9 @@ const styles = stylex.create({
   kpiL: { fontSize: "12px", color: colors.ink3, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: "2px" },
   cols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", marginBottom: "20px", alignItems: "start" },
   stack: { display: "flex", height: "14px", borderRadius: "7px", overflow: "hidden", margin: "4px 18px 16px" },
-  seg: { height: "100%" },
+  seg: (pct: number, bg: string) => ({ height: "100%", width: `${pct}%`, backgroundColor: bg }),
   legendRow: { display: "flex", alignItems: "center", gap: "10px", padding: "6px 18px", fontSize: "13px" },
-  swatch: { width: "10px", height: "10px", borderRadius: "3px", flexShrink: 0 },
+  swatch: (bg: string) => ({ width: "10px", height: "10px", borderRadius: "3px", flexShrink: 0, backgroundColor: bg }),
   catName: { color: colors.ink2 },
   catPct: { width: "42px", textAlign: "right", fontSize: "12px", color: colors.ink3 },
   catVal: { minWidth: "84px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 500, color: colors.ink },
@@ -92,12 +93,12 @@ export function Insights() {
               <div data-testid="by-category">
                 <div {...stylex.props(styles.stack)}>
                   {analytics.data.byCategory.map((c, i) => (
-                    <span key={c.category} {...stylex.props(styles.seg)} style={{ width: `${catTotal ? (c.totalMinor / catTotal) * 100 : 0}%`, background: PALETTE[i % PALETTE.length] }} />
+                    <span key={c.category} {...stylex.props(styles.seg(catTotal ? (c.totalMinor / catTotal) * 100 : 0, PALETTE[i % PALETTE.length]))} />
                   ))}
                 </div>
                 {analytics.data.byCategory.map((c, i) => (
                   <div key={c.category} {...stylex.props(styles.legendRow)} data-testid="cat-row">
-                    <span {...stylex.props(styles.swatch)} style={{ background: PALETTE[i % PALETTE.length] }} />
+                    <span {...stylex.props(styles.swatch(PALETTE[i % PALETTE.length]))} />
                     <span {...stylex.props(styles.grow, styles.catName)}>{c.category}</span>
                     <span {...stylex.props(styles.catPct)}>{catTotal ? Math.round((c.totalMinor / catTotal) * 100) : 0}%</span>
                     <span {...stylex.props(styles.catVal)}>{fmtMoney(c.totalMinor, "GBP")}</span>
@@ -132,7 +133,7 @@ export function Insights() {
               return (
                 <div key={label} {...stylex.props(styles.bar)} data-testid="health-bar">
                   <span {...stylex.props(styles.barLabel)}>{label}</span>
-                  <span {...stylex.props(styles.track)}><span {...stylex.props(styles.fill)} style={{ width: `${v}%` }} /></span>
+                  <span {...stylex.props(styles.track)}><span {...stylex.props(styles.fill(v))} /></span>
                   <span {...stylex.props(styles.pct)}>{v}%</span>
                 </div>
               );
@@ -141,7 +142,7 @@ export function Insights() {
         )}
       </Card>
 
-      <div style={{ height: "24px" }} />
+      <div {...stylex.props(styles.spacer24)} />
 
       <Card>
         <CardHeader>

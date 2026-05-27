@@ -20,7 +20,7 @@ function ListsView() {
   }
   function add() {
     if (!newItem.trim()) return;
-    setItems([...items, { id: "new" + Date.now(), name: newItem, category: "Misc", qty: 1, status: "added", recurring: false, addedBy: "Toby" }]);
+    setItems([...items, { id: "new" + Date.now(), name: newItem, category: "Misc", qty: 1, status: "added", recurring: false, addedBy: "Flavian" }]);
     setNewItem("");
   }
 

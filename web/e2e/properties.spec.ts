@@ -60,6 +60,7 @@ test("a room can be added to the property (Manager+)", async ({ page }) => {
   const name = `Wine Cellar ${Date.now()}`;
   await page.goto("/properties");
   await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible(); // wait for the Bible (the list's "Rooms" tallies would shadow the tab)
   await page.getByRole("button", { name: "Rooms" }).click();
   await page.getByRole("button", { name: "Add room" }).click();
   const modal = page.getByTestId("add-room");
