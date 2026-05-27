@@ -131,6 +131,26 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await expect(page.getByTestId("asset-hero")).toHaveCount(0); // hero clears once its photo is gone
 });
 
+// F04 (W1.5) — asset groups: peer groupings (create-or-reuse by name + kind) on the asset detail.
+test("an asset can be added to and removed from a group", async ({ page }) => {
+  const group = `Order ${Date.now()}`;
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+
+  const section = page.getByTestId("asset-groups");
+  await section.getByTestId("add-group").click();
+  await section.getByLabel("Group name").fill(group);
+  await section.getByLabel("Group kind").selectOption("order");
+  await section.getByRole("button", { name: "Add" }).click();
+
+  const chip = section.getByTestId("group-chip").filter({ hasText: group });
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("order"); // the kind badge
+  await chip.getByRole("button", { name: `Remove from group ${group}` }).click();
+  await expect(section.getByTestId("group-chip").filter({ hasText: group })).toHaveCount(0);
+});
+
 // F33 — tags display on the asset detail: add (create-or-reuse) + remove chips.
 test("an asset's tags can be added and removed", async ({ page }) => {
   const tag = `vintage-${Date.now()}`;

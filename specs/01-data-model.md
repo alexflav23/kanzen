@@ -9,7 +9,7 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 3b. **Extensibility** (F33, cross-cutting) — `taxonomies`, `taxonomy_nodes`, `entity_taxonomy_links`, `tags`, `entity_tags`, `entity_templates`, `custom_field_definitions`. Each extensible entity also gets an **`attributes jsonb`** column (added by its own migration: assets F04, vendors F09, list_items F08, people F10, properties F03, documents F05).
 3c. **Event backbone** (F34, foundational) — `event_outbox` (transactional outbox → Pulsar), `notification_subscriptions`, `device_tokens`; extends `notifications` (F06) with per-channel delivery. Consumers: notifications/push, search index (F28), ledger (F18), audit (F00), learned memory (F13).
 4. **Properties** (F03) — `properties`, `locations` (nested tree), `asset_location_history`*, `asset_custody_history`* (*asset FK added in F04), `defects`.
-5. **Assets** (F04) — `categories`, `assets` (+ `jsonb attributes`), `asset_groups(+members)`, `collections(+members)`, `tags`/`asset_tags`; add asset FKs to F03 history tables.
+5. **Assets** (F04) — `categories`, `assets` (+ `jsonb attributes`), `asset_groups(+members)` (`V2_67_0`, W1.5: peer groupings, `kind` order/set/rig/other), `collections(+members)`, `tags`/`asset_tags`; add asset FKs to F03 history tables.
 6. **Documents** (F05) — `documents`, `document_versions`, `document_links` (polymorphic).
 7. **Tasks** (F06) — `task_projects`, `tasks`, `task_labels(+links)`, `task_comments`, **`notifications`** (shared); link `properties.task_project_id`.
 8. **Calendar** (F07) — `calendars`, `calendar_event_refs`.

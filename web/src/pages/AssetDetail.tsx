@@ -8,6 +8,7 @@ import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
 import { MediaGallery } from "../components/MediaGallery";
 import { TagChips } from "../components/TagChips";
+import { AssetGroups } from "../components/AssetGroups";
 import {
   changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
   logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
@@ -340,6 +341,15 @@ export function AssetDetail() {
               heroDocumentId={a.heroDocumentId}
               onSetHero={canWrite ? (docId) => setHero.mutate(docId) : undefined}
             />
+          </div>
+        </Card>
+      </div>
+
+      <div {...stylex.props(styles.section)}>
+        <Card>
+          <CardHeader><CardTitle>Groups</CardTitle></CardHeader>
+          <div {...stylex.props(styles.cardPad)} data-testid="asset-groups">
+            <AssetGroups assetId={id} readOnly={!canWrite} />
           </div>
         </Card>
       </div>
