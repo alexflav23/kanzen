@@ -147,6 +147,53 @@ Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + mi
 
 **Summary:** 🟢 **7 features UI-complete** (F02, F03, F08, F09, F26, F28, F30) · 🟡 **19 core-usable, extras deferred** · 🔵 **13 backend-only / no dedicated UI**. A recurring 🟡 theme: **Finance is mostly read + a few actions** (reconcile/approve/mark-paid) — there's no create-UI for bills/expenses/payment-methods (seeded only). Biggest remaining web gaps, rough priority: Finance create-forms + **Budgets** (F15/F17) + **income-statement/export** (F43); **Calendar week/month grid** (F07); **Inventory Property·Tag filters + value-totals + photo-cards** (F04); **tags/custom-field editor** (F33); **Products/replenishment** surfaces (F35/F36); **FX display-currency selector** (F37); **restructure/bulk-import** flow (F24).
 
+## Forward build plan — actionable slices (2026-05-27)
+The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. Each `[ ]` is one **vertical-slice** (DB/seed → API gap if any → service+Zod → UI+states → tests → verify live at :3020), the same loop used for Lists/Dashboard/PropertyBible/People/Wealth. Waves are value+dependency ordered; one slice in flight; check off as shipped. 🔒 = **operator-gated** (needs SETUP.md provisioning — can't be completed in the sandbox).
+
+### W1 · Make Finance operable (today it's read + approve/reconcile/mark-paid only — no create UI)
+- [ ] **F15** Add/Edit **bill** — create-bill modal (payee · category · property · amount · cadence) → POST → appears in Recurring; ±15% variance retained.
+- [ ] **F17** Add **expense** (manual) — create-expense form → threshold routes to Principal approval (so expenses aren't seed-only).
+- [ ] **F16** **Payment methods + schedule** — add a payment method; schedule a payment into the Pay queue (still never moves money).
+- [ ] **F17** **Budgets** — replace the stub tab with real per-property/category budgets + budget-vs-actual bars (needs a budget model + endpoint).
+- [ ] **F43** **Income statement** (web) + **statement export** (CSV) — balance sheet already shipped; add the P&L view + export.
+
+### W2 · Asset-registry depth (the platform spine)
+- [ ] **F04** Inventory **Property + Tag filters** in the FilterRail; **value-totals** header (resolve valuation-method first); photo/cover cards.
+- [ ] **F22** **Template-driven create** — New-asset form renders typed fields from the vertical's category template (server validation already exists).
+- [ ] **F33** **Tags + custom-field editor** — tag chips on assets (add/remove) + Principal custom-field-definition manager + taxonomy tree.
+- [ ] **F19/F20/F21** Asset detail — provenance **party-roles** section; **aggregate valuation** summary; custody/location-history events.
+- [ ] **F24** **Restructure flow** — guided merge/split UI + bulk-import staging (backend merge/split/legacy already done).
+
+### W3 · Operations surfaces
+- [ ] **F07** Calendar **week/month grid** (agenda shipped).
+- [ ] **F06** Tasks — **assignee** picker + **RRULE** recurrence editor; link task ↔ calendar.
+- [ ] **F11** Maintenance — **spawn a task + calendar event** from a plan (UI action over the existing engine).
+- [ ] **F35** **Products & stock** — web surface (list · stock state · reorder list).
+- [ ] **F36** **Replenishment** — surface due-soon predictions on Lists/Products.
+
+### W4 · Records & wealth depth
+- [ ] **F10** People — **person detail/record** view; leave + offboarding; HR-doc visibility.
+- [ ] **F42** **Entity management** UI — create/edit legal entities + ownership tree (scope selector exists).
+- [ ] **F37** **FX display-currency selector** (persisted) + per-currency breakdown surfacing.
+- [ ] **F40** Investments — **dividends + corporate actions** entry; record-a-lot/trade UI; TWR/IRR.
+- [ ] **F41** Net worth — pull **illiquid asset valuations** (F04/F20) into the consolidated book.
+
+### W5 · Agent, search & system
+- [ ] **F34** Notifications — **top-bar bell** + dropdown; quiet-hours setting.
+- [ ] **F05** Documents — **embedded doc tabs** on asset + property detail.
+- [ ] **F32** **NL query UI** ("how much did I spend on X") + Drive export action.
+- [ ] **F18/F39** Ledger — Principal-only **statements/registers** view (statements only; raw postings stay hidden).
+- [ ] **F23/F29** **Spend-trend** time-series (Insights + Dashboard card); completeness cache.
+
+### Operator-gated track (🔒 — needs you, per SETUP.md; blocks Done(prod))
+- [ ] 🔒 **F01/F00** real Cognito pool + JWKS swap · real AWS apply (Terraform/NixOS) · prod-cred swap.
+- [ ] 🔒 **F05/F30** real S3 (immutable originals + backup streaming) + age encryption.
+- [ ] 🔒 **F13/F25** Gmail fetch + Bedrock OCR/classification. · 🔒 **F12** GoCardless AIS live. · 🔒 **F37** ECB FX fetch/backfill job. · 🔒 **F34** APNs/FCM/SES + Pulsar. · 🔒 **F40** market-data price feed.
+- [ ] 🔒 **Hardening** perf pass · visual-diff goldens (Linux CI).
+
+### Mobile track (F31, parallel)
+- [ ] Flutter companion is mock-data parity screens; real Dart API client + camera/OCR + offline queue + push deep-links are a separate surface.
+
 ## Cross-cutting (apply throughout)
 - **Intelligent capture pipeline:** capture (F25/F31/F05/F12) → OCR (F13) → **ML categorise + brand/product resolution** (F13/F27) → reconcile (F14) → **post to the general ledger** (F18) → **propose inventory asset** from line items, with provenance (F04/F19/F20/F21) → confirm in Triage (F26). **AI proposes; the Principal decides** — non-financial steps may auto-apply above confidence, but **financial postings + asset/inventory creation are never auto-committed** (F27).
 - **Single-spend guarantee:** a real payment counts exactly once — per-source dedup (F12/F13) + reconciliation as the association engine (F14). All totals/analytics draw from this set.
