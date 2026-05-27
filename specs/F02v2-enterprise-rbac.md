@@ -1,0 +1,69 @@
+# F02 v2 — Enterprise RBAC (cohesive)
+
+Revises F02 from object-level RBAC into a HubSpot-grade authorization system, built **cohesively** (one
+feature, landed as coherent non-breaking increments — never a half-migrated state). Confirmed scope:
+**every action gated**, **permission sets → roles (composable + inheritable) → users + teams (nested)**,
+**per-permission scope (own/team/property/all)**, and a **builder UI**. Granularity = **object × verbs +
+specials** (HubSpot's model), not one-permission-per-endpoint.
+
+## What exists (F02, keep working)
+`Authorizer` over `permission_rules (role_name, resource, field?, level∈none|read|write|admin)`,
+most-specific-wins (field > resource > `*`), default-deny; `roles` (system + seeded + custom);
+`user_property_scopes`; editable matrix at Settings → Permissions (`/api/admin/roles` + `/permissions`);
+`users.role` (text); every API + the agent route through one Authorizer (per-request).
+
+## Target model (additive)
+- **Action catalogue** (code registry `authz.Actions`, exposed at `GET /api/admin/permission-catalogue`):
+  the canonical `(resource, verb)` set. Verbs = `view|create|edit|delete` + per-object **specials**
+  (`approve`, `pay`, `export`, `move`, `set_hero`, `reconcile`, `impersonate`, …). Each action declares a
+  `minLevel` (read|write|admin) for **back-compat** + `sensitive?`. ~35 resources × ~5–10 verbs.
+- **`permission_sets`** (id, name, description, is_system) + **`permission_set_grants`**
+  (set_id, resource, action, field?, scope∈own|team|property|all default all, effect∈allow|deny).
+  `'*'` wildcards allowed for resource/action.
+- **`role_sets`** (role_name, set_id) — a role is composed of sets (+ legacy `permission_rules` still honoured).
+- **`roles.parent_role`** (nullable) — role inheritance (`extends`).
+- **`teams`** (id, name, parent_team_id [nesting], description) + **`team_members`** (team_id, user_id) +
+  **`team_roles`** (team_id, role_name) + **`team_property_scopes`** (team_id, property_id).
+- **`user_roles`** (user_id, role_name) — multi-role per user. `users.role` stays as the **primary/display**
+  role (JWT `custom:role`, DevAuth, token-identity unchanged); the Authorizer composes the full effective set.
+
+## Authorizer v2 — resolution
+Effective grants for a user = union over: direct `user_roles` (+ the primary `users.role`) **and**
+`team_roles` for every team the user belongs to **including ancestor teams** — each role expanded through
+its `parent_role` chain, its `role_sets`' grants, and its legacy `permission_rules`. Decide `can(action,
+resource, field?, record?)`:
+1. gather matching grants (resource = R or `*`; action = A or `*`; field = F or null),
+2. **deny overrides allow**; else an allow exists ⇒ permitted; else **default-deny**,
+3. **scope** narrows *which records*: `all` (no limit) · `property` (record.property ∈ user/team property
+   scopes) · `team` (record.owner ∈ a teammate) · `own` (record.owner_id == me). Single-record ops check
+   the record; list ops get a scope predicate the repo applies.
+Legacy bridge: a legacy `(resource, level)` rule grants every catalogue action on that resource whose
+`minLevel ≤ level` — so existing roles authorize the new actions unchanged. `can(action)` first checks
+explicit per-action grants, then falls back to the legacy level mapping. Per-request load (cache later).
+The **agent** and every endpoint use the same `can(action)` path.
+
+## Back-compat & cohesive migration (never broken)
+1. **Action catalogue + `can(action)` with legacy-level fallback** — no schema, no endpoint changes; the
+   matrix keeps working. (keystone)
+2. **Schema + Authorizer composition** — sets, role_sets, role inheritance, teams, team_*, user_roles; the
+   Authorizer composes them alongside legacy rules. Existing behaviour unchanged (no sets/teams seeded yet).
+3. **Migrate endpoints** `can(Level, resource)` → `can(action)` (per-object verbs + specials) and add
+   **own/property scope** enforcement where it matters; deny-path tests per action.
+4. **Builder UI** — permission-set builder (object × verb toggles + scope dropdown + sensitive-field
+   toggles), role composition + inheritance, teams (nested) + members + scope, user assignment + an
+   **effective-permissions preview**. Extends/replaces Settings → Permissions.
+5. **Seed mapping** — express the current system + estate/household roles as sets/grants in the new model
+   (equivalent to today); regression proves no permission changed; full live verify.
+
+Each step ships green (full regression) and non-breaking; "done" only when the whole is coherent.
+
+## Invariants (unchanged)
+Default-deny · AuthZ once, centrally (agent included) · field-level response filtering (valuations) ·
+registry/finance Principal-private with the Manager carve-out · every authz change audited · root grant
+(principal `*` admin) protected from lockout.
+
+## Tests
+weaver: catalogue completeness (every gated action in the registry), Authorizer composition (sets +
+inheritance + teams + scope), deny-paths per action, legacy-bridge equivalence, scope (own/property/team).
+web: builder unit + Playwright (create a set → role → team → assign → effective preview) + a11y; the
+regression gate (full suite + axe/audit light&dark) every slice.
