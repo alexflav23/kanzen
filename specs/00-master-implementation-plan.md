@@ -164,7 +164,7 @@ The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. E
 
 ### W1 · Asset registry depth (F04 — the create/browse/detail spine) — design: `assets.jsx`, `asset-detail.jsx`, `collections.jsx`
 The Inventory create is unique-only (title/maker/category); filters are Category/Status only; detail lacks docs/comments/tags/collections/move. Per F04 §5.
-- [ ] **F04** **Full create form** — tracking mode (unique / **grouped_quantity** +qty / **structured_set** +children), **location picker** (F03 tree), acquisition date/cost/currency, **tags**, **collection**; card badges (×N / set / "At service").
+- [x] **F04** **Full create form** (2026-05-27) — tracking mode (unique / grouped_quantity +qty / structured_set) · **location picker** (property → room) · **acquisition cost/date/currency** · **collection**; card ×N/set badges already present. Deferred: **tags** on create → W3 (F33), structured-set child entry → W3 (F24), "At service" badge → W2 (custody).
 - [ ] **F04** **Faceted filter rail** — add **Property**, **Collection**, **Tag** facets (have Category/Status) + active-filter chips; **value-totals** summary strip (acquisition-cost sums until F20, labelled).
 - [ ] **F04** **Asset-detail completeness** — **Documents** tab (F05 links) + **Comments** tab + **in-collections** + **tags** display + sidekick **quick actions** wiring (move / upload photo / restructure).
 - [ ] **F04** **Move / custody** actions — move asset via location-tree picker + custody change → writes `asset_location_history` / `asset_custody_history`; **hero photo** from a document.

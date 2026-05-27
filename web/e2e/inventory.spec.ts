@@ -79,15 +79,26 @@ test("an asset's key facts can be edited", async ({ page }) => {
   await expect(page.getByText(maker)).toBeVisible();
 });
 
-test("New asset creates an asset that appears", async ({ page }) => {
+test("New asset: full create form (location + acquisition) round-trips to detail", async ({ page }) => {
   const title = `E2E Asset ${Date.now()}`;
   await page.goto("/inventory");
   await page.getByRole("button", { name: "New asset" }).click();
   const modal = page.getByTestId("new-asset");
   await modal.getByLabel("Title").fill(title);
   await modal.getByLabel("Category").selectOption({ label: "Glassware" });
+  // Location: Wardian (has seeded rooms) → its first room
+  await modal.getByLabel("Property").selectOption({ label: "Wardian — Apt 5206" });
+  await expect(modal.getByLabel("Location").locator("option")).not.toHaveCount(1); // room tree loaded
+  await modal.getByLabel("Location").selectOption({ index: 1 });
+  // Acquisition
+  await modal.getByLabel("Acquisition cost").fill("1850");
+  await modal.getByLabel("Acquired on").fill("2026-03-14");
   await modal.getByRole("button", { name: "Add asset" }).click();
+
   await expect(page.getByText(title)).toBeVisible();
+  await page.getByText(title).click(); // open detail
+  await expect(page.getByText("Acquired")).toBeVisible(); // the acquired-date key fact rendered
+  await expect(page.getByText("14 Mar 2026")).toBeVisible();
 });
 
 test("nav links route from Dashboard to Inventory", async ({ page }) => {

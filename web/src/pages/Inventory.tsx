@@ -9,6 +9,9 @@ import { Plus, Search, Filter, ChevronDown, X, Shield } from "../components/icon
 import { createAsset, listAssets, type AssetView } from "../services/assets";
 import { listCategories, type Category } from "../services/categories";
 import { getRegistryHealth } from "../services/insights";
+import { listProperties } from "../services/properties";
+import { listLocations } from "../services/locations";
+import { listCollections, addMember } from "../services/collections";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -59,9 +62,11 @@ const styles = stylex.create({
   bold: { fontWeight: 500 },
   // modal
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
-  modal: { width: "440px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
+  modal: { width: "460px", maxHeight: "88vh", overflowY: "auto", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
   field: { display: "block", marginBottom: "12px" },
+  two: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
+  sectionLabel: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, margin: "18px 0 8px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
   control: { width: "100%", padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
   actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
@@ -113,32 +118,104 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
   const [maker, setMaker] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
   const [trackingMode, setMode] = useState("unique");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(2);
+  // Location (property → its location tree)
+  const [propertyId, setPropertyId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  // Acquisition
+  const [cost, setCost] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const [acqDate, setAcqDate] = useState("");
+  // Collection
+  const [collectionId, setCollectionId] = useState("");
+
+  const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const locsQ = useQuery({ queryKey: ["locations", propertyId, token], queryFn: () => listLocations(propertyId, token), enabled: !!propertyId });
+  const collsQ = useQuery({ queryKey: ["collections", token], queryFn: () => listCollections(token) });
+
   const mutation = useMutation({
-    mutationFn: () =>
-      createAsset({ title, maker: maker || null, categoryId, vertical: vertical ?? null, trackingMode, quantity,
-        parentAssetId: null, acquisitionCostMinor: null, acquisitionCurrency: null, locationId: null, attributes: null }, token),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["assets"] }); onClose(); },
+    mutationFn: async () => {
+      const asset = await createAsset({
+        title: title.trim(), maker: maker.trim() || null, categoryId, vertical: vertical ?? null,
+        trackingMode, quantity: trackingMode === "grouped_quantity" ? Math.max(1, quantity) : 1,
+        parentAssetId: null,
+        acquisitionCostMinor: cost.trim() ? Math.round(parseFloat(cost) * 100) : null,
+        acquisitionCurrency: cost.trim() ? currency : null,
+        acquisitionDate: acqDate || null,
+        locationId: locationId || null,
+        attributes: null,
+      }, token);
+      if (collectionId) await addMember(token, collectionId, asset.id);
+      return asset;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      if (collectionId) qc.invalidateQueries({ queryKey: ["collections"] });
+      onClose();
+    },
   });
+
   return (
     <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
       <form {...stylex.props(styles.modal)} data-testid="new-asset" onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => { e.preventDefault(); if (title.trim() && categoryId) mutation.mutate(); }}>
-        <div {...stylex.props(styles.modalTitle)}>New asset</div>
+        <div {...stylex.props(styles.modalTitle)}>New {vertical ?? "asset"}</div>
+
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Title</span>
           <input {...stylex.props(styles.control)} aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Royal Oak 15500ST" autoFocus /></label>
-        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Maker</span>
-          <input {...stylex.props(styles.control)} aria-label="Maker" value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="e.g. Audemars Piguet" /></label>
-        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
-          <select {...stylex.props(styles.control)} aria-label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <div {...stylex.props(styles.two)}>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Maker</span>
+            <input {...stylex.props(styles.control)} aria-label="Maker" value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="e.g. Audemars Piguet" /></label>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
+            <select {...stylex.props(styles.control)} aria-label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></label>
+        </div>
+
+        <div {...stylex.props(styles.two)}>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Tracking</span>
+            <select {...stylex.props(styles.control)} aria-label="Tracking mode" value={trackingMode} onChange={(e) => setMode(e.target.value)}>
+              {MODES.map((m) => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
+            </select></label>
+          {trackingMode === "grouped_quantity" && (
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Quantity</span>
+              <input {...stylex.props(styles.control)} aria-label="Quantity" type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))} /></label>
+          )}
+        </div>
+
+        <div {...stylex.props(styles.sectionLabel)}>Location</div>
+        <div {...stylex.props(styles.two)}>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Property</span>
+            <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => { setPropertyId(e.target.value); setLocationId(""); }}>
+              <option value="">—</option>
+              {(propsQ.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></label>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Room / location</span>
+            <select {...stylex.props(styles.control)} aria-label="Location" value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={!propertyId}>
+              <option value="">—</option>
+              {(locsQ.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select></label>
+        </div>
+
+        <div {...stylex.props(styles.sectionLabel)}>Acquisition</div>
+        <div {...stylex.props(styles.two)}>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Cost</span>
+            <input {...stylex.props(styles.control)} aria-label="Acquisition cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 18500" /></label>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Currency</span>
+            <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {["GBP", "SGD", "USD", "EUR"].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select></label>
+        </div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Acquired on</span>
+          <input {...stylex.props(styles.control)} aria-label="Acquired on" type="date" value={acqDate} onChange={(e) => setAcqDate(e.target.value)} /></label>
+
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Collection (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Collection" value={collectionId} onChange={(e) => setCollectionId(e.target.value)}>
+            <option value="">—</option>
+            {(collsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></label>
-        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Tracking mode</span>
-          <select {...stylex.props(styles.control)} aria-label="Tracking mode" value={trackingMode} onChange={(e) => setMode(e.target.value)}>
-            {MODES.map((m) => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
-          </select></label>
-        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Quantity</span>
-          <input {...stylex.props(styles.control)} aria-label="Quantity" type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))} /></label>
+
+        {mutation.isError && <div {...stylex.props(styles.label)} role="alert">Couldn't create the asset.</div>}
         <div {...stylex.props(styles.actions)}>
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
           <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending || !title.trim()}>

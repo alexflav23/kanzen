@@ -28,7 +28,7 @@ object AssetsApiIT extends IOSuite {
       parent: Option[UUID] = None,
       attrs: Json = Json.obj()
   ) =
-    CreateReq(title, Some("Maker"), cat, Some("watch"), mode, qty, parent, None, None, None, Some(attrs))
+    CreateReq(title, Some("Maker"), cat, Some("watch"), mode, qty, parent, None, None, None, None, Some(attrs))
 
   test("AC6 — staff cannot read the registry (403); principal/manager can") { xa =>
     for {

@@ -19,6 +19,7 @@ export const AssetDetailSchema = AssetViewSchema.extend({
   parentAssetId: z.string().nullable(),
   acquisitionCostMinor: z.number().nullable(),
   acquisitionCurrency: z.string().nullable(),
+  acquisitionDate: z.string().nullable(),
   locationId: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
   // F20 — Principal-only; absent/null for Manager (stripped server-side)
@@ -38,6 +39,7 @@ export type CreateAssetReq = {
   parentAssetId: string | null;
   acquisitionCostMinor: number | null;
   acquisitionCurrency: string | null;
+  acquisitionDate: string | null;
   locationId: string | null;
   attributes: Record<string, unknown> | null;
 };

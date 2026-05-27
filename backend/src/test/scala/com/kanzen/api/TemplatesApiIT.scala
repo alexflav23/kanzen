@@ -24,7 +24,7 @@ object TemplatesApiIT extends IOSuite {
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "flavian@kanzen.local", "principal")
   private def cat(xa: Transactor[IO]) = AssetRepo.createCategory("Misc", None).transact(xa)
   private def asset(c: UUID, vertical: String, attrs: Json) =
-    AssetReq("Item", Some("Maker"), c, Some(vertical), "unique", 1, None, None, None, None, Some(attrs))
+    AssetReq("Item", Some("Maker"), c, Some(vertical), "unique", 1, None, None, None, None, None, Some(attrs))
 
   test("the seeded watch template is readable") { xa =>
     Templates.schema(xa, toby, "watch").map {

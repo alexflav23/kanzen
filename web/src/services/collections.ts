@@ -21,3 +21,7 @@ export const getMembers = (token: string | null, id: string) =>
 
 export const createCollection = (token: string | null, name: string, description: string | null) =>
   api("/api/collections", CollectionSchema, { method: "POST", token, body: { name, description } });
+
+/** Add an asset to a collection. */
+export const addMember = (token: string | null, collectionId: string, assetId: string) =>
+  api(`/api/collections/${collectionId}/members`, z.object({ ok: z.boolean() }), { method: "POST", token, body: { assetId } });

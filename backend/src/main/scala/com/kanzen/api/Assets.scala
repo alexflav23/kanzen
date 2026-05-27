@@ -17,6 +17,7 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
+import java.time.LocalDate
 import java.util.UUID
 
 /** F04 — the asset registry. Principal-private with the Manager carve-out (F02): Staff get 403 (asset = none);
@@ -49,6 +50,7 @@ object Assets {
       parentAssetId: Option[UUID],
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
+      acquisitionDate: Option[LocalDate],
       ownershipStatus: String,
       locationId: Option[UUID],
       attributes: Json,
@@ -68,6 +70,7 @@ object Assets {
       parentAssetId: Option[UUID],
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
+      acquisitionDate: Option[LocalDate] = None,
       locationId: Option[UUID],
       attributes: Option[Json]
   )
@@ -87,6 +90,7 @@ object Assets {
       a.parentAssetId,
       a.acquisitionCostMinor,
       a.acquisitionCurrency,
+      a.acquisitionDate,
       a.ownershipStatus,
       a.locationId,
       a.attributes
@@ -196,6 +200,7 @@ object Assets {
                 req.parentAssetId,
                 req.acquisitionCostMinor,
                 req.acquisitionCurrency,
+                req.acquisitionDate,
                 req.locationId,
                 attrs
               )

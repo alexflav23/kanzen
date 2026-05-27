@@ -7,6 +7,7 @@ import doobie.postgres.implicits._
 import doobie.postgres.circe.jsonb.implicits._
 import io.circe.Json
 
+import java.time.LocalDate
 import java.util.UUID
 
 final case class Asset(
@@ -20,6 +21,7 @@ final case class Asset(
     parentAssetId: Option[UUID],
     acquisitionCostMinor: Option[Long],
     acquisitionCurrency: Option[String],
+    acquisitionDate: Option[LocalDate],
     ownershipStatus: String,
     locationId: Option[UUID],
     attributes: Json
@@ -31,7 +33,7 @@ final case class Category(id: UUID, name: String, parentId: Option[UUID])
 object AssetRepo {
   private val cols =
     fr"""id, title, maker, category_id, vertical, tracking_mode, quantity, parent_asset_id,
-         acquisition_cost_minor, acquisition_currency, ownership_status, location_id, attributes"""
+         acquisition_cost_minor, acquisition_currency, acquisition_date, ownership_status, location_id, attributes"""
 
   def createCategory(name: String, parentId: Option[UUID]): ConnectionIO[UUID] =
     sql"insert into categories (name, parent_id) values ($name, $parentId) returning id".query[UUID].unique
@@ -78,13 +80,14 @@ object AssetRepo {
       parentAssetId: Option[UUID],
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
+      acquisitionDate: Option[LocalDate],
       locationId: Option[UUID],
       attributes: Json
   ): ConnectionIO[Asset] =
     (fr"""insert into assets (owner_id, title, maker, category_id, vertical, tracking_mode, quantity,
-            parent_asset_id, acquisition_cost_minor, acquisition_currency, location_id, attributes)
+            parent_asset_id, acquisition_cost_minor, acquisition_currency, acquisition_date, location_id, attributes)
           values ($ownerId, $title, $maker, $categoryId, $vertical, $trackingMode, $quantity,
-            $parentAssetId, $acquisitionCostMinor, $acquisitionCurrency, $locationId, $attributes)
+            $parentAssetId, $acquisitionCostMinor, $acquisitionCurrency, $acquisitionDate, $locationId, $attributes)
           returning""" ++ cols).query[Asset].unique
 
   def get(id: UUID): ConnectionIO[Option[Asset]] =
