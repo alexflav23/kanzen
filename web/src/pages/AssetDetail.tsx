@@ -6,6 +6,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
+import { MediaGallery } from "../components/MediaGallery";
 import {
   editAsset, getAsset, getAssetTimeline, getInsurance, getValuations, listWarranties, logAssetEvent, recordValuation,
   type AssetDetail as AssetDetailT,
@@ -26,6 +27,7 @@ const styles = stylex.create({
   kvV: { fontWeight: 500, textTransform: "capitalize" },
   note: { padding: "14px 20px", fontSize: "12.5px", color: colors.ink3 },
   section: { marginTop: "24px" },
+  cardPad: { padding: "16px 20px" },
   grow: { flex: 1 },
   evTitle: { fontSize: "13.5px", fontWeight: 500, textTransform: "capitalize" },
   evSub: { fontSize: "12px", color: colors.ink3 },
@@ -206,6 +208,15 @@ export function AssetDetail() {
           <Pill>{modeLabel}</Pill>
           <Pill>{a.ownershipStatus}</Pill>
         </div>
+      </div>
+
+      <div {...stylex.props(styles.section)}>
+        <Card>
+          <CardHeader><CardTitle>Photos</CardTitle></CardHeader>
+          <div {...stylex.props(styles.cardPad)}>
+            <MediaGallery targetType="asset" targetId={id} label="photos" readOnly={!can("asset", "write")} />
+          </div>
+        </Card>
       </div>
 
       <div {...stylex.props(styles.layout)}>

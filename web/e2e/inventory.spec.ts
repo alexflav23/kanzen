@@ -1,4 +1,13 @@
+import { randomBytes } from "node:crypto";
 import { expect, test } from "./fixtures";
+
+// A unique, valid 1×1 PNG (random trailing bytes keep the sha256 fresh — no dedup onto a stale
+// object whose in-memory bytes were dropped on a backend restart).
+const uniquePng = () =>
+  Buffer.concat([
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64"),
+    randomBytes(8),
+  ]);
 
 // Browser e2e (Playwright) — the Inventory registry vs the REAL backend (seeded assets).
 test("inventory shows the seeded registry", async ({ page }) => {
@@ -65,6 +74,25 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await val.getByLabel("Amount").fill("38000");
   await val.getByRole("button", { name: "Record" }).click();
   await expect(page.getByTestId("valuation-row").first()).toBeVisible();
+});
+
+// F04/F05 — the asset detail carries a Photos gallery (reuses MediaGallery + the F05 doc/blob
+// plumbing). Upload renders a thumbnail from a signed capability URL; remove leaves no dangling
+// link (so later asset-detail opens stay clean even after a backend rebuild drops the bytes).
+test("an asset detail shows a Photos gallery; upload renders, remove clears", async ({ page }) => {
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+  await expect(page.getByText("Photos", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Upload photos").setInputFiles({ name: "watch.png", mimeType: "image/png", buffer: uniquePng() });
+  const thumb = page.getByRole("img", { name: "watch.png" }); // alt = file name (not the SVG icons)
+  await expect(thumb).toBeVisible();
+  await expect.poll(() => thumb.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+
+  // remove it again — no dangling photo link is left on the shared seeded asset
+  await page.getByRole("button", { name: "Remove photo watch.png" }).click();
+  await expect(page.getByRole("img", { name: "watch.png" })).toHaveCount(0);
 });
 
 test("an asset's key facts can be edited", async ({ page }) => {
