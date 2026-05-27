@@ -38,6 +38,13 @@ object TagRepo {
     sql"""select t.name from entity_tags et join tags t on t.id = et.tag_id
           where et.entity_type = $entityType and et.entity_id = $entityId""".query[String].to[List]
 
+  /** The tags on an entity, with ids (for chip display + removal). */
+  def tagsForEntity(entityType: String, entityId: UUID): ConnectionIO[List[Tag]] =
+    sql"""select t.id, t.name from entity_tags et join tags t on t.id = et.tag_id
+          where et.entity_type = $entityType and et.entity_id = $entityId order by t.name"""
+      .query[Tag]
+      .to[List]
+
   /** AC3 — every entity carrying a tag (across entity types), for search facets. */
   def entitiesWithTag(tagId: UUID): ConnectionIO[List[(String, UUID)]] =
     sql"select entity_type, entity_id from entity_tags where tag_id = $tagId".query[(String, UUID)].to[List]

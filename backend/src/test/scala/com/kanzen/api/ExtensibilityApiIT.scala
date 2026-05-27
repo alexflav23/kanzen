@@ -62,6 +62,22 @@ object ExtensibilityApiIT extends IOSuite {
       expect(ents.exists(_.entityId == vendor)) and expect(ents.exists(_.entityId == doc))
   }
 
+  test("tagsForEntity lists an entity's tags (with ids); untagEntity removes one") { xa =>
+    val asset = UUID.randomUUID()
+    for {
+      a <- createTag(xa, lorna, CreateTagReq("Heirloom")).map(_.toOption.get)
+      b <- createTag(xa, lorna, CreateTagReq("Insured")).map(_.toOption.get)
+      _ <- tagEntity(xa, lorna, TagLinkReq(a.id, "asset", asset)).map(_.toOption.get)
+      _ <- tagEntity(xa, lorna, TagLinkReq(b.id, "asset", asset)).map(_.toOption.get)
+      before <- tagsForEntity(xa, lorna, "asset", asset).map(_.toOption.get)
+      _ <- untagEntity(xa, lorna, a.id, "asset", asset).map(_.toOption.get)
+      after <- tagsForEntity(xa, lorna, "asset", asset).map(_.toOption.get)
+      bad <- tagsForEntity(xa, lorna, "not_an_entity", asset)
+    } yield expect(before.map(_.id).toSet == Set(a.id, b.id)) and
+      expect(after.map(_.id) == List(b.id)) and // a (Heirloom) removed; b (Insured) remains
+      expect(bad.left.exists(_._1.code == 400)) // unknown entityType rejected
+  }
+
   test("AC5 — sensitive custom-field keys are stripped from attributes for non-Principal readers") { xa =>
     // 'insurance_broker_ref' is seeded as sensitive on assets.
     val attrs = Json.obj("model" -> Json.fromString("Daytona"), "insurance_broker_ref" -> Json.fromString("BRK-9"))

@@ -95,6 +95,23 @@ test("an asset detail shows a Photos gallery; upload renders, remove clears", as
   await expect(page.getByRole("img", { name: "watch.png" })).toHaveCount(0);
 });
 
+// F33 — tags display on the asset detail: add (create-or-reuse) + remove chips.
+test("an asset's tags can be added and removed", async ({ page }) => {
+  const tag = `vintage-${Date.now()}`;
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+
+  await page.getByTestId("add-tag").click();
+  await page.getByLabel("Add a tag").fill(tag);
+  await page.getByLabel("Add a tag").press("Enter");
+  const chip = page.getByTestId("tag-chip").filter({ hasText: tag });
+  await expect(chip).toBeVisible();
+
+  await chip.getByRole("button", { name: `Remove tag ${tag}` }).click();
+  await expect(page.getByTestId("tag-chip").filter({ hasText: tag })).toHaveCount(0);
+});
+
 test("an asset's key facts can be edited", async ({ page }) => {
   await page.goto("/inventory");
   await page.getByText("Royal Oak 15500ST").click();

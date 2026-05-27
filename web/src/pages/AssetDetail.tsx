@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
 import { MediaGallery } from "../components/MediaGallery";
+import { TagChips } from "../components/TagChips";
 import {
   editAsset, getAsset, getAssetTimeline, getInsurance, getValuations, listWarranties, logAssetEvent, recordValuation,
   type AssetDetail as AssetDetailT,
@@ -20,7 +21,8 @@ const styles = stylex.create({
   back: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px" },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "6px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
-  pills: { display: "flex", gap: "6px", marginTop: "10px", marginBottom: "24px" },
+  pills: { display: "flex", gap: "6px", marginTop: "10px", marginBottom: "14px" },
+  tagsRow: { marginBottom: "24px" },
   layout: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" },
   kv: { display: "flex", justifyContent: "space-between", padding: "12px 20px", borderBottom: `1px solid ${colors.line}`, fontSize: "13.5px" },
   kvK: { color: colors.ink3, textTransform: "capitalize" },
@@ -207,6 +209,9 @@ export function AssetDetail() {
           <Pill tone="accent">{categoryName}</Pill>
           <Pill>{modeLabel}</Pill>
           <Pill>{a.ownershipStatus}</Pill>
+        </div>
+        <div {...stylex.props(styles.tagsRow)}>
+          <TagChips entityType="asset" entityId={id} readOnly={!can("asset", "write")} />
         </div>
       </div>
 

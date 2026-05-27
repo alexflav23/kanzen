@@ -87,6 +87,13 @@ object Extensibility {
   def entitiesWithTag(xa: Transactor[IO], p: Principal, tagId: UUID): IO[Out[List[TaggedEntity]]] =
     gate(p, Level.Read, "tag")(TagRepo.entitiesWithTag(tagId).map(_.map { case (t, i) => TaggedEntity(t, i) }))
       .transact(xa)
+  /** The tags on a given entity (asset/property/…) — for chip display + removal. */
+  def tagsForEntity(xa: Transactor[IO], p: Principal, entityType: String, entityId: UUID): IO[Out[List[TagView]]] =
+    if (!ENTITIES.contains(entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
+    else gate(p, Level.Read, "tag")(TagRepo.tagsForEntity(entityType, entityId).map(_.map(tv))).transact(xa)
+  def untagEntity(xa: Transactor[IO], p: Principal, tagId: UUID, entityType: String, entityId: UUID): IO[Out[Ok]] =
+    if (!ENTITIES.contains(entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))
+    else gate(p, Level.Write, "tag")(TagRepo.untagEntity(tagId, entityType, entityId).as(Ok(true))).transact(xa)
 
   // ---- taxonomies -------------------------------------------------------------------------
   def taxonomies(xa: Transactor[IO], p: Principal): IO[Out[List[TaxonomyView]]] =
@@ -166,6 +173,18 @@ object Extensibility {
     .errorOut(err)
     .out(jsonBody[List[TaggedEntity]])
     .summary("Entities carrying a tag")
+  val entityTagsEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "tag-links" / path[String]("entityType") / path[UUID]("entityId"))
+    .errorOut(err)
+    .out(jsonBody[List[TagView]])
+    .summary("Tags on an entity")
+  val untagEndpoint = sttp.tapir.endpoint.delete
+    .securityIn(bearer)
+    .in("api" / "tag-links" / path[UUID]("tagId") / path[String]("entityType") / path[UUID]("entityId"))
+    .errorOut(err)
+    .out(jsonBody[Ok])
+    .summary("Remove a tag from an entity")
   val taxonomiesEndpoint = sttp.tapir.endpoint.get
     .securityIn(bearer)
     .in("api" / "taxonomies")
@@ -225,6 +244,12 @@ object Extensibility {
     createTagEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateTagReq) => createTag(xa, p, r)),
     tagLinkEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: TagLinkReq) => tagEntity(xa, p, r)),
     taggedEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => entitiesWithTag(xa, p, id)),
+    entityTagsEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (et, eid) => tagsForEntity(xa, p, et, eid) }),
+    untagEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (tid, et, eid) => untagEntity(xa, p, tid, et, eid) }),
     taxonomiesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => taxonomies(xa, p)),
     createTaxEndpoint
       .serverSecurityLogic(a.securityLogic)
@@ -246,6 +271,8 @@ object Extensibility {
     createTagEndpoint,
     tagLinkEndpoint,
     taggedEndpoint,
+    entityTagsEndpoint,
+    untagEndpoint,
     taxonomiesEndpoint,
     createTaxEndpoint,
     nodesEndpoint,
