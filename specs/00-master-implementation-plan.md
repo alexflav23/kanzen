@@ -223,7 +223,7 @@ Bible has only Overview/Rooms/Defects; spec wants the full record. Per F03 §5.
 ### W8 · Agent, search, system & design-only screens
 - [ ] **Directory** (design: `stubs.jsx` DirectoryView) — new screen: operational mailboxes + role addresses; add to nav.
 - [ ] **F05** Documents → match `stubs.jsx` DocumentsView: 4 KPI tiles + search + category segmented filter + table (attached-to · immutable/parse-run badges · agent ribbon); embedded doc tabs on asset/property.
-- [ ] **Settings** → match `stubs.jsx` SettingsView 4 tabs: **Integrations** (connected-systems health), Permissions (have it), **Preferences** (thresholds/security), **Audit log**.
+- [~] **Settings** → match `stubs.jsx` SettingsView 4 tabs: **Integrations** (connected-systems health) — pending; Permissions (have it: Builder + Advanced matrix); **Preferences** (thresholds/security) — pending; ✅ **Audit log** (2026-05-27, W2) — the platform action log (`/api/admin/audit` over `audit_log_entries`, admin-gated + append-only) rendered through the reusable `<Timeline>` with an action filter. Deferred: **per-entity activity feeds** (`AuditRepo.forTarget` is built; wire a `<Timeline>` activity section onto property/person/etc. detail).
 - [ ] **Shell** (design: `app.jsx`) — grouped-nav **Directory** item + **external-integration markers** on Tasks/Calendar + **Mobile-preview** toggle.
 - [ ] **F34** Notifications **top-bar bell** + quiet-hours. · [ ] **F32** **NL query UI** + Drive export. · [ ] **F18/F39** Principal-only **statements/registers** view. · [ ] **F23/F29** **spend-trend** time-series.
 
