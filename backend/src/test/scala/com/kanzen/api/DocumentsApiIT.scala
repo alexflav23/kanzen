@@ -114,4 +114,19 @@ object DocumentsApiIT extends IOSuite {
     val (xa, store) = res
     Documents.upload(store, xa, siti, req("x.pdf", "X")).map(r => expect(r.left.exists(_._1.code == 403)))
   }
+
+  test("forTarget lists attached docs with a presigned URL; unlink detaches (original retained)") { (res) =>
+    val (xa, store) = res
+    val item = UUID.randomUUID()
+    for {
+      doc <- Documents.upload(store, xa, lorna, req("milk.jpg", "PHOTO-1")).map(_.toOption.get.document)
+      _ <- Documents.addLink(xa, lorna, doc.id, LinkReq("list_item", item, Some("photo")))
+      linked <- Documents.forTarget(store, xa, lorna, "list_item", item).map(_.toOption.get)
+      key = s"documents/${lorna.userId}/${doc.id}/original.jpg"
+      _ <- Documents.unlink(xa, lorna, doc.id, "list_item", item)
+      after <- Documents.forTarget(store, xa, lorna, "list_item", item).map(_.toOption.get)
+      still <- store.exists(key)
+    } yield expect(linked.exists(d => d.id == doc.id && d.url.startsWith("memory://"))) and
+      expect(after.isEmpty) and expect(still) // unlink detaches; the original object is retained
+  }
 }

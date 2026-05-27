@@ -13,9 +13,16 @@ import sttp.tapir.swagger.bundle.SwaggerInterpreter
   * (local only) the dev token mint. Every later feature adds its routes here.
   */
 object Api {
-  def routes(auth: Auth, xa: Transactor[IO], store: ObjectStore, dev: Option[DevAuth]): HttpRoutes[IO] = {
+  def routes(
+      auth: Auth,
+      xa: Transactor[IO],
+      store: ObjectStore,
+      blobSecret: String,
+      dev: Option[DevAuth]
+  ): HttpRoutes[IO] = {
     val interp = Http4sServerInterpreter[IO]()
     val devEps = dev.map(Dev.serverEndpoint).toList
+    val public = interp.toRoutes(Blobs.serverEndpoints(store, blobSecret))
     val secured = interp.toRoutes(
       List(Me.serverEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
@@ -38,7 +45,7 @@ object Api {
         ++ Insights.serverEndpoints(auth, xa) ++ Impersonate.serverEndpoints(auth, xa, dev)
         ++ Roles.serverEndpoints(auth, xa) ++ Collections.serverEndpoints(auth, xa) ++ devEps
     )
-    val swagger = List(Health.endpoint, Me.endpoint) ++ Properties.endpoints ++
+    val swagger = List(Health.endpoint, Me.endpoint) ++ Blobs.endpoints ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++
@@ -46,6 +53,6 @@ object Api {
         .map(_ => Dev.endpoint)
         .toList
     val docs = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
-    Health.routes <+> secured <+> docs
+    Health.routes <+> public <+> secured <+> docs
   }
 }

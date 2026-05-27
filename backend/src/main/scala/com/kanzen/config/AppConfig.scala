@@ -15,6 +15,8 @@ final case class AppConfig(
     port: Int,
     adminPort: Int,
     metricsPort: Int,
+    /** The base URL the browser uses to reach this API — used to build signed blob/download URLs. */
+    publicBaseUrl: String,
     db: DbConfig,
     cognito: CognitoConfig
 )
@@ -47,7 +49,8 @@ object AppConfig {
         audience = strOr("kanzen.cognito.audience", ""),
         jwksUri = strOr("kanzen.cognito.jwks-uri", "")
       )
-      AppConfig(env, port, admin, metrics, DbConfig(url, user, pass), cognito)
+      val publicBaseUrl = strOr("kanzen.public-base-url", s"http://localhost:$port")
+      AppConfig(env, port, admin, metrics, publicBaseUrl, DbConfig(url, user, pass), cognito)
     }.toEither
       .leftMap(_.toList)
   }

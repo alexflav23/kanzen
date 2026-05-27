@@ -1,4 +1,13 @@
+import { randomBytes } from "node:crypto";
 import { expect, test } from "./fixtures";
+
+// A unique, valid 1×1 PNG (random trailing bytes keep the sha256 fresh so the upload never
+// dedups onto a stale object whose in-memory bytes were dropped on a backend restart).
+const uniquePng = () =>
+  Buffer.concat([
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64"),
+    randomBytes(8),
+  ]);
 
 // Browser e2e (Playwright) — shopping lists vs the REAL backend (seeded "Grocery — Wardian").
 test("lists page shows the seeded grocery list with its approval queue", async ({ page }) => {
@@ -40,6 +49,31 @@ test("adding an item to a list makes it appear", async ({ page }) => {
   await page.getByLabel("Add to Grocery — Wardian").fill(item);
   await page.getByRole("button", { name: "Add" }).first().click();
   await expect(page.getByText(item)).toBeVisible();
+});
+
+// Item photos — drag-and-drop / pick an image into an item's media gallery; it uploads (F05
+// document, immutable original) and renders as a thumbnail from a signed capability URL.
+test("an item's photos upload and render in its gallery", async ({ page }) => {
+  const item = `Photo item ${Date.now()}`;
+  await page.goto("/lists");
+  await page.getByRole("button", { name: /Grocery — Wardian/ }).click();
+  await page.getByLabel("Add to Grocery — Wardian").fill(item);
+  await page.getByRole("button", { name: "Add" }).first().click();
+
+  const row = page.getByTestId("list-item-row").filter({ hasText: item });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: `Photos for ${item}` }).click();
+
+  // pick a file via the (visually-hidden) input — uploads + links + renders a thumbnail
+  await row.getByLabel("Upload photos").setInputFiles({ name: "fridge.png", mimeType: "image/png", buffer: uniquePng() });
+  const thumb = row.locator("img"); // the <img> thumbnail (not the SVG icons)
+  await expect(thumb).toBeVisible();
+  // the thumbnail actually loaded its bytes from the signed capability URL (not a broken image)
+  await expect.poll(() => thumb.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+
+  // remove it again (keeps the dev DB tidy) — the thumbnail goes away
+  await row.getByRole("button", { name: /^Remove photo / }).click();
+  await expect(row.locator("img")).toHaveCount(0);
 });
 
 // Substitutions ("sub items") — an alternative to buy if the primary is out of stock.

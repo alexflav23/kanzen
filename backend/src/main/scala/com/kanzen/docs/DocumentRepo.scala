@@ -75,6 +75,13 @@ object DocumentRepo {
       .query[UUID]
       .to[List]
 
+  /** The live documents attached to a target, newest first. */
+  def documentsFor(targetType: String, targetId: UUID): ConnectionIO[List[Document]] =
+    (fr"select" ++ cols ++ fr"""from documents
+          where id in (select document_id from document_links where target_type = $targetType and target_id = $targetId)
+            and deleted_at is null
+          order by created_at desc""").query[Document].to[List]
+
   def targetsOf(documentId: UUID): ConnectionIO[List[(String, UUID)]] =
     sql"select target_type, target_id from document_links where document_id = $documentId"
       .query[(String, UUID)]

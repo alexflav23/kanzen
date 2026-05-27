@@ -34,5 +34,7 @@ export const Database = ({ size }: P) => (<svg {...s(size)}><ellipse cx="12" cy=
 export const Settings = ({ size }: P) => (<svg {...s(size)}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" /></svg>);
 export const Trending = ({ size }: P) => (<svg {...s(size)}><path d="M3 17l6-6 4 4 8-8M21 7h-5M21 7v5" /></svg>);
 export const External = ({ size }: P) => (<svg {...s(size)}><path d="M14 5h5v5M19 5l-8 8M12 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-6" /></svg>);
+export const Image = ({ size }: P) => (<svg {...s(size)}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="M21 16l-5-5L5 20" /></svg>);
+export const Trash = ({ size }: P) => (<svg {...s(size)}><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" /></svg>);
 export const Moon = ({ size }: P) => (<svg {...s(size)}><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 009.8 9.8z" /></svg>);
 export const Sun = ({ size }: P) => (<svg {...s(size)}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5" /></svg>);

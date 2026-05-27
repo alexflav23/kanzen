@@ -26,9 +26,15 @@ object Main extends IOApp.Simple {
   implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
   private val log = loggerFactory.getLogger
 
-  private def primaryApp(auth: Auth, xa: Transactor[IO], store: ObjectStore, dev: Option[DevAuth]): HttpApp[IO] =
+  private def primaryApp(
+      auth: Auth,
+      xa: Transactor[IO],
+      store: ObjectStore,
+      blobSecret: String,
+      dev: Option[DevAuth]
+  ): HttpApp[IO] =
     Logger.httpApp[IO](logHeaders = true, logBody = false)(
-      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, store, dev).orNotFound)
+      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, store, blobSecret, dev).orNotFound)
     )
 
   private def server(h: Host, p: Port, app: HttpApp[IO]) =
@@ -55,12 +61,15 @@ object Main extends IOApp.Simple {
           jwks = dev.map(_.jwks).getOrElse(Jwks.empty)
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
-          store <- ObjectStore.inMemory // local/dev blob store; S3 (AWS SDK + LocalStack) wires in here later
+          // a per-boot secret signs short-lived blob capability URLs (the local presigned-URL equivalent);
+          // the local/dev store serves them via /api/blobs. S3 (AWS SDK + LocalStack) wires in here later.
+          blobSecret <- IO(java.util.UUID.randomUUID().toString + java.util.UUID.randomUUID().toString)
+          store      <- ObjectStore.localServed(cfg.publicBaseUrl, blobSecret)
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
             val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
             val servers = (
-              server(host"0.0.0.0", p, primaryApp(auth, xa, store, dev)),
+              server(host"0.0.0.0", p, primaryApp(auth, xa, store, blobSecret, dev)),
               server(host"0.0.0.0", a, Admin.routes.orNotFound)
             ).tupled.useForever
             // F34: the transactional-outbox relay runs alongside the servers (in-process

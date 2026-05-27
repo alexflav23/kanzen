@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { Plus, Check, X, Alert, ArrowRight, Box, Settings } from "../components/icons";
+import { Plus, Check, X, Alert, ArrowRight, Box, Settings, Image } from "../components/icons";
+import { MediaGallery } from "../components/MediaGallery";
 import {
   addItem,
   approveItem,
@@ -64,6 +65,8 @@ const styles = stylex.create({
   addSub: { display: "inline-flex", alignItems: "center", gap: "5px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12px", padding: "2px 18px 8px 52px" },
   subInputRow: { display: "flex", alignItems: "center", gap: "8px", padding: "2px 18px 8px 52px" },
   subInput: { flex: 1, padding: "5px 9px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "12.5px" },
+  photoPanel: { padding: "6px 18px 12px 52px" },
+  iconBtnOn: { color: colors.accent },
   addCard: { display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px" },
   addInput: { flex: 1, border: 0, backgroundColor: "transparent", color: colors.ink, fontSize: "14px", outline: { default: "none", ":focus": "none" } },
   catHeader: { padding: "12px 18px 8px", backgroundColor: colors.bg, borderBottom: `1px solid ${colors.line}` },
@@ -90,16 +93,18 @@ const daysUntil = (iso: string) => {
 };
 
 /** A confirmed item plus its substitutes ("sub items" — alternatives if the primary is out of stock). */
-function ItemRow({ item, subs, on, onToggle, onRemove, onAddSub }: {
+function ItemRow({ item, subs, on, propertyId, onToggle, onRemove, onAddSub }: {
   item: ListItem;
   subs: ListItem[];
   on: boolean;
+  propertyId: string | null;
   onToggle: () => void;
   onRemove: (id: string) => void;
   onAddSub: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [sub, setSub] = useState("");
+  const [showPhotos, setShowPhotos] = useState(false);
   const submit = () => {
     const v = sub.trim();
     if (v) { onAddSub(v); setSub(""); setAdding(false); }
@@ -115,8 +120,14 @@ function ItemRow({ item, subs, on, onToggle, onRemove, onAddSub }: {
           <div {...stylex.props(styles.rowMeta)}>{[item.addedBy && `added by ${item.addedBy}`, item.recurring && "recurring"].filter(Boolean).join(" · ") || " "}</div>
         </div>
         {item.recurring && <Pill tone="accent">staple</Pill>}
+        <button type="button" {...stylex.props(styles.iconBtn, showPhotos && styles.iconBtnOn)} aria-label={`Photos for ${item.name}`} aria-pressed={showPhotos} onClick={() => setShowPhotos((v) => !v)}><Image size={14} /></button>
         <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Remove ${item.name}`} onClick={() => onRemove(item.id)}><X size={14} /></button>
       </div>
+      {showPhotos && (
+        <div {...stylex.props(styles.photoPanel)}>
+          <MediaGallery targetType="list_item" targetId={item.id} propertyId={propertyId} label="photos" />
+        </div>
+      )}
       {subs.map((s) => (
         <div {...stylex.props(styles.subRow)} key={s.id} data-testid="sub-item">
           <span {...stylex.props(styles.subOr)}>or</span>
@@ -285,6 +296,7 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
                       item={i}
                       subs={subsOf(i.id)}
                       on={!!checked[i.id]}
+                      propertyId={list.propertyId}
                       onToggle={() => setChecked((c) => ({ ...c, [i.id]: !c[i.id] }))}
                       onRemove={(id) => decline.mutate(id)}
                       onAddSub={(nm) => addSub.mutate({ parent: i.id, name: nm })}

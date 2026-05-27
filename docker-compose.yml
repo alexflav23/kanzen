@@ -46,6 +46,9 @@ services:
       PORT: "8080"
       ADMIN_PORT: "9990"
       METRICS_PORT: "9464"
+      # The base URL the browser uses to reach the API — used to build signed blob/download URLs
+      # (the local presigned-URL equivalent served at /api/blobs). Matches VITE_API_URL below.
+      PUBLIC_BASE_URL: http://localhost:8080
       # Flyway migrates + seeds the household (incl. the Flavian principal) on boot.
       DATABASE_URL: jdbc:postgresql://postgres:5432/kanzen
       DB_USER: kanzen

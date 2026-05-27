@@ -53,6 +53,15 @@ object Documents {
   final case class LinkReq(targetType: String, targetId: UUID, role: Option[String])
   final case class PresignResult(url: String, expiresInSeconds: Int)
   final case class OkResult(ok: Boolean)
+  /** A document attached to a target, with a ready-to-render presigned URL (for galleries/thumbnails). */
+  final case class LinkedDoc(
+      id: UUID,
+      name: String,
+      contentType: Option[String],
+      sizeBytes: Option[Long],
+      url: String,
+      expiresInSeconds: Int
+  )
 
   private def view(d: Document): DocumentView =
     DocumentView(
@@ -196,6 +205,44 @@ object Documents {
         DocumentRepo.link(id, req.targetType, req.targetId, req.role).transact(xa).as(Right(OkResult(true)))
     }
 
+  def unlink(xa: Transactor[IO], p: Principal, id: UUID, targetType: String, targetId: UUID): IO[Out[OkResult]] =
+    writable(xa, p, id).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(_) => DocumentRepo.unlink(id, targetType, targetId).transact(xa).as(Right(OkResult(true)))
+    }
+
+  /** The documents attached to a target — visibility/scope filtered, each with a presigned URL. */
+  def forTarget(
+      store: ObjectStore,
+      xa: Transactor[IO],
+      p: Principal,
+      targetType: String,
+      targetId: UUID
+  ): IO[Out[List[LinkedDoc]]] = {
+    val tx = for {
+      authz <- Authz.authorizer(p.role)
+      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      docs <-
+        if (authz.canRead("document")) DocumentRepo.documentsFor(targetType, targetId)
+        else List.empty[Document].pure[ConnectionIO]
+    } yield
+      if (!authz.canRead("document")) Left(forbidden)
+      else Right(docs.filter(d => visibleTo(p, d, scoped)))
+    tx.transact(xa).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(docs) =>
+        docs
+          .traverse(d =>
+            d.s3Key match {
+              case Some(k) =>
+                store.presignGet(k, PRESIGN_TTL).map(u => Some(LinkedDoc(d.id, d.name, d.contentType, d.sizeBytes, u, PRESIGN_TTL)))
+              case None => IO.pure(None)
+            }
+          )
+          .map(xs => Right(xs.flatten))
+    }
+  }
+
   def softDelete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[OkResult]] =
     writable(xa, p, id).flatMap {
       case Left(e) => IO.pure(Left(e))
@@ -258,15 +305,39 @@ object Documents {
       .out(jsonBody[OkResult])
       .summary("Soft-delete (metadata only; the original is retained)")
 
+  val forTargetEndpoint
+      : Endpoint[String, (String, UUID), (StatusCode, ApiError), List[LinkedDoc], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / "for" / path[String]("targetType") / path[UUID]("targetId"))
+      .errorOut(err)
+      .out(jsonBody[List[LinkedDoc]])
+      .summary("Documents attached to a target, each with a presigned URL (galleries)")
+
+  val unlinkEndpoint
+      : Endpoint[String, (UUID, String, UUID), (StatusCode, ApiError), OkResult, Any] =
+    sttp.tapir.endpoint.delete
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id") / "links" / path[String]("targetType") / path[UUID]("targetId"))
+      .errorOut(err)
+      .out(jsonBody[OkResult])
+      .summary("Detach a document from a target (the original is retained)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO], store: ObjectStore): List[ServerEndpoint[Any, IO]] = List(
     uploadEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: UploadReq) => upload(store, xa, p, r)),
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (c, q) => list(xa, p, c, q) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     downloadEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => download(store, xa, p, id)),
     linkEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addLink(xa, p, id, r) }),
-    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => softDelete(xa, p, id))
+    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => softDelete(xa, p, id)),
+    forTargetEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (t, tid) => forTarget(store, xa, p, t, tid) }),
+    unlinkEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, t, tid) => unlink(xa, p, id, t, tid) })
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(uploadEndpoint, listEndpoint, detailEndpoint, downloadEndpoint, linkEndpoint, deleteEndpoint)
+    List(uploadEndpoint, listEndpoint, detailEndpoint, downloadEndpoint, linkEndpoint, deleteEndpoint, forTargetEndpoint, unlinkEndpoint)
 }
