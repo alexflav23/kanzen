@@ -57,6 +57,34 @@ The **agent** and every endpoint use the same `can(action)` path.
 
 Each step ships green (full regression) and non-breaking; "done" only when the whole is coherent.
 
+## S3 outcome — endpoint migration (done)
+- **`Authz.forUser(p.userId, p.role)` is wired at every endpoint** (119 call sites). Each request resolves the
+  *fully composed* authorizer (primary ∪ user_roles ∪ team roles through the hierarchy ∪ parent-role inheritance
+  ∪ permission-set grants). The one role-string fan-out (`NotificationFanout`) stays on `authorizer(role)`.
+- **The whole API surface authorizes via `can(action)`** (reads → `<res>:view`; writes → the specific verb).
+  Shared `read`/`write`/`gate`/`principal` helpers are parameterised by `Action` so one endpoint can require a
+  precise verb — proven end-to-end (`ListsActionScopeIT`: deny `list:order` while keeping `edit`; grant
+  order-only without edit). Verb-granular grants now bite on: bill (incl. pay/schedule), expense (approve/
+  export), bank_account (sync/reconcile), receipt (parse), list (propose/approve/order), asset (incl. move/
+  custody/set_hero/restructure), asset_event, data_quality (scan), tag/taxonomy/custom_field, property, vendor/
+  person/product, task/calendar/maintenance, fx/ledger-view, wealth, backup, agent, search, notification.
+- **Own-scope enforcement** on the asset registry: an `asset:view` grant scoped to `own` restricts the list
+  (`AssetRepo.list` ownerId filter) and 404s another owner's detail (`AssetRepo.ownerOf`, no leak). Team/property
+  record-scope on other resources is layered the same way in later slices.
+- **Catalogue reconciled to the real gating model** (so every catalogue action maps to a real gate, no dangling
+  toggles): `asset_event` + `data_quality` are their own resources; pay-queue + payment methods authorize as part
+  of `bill`; bank sync/reconcile as part of `bank_account`; `wealth` + `backup` are admin-level + sensitive (even
+  viewing). Aspirational sub-resources that collapse onto a parent were dropped from the catalogue
+  (collection/asset_group→`asset`, location→`property`, tax→`ledger`, investment→`wealth`, insights→`asset`,
+  payment/payment_method/bank) — candidates for a future resource-split slice (each needs its own seed mapping).
+- **Deliberately NOT migrated** (kept on the legacy/level path, documented): **Ledger** (internal double-entry,
+  hidden by house rule), **Roles/Impersonate** (the RBAC admin surface must stay gated on the root `*`-admin grant
+  so authz can't be delegated/escalated), **Defects** (property-scoped + field-level `authorize` helper),
+  **Valuations/Provenance** field-level valuation/insured-value checks (a field-level mechanism, not a catalogue action).
+- **Non-breaking**: `can(action)` falls back to `can(action.minLevel, action.resource)` with no matching grant, so
+  un-granted roles are unchanged; `compose` keeps explicit field/resource **denies** (fixed a bug that leaked
+  Manager valuations). backend 376/376 green.
+
 ## Invariants (unchanged)
 Default-deny · AuthZ once, centrally (agent included) · field-level response filtering (valuations) ·
 registry/finance Principal-private with the Manager carve-out · every authz change audited · root grant
