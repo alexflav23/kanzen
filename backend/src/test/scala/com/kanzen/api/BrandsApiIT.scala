@@ -65,6 +65,15 @@ object BrandsApiIT extends IOSuite {
     } yield expect(s.isRight) and expect(r.isRight)
   }
 
+  test("furniture seed (operator list + expansion) is searchable") { xa =>
+    for {
+      boca   <- Brands.search(xa, toby, "Furniture", Some("boca"), Some(5)).map(_.toOption.get)
+      eich   <- Brands.search(xa, toby, "furniture", Some("eich"), Some(5)).map(_.toOption.get)
+      molteni <- Brands.search(xa, toby, "Furniture", Some("molteni"), Some(5)).map(_.toOption.get)
+    } yield expect(boca.exists(_.name == "Boca do Lobo")) and
+      expect(eich.exists(_.name == "Eichholtz")) and expect(molteni.exists(_.name == "Molteni&C"))
+  }
+
   test("record requires a name (400)") { xa =>
     Brands.record(xa, toby, RecordReq("   ", "Watches")).map(r => expect(r.left.exists(_._1.code == 400)))
   }

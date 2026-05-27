@@ -45,5 +45,14 @@ Today `owner_id` stands in for the future `account_id`/`tenant_id`.
 - **In:** the two tables + seed (the curated research, as `verified`), `BrandRepo`, the two endpoints,
   and the asset-create **Maker autocomplete** (keyed to the selected category) + record-on-create.
 - **Deferred:** moderation/merge of `community` → `verified` (admin); aliases/synonyms + fuzzy match;
-  brand logos/metadata; the agent + mobile consuming the catalogue; per-vertical *typed* create fields
-  (reg/VIN/mileage — F22/W3). Verification of community entries is manual/admin for now.
+  the agent + mobile consuming the catalogue; per-vertical *typed* create fields (reg/VIN/mileage —
+  F22/W3). Verification of community entries is manual/admin for now.
+- **Richer brand records (future):** the table is lean today (name/category/status/usage). Operator
+  source lists carry more — e.g. the furniture list (`V2_70`) had **country · tier · price ranges ·
+  website · design notes**. Worth growing `brands` with `country`, `website`, and optional `tier`/notes
+  so the catalogue becomes a proper brand reference (used on cards/detail + valuation comps later).
+
+## Seed coverage
+`V2_69` seeds ~273 brands across watches · jewellery · vehicles · furniture · clothing · guitars ·
+porcelain · glassware. `V2_70` expands **furniture** to ~160 (operator's curated list + a broad
+worldwide expansion). The seed grows by migration; users grow it at runtime via `POST /api/brands`.
