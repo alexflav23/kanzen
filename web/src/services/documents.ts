@@ -87,6 +87,12 @@ export function unlinkDocument(id: string, targetType: string, targetId: string,
   return api(`/api/documents/${id}/links/${targetType}/${targetId}`, z.unknown(), { method: "DELETE", token });
 }
 
+/** Delete a document from a target: unlinks, and soft-deletes the document if no links remain
+ * (dedup-safe — a photo shared with another asset survives). The immutable original is retained. */
+export function removePhoto(id: string, targetType: string, targetId: string, token: string | null): Promise<unknown> {
+  return api(`/api/documents/${id}/from/${targetType}/${targetId}`, z.unknown(), { method: "DELETE", token });
+}
+
 /** Upload a file and link it to a target in one shot — returns the new document id. */
 export async function uploadAndLink(
   file: File,

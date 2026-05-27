@@ -3,15 +3,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 
-const { uploadAndLink, unlinkDocument, documentsFor } = vi.hoisted(() => ({
+const { uploadAndLink, removePhoto, documentsFor } = vi.hoisted(() => ({
   uploadAndLink: vi.fn(async () => "doc-new"),
-  unlinkDocument: vi.fn(async () => ({})),
+  removePhoto: vi.fn(async () => ({})),
   documentsFor: vi.fn(async () => [
     { id: "d1", name: "fridge.jpg", contentType: "image/jpeg", sizeBytes: 1234, url: "https://signed/d1", expiresInSeconds: 300 },
   ]),
 }));
 
-vi.mock("../services/documents", () => ({ documentsFor, uploadAndLink, unlinkDocument }));
+vi.mock("../services/documents", () => ({ documentsFor, uploadAndLink, removePhoto }));
 vi.mock("../services/auth", async (orig) => ({
   ...(await orig<typeof import("../services/auth")>()),
   getMe: vi.fn(async () => ({ userId: "u1", name: "Flavian", email: "flavian@kanzen.local", role: "principal", permissions: [], impersonatedBy: null })),
@@ -40,7 +40,7 @@ describe("MediaGallery", () => {
     const img = await screen.findByRole("img", { name: "fridge.jpg" });
     expect(img).toHaveAttribute("src", "https://signed/d1");
     expect(documentsFor).toHaveBeenCalledWith("list_item", "i1", "t");
-    expect(screen.getByRole("button", { name: "Remove photo fridge.jpg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete photo fridge.jpg" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add photos" })).toBeInTheDocument();
   });
 
@@ -66,7 +66,14 @@ describe("MediaGallery", () => {
     renderGallery(true);
     await screen.findByRole("img", { name: "fridge.jpg" });
     expect(screen.queryByRole("button", { name: "Add photos" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Remove photo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete photo/ })).not.toBeInTheDocument();
+  });
+
+  it("deletes a photo via removePhoto (unlink + soft-delete-if-orphaned)", async () => {
+    renderGallery();
+    await screen.findByRole("img", { name: "fridge.jpg" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete photo fridge.jpg" }));
+    await waitFor(() => expect(removePhoto).toHaveBeenCalledWith("d1", "list_item", "i1", "t"));
   });
 
   it("opens the full-res lightbox when a thumbnail is clicked", async () => {

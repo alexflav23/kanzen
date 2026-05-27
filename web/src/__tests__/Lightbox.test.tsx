@@ -46,6 +46,15 @@ describe("Lightbox", () => {
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 
+  it("shows a Delete button only when onDelete is given, and calls it", () => {
+    const onDelete = vi.fn();
+    const { rerender } = render(<Lightbox photos={photos} index={0} onClose={() => {}} onIndex={() => {}} />);
+    expect(screen.queryByRole("button", { name: /Delete photo/ })).not.toBeInTheDocument();
+    rerender(<Lightbox photos={photos} index={0} onClose={() => {}} onIndex={() => {}} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete photo Front" }));
+    expect(onDelete).toHaveBeenCalledWith("1");
+  });
+
   it("hides nav controls when there is only one photo", () => {
     render(<Lightbox photos={[photos[0]]} index={0} onClose={() => {}} onIndex={() => {}} />);
     expect(screen.queryByRole("button", { name: "Next photo" })).not.toBeInTheDocument();

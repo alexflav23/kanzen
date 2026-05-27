@@ -246,6 +246,21 @@ object Documents {
     }
   }
 
+  /** Remove a document from a target: unlink it, then soft-delete the document if it's no longer attached to anything
+    * (dedup-safe — a photo shared with another asset survives). The immutable original is retained in the object store
+    * either way (house rule).
+    */
+  def removeFrom(xa: Transactor[IO], p: Principal, id: UUID, targetType: String, targetId: UUID): IO[Out[OkResult]] =
+    writable(xa, p, id).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(_) =>
+        (for {
+          _ <- DocumentRepo.unlink(id, targetType, targetId)
+          remaining <- DocumentRepo.targetsOf(id)
+          _ <- if (remaining.isEmpty) DocumentRepo.softDelete(id).void else ().pure[ConnectionIO]
+        } yield Right(OkResult(true)): Out[OkResult]).transact(xa)
+    }
+
   def softDelete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[OkResult]] =
     writable(xa, p, id).flatMap {
       case Left(e) => IO.pure(Left(e))
@@ -324,6 +339,14 @@ object Documents {
       .out(jsonBody[OkResult])
       .summary("Detach a document from a target (the original is retained)")
 
+  val removeFromEndpoint: Endpoint[String, (UUID, String, UUID), (StatusCode, ApiError), OkResult, Any] =
+    sttp.tapir.endpoint.delete
+      .securityIn(auth.bearer[String]())
+      .in("api" / "documents" / path[UUID]("id") / "from" / path[String]("targetType") / path[UUID]("targetId"))
+      .errorOut(err)
+      .out(jsonBody[OkResult])
+      .summary("Remove a document from a target; soft-delete it if no links remain (dedup-safe)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO], store: ObjectStore): List[ServerEndpoint[Any, IO]] = List(
     uploadEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: UploadReq) => upload(store, xa, p, r)),
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (c, q) => list(xa, p, c, q) }),
@@ -336,7 +359,10 @@ object Documents {
       .serverLogic(p => { case (t, tid) => forTarget(store, xa, p, t, tid) }),
     unlinkEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (id, t, tid) => unlink(xa, p, id, t, tid) })
+      .serverLogic(p => { case (id, t, tid) => unlink(xa, p, id, t, tid) }),
+    removeFromEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, t, tid) => removeFrom(xa, p, id, t, tid) })
   )
 
   val endpoints: List[AnyEndpoint] =
@@ -348,6 +374,7 @@ object Documents {
       linkEndpoint,
       deleteEndpoint,
       forTargetEndpoint,
-      unlinkEndpoint
+      unlinkEndpoint,
+      removeFromEndpoint
     )
 }

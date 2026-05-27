@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Plus, Trash, Image, Star, StarFill } from "./icons";
 import { Lightbox } from "./Lightbox";
-import { documentsFor, unlinkDocument, uploadAndLink } from "../services/documents";
+import { documentsFor, removePhoto, uploadAndLink } from "../services/documents";
 import { useAuth } from "../state/AuthContext";
 
 const styles = stylex.create({
@@ -76,7 +76,7 @@ export function MediaGallery({
     onSuccess: invalidate,
   });
   const remove = useMutation({
-    mutationFn: (id: string) => unlinkDocument(id, targetType, targetId, token),
+    mutationFn: (id: string) => removePhoto(id, targetType, targetId, token),
     onSuccess: invalidate,
   });
 
@@ -118,7 +118,7 @@ export function MediaGallery({
                 type="button"
                 data-role="remove"
                 {...stylex.props(styles.remove)}
-                aria-label={`Remove photo ${d.name}`}
+                aria-label={`Delete photo ${d.name}`}
                 disabled={remove.isPending}
                 onClick={() => remove.mutate(d.id)}
               >
@@ -159,7 +159,13 @@ export function MediaGallery({
       )}
       {upload.isError && <span {...stylex.props(styles.hint)}>Upload failed — try again.</span>}
 
-      <Lightbox photos={photos} index={viewer} onClose={() => setViewer(null)} onIndex={setViewer} />
+      <Lightbox
+        photos={photos}
+        index={viewer}
+        onClose={() => setViewer(null)}
+        onIndex={setViewer}
+        onDelete={readOnly ? undefined : (id) => { remove.mutate(id); setViewer(null); }}
+      />
     </div>
   );
 }

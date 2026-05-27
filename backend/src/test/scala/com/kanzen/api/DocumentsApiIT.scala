@@ -115,6 +115,20 @@ object DocumentsApiIT extends IOSuite {
     Documents.upload(store, xa, siti, req("x.pdf", "X")).map(r => expect(r.left.exists(_._1.code == 403)))
   }
 
+  test("removeFrom unlinks; soft-deletes when orphaned; a shared (deduped) doc survives") { (res) =>
+    val (xa, store) = res
+    val (a1, a2) = (UUID.randomUUID(), UUID.randomUUID())
+    for {
+      doc <- Documents.upload(store, xa, lorna, req("shared-photo.jpg", "SHARED-PHOTO-1")).map(_.toOption.get.document)
+      _ <- Documents.addLink(xa, lorna, doc.id, LinkReq("asset", a1, Some("photo")))
+      _ <- Documents.addLink(xa, lorna, doc.id, LinkReq("asset", a2, Some("photo")))
+      _ <- Documents.removeFrom(xa, lorna, doc.id, "asset", a1) // still linked to a2 → kept
+      stillThere <- Documents.detail(xa, lorna, doc.id)
+      _ <- Documents.removeFrom(xa, lorna, doc.id, "asset", a2) // now orphaned → soft-deleted
+      gone <- Documents.detail(xa, lorna, doc.id)
+    } yield expect(stillThere.isRight) and expect(gone.left.exists(_._1.code == 404))
+  }
+
   test("forTarget lists attached docs with a presigned URL; unlink detaches (original retained)") { (res) =>
     val (xa, store) = res
     val item = UUID.randomUUID()

@@ -72,7 +72,7 @@ test("an item's photos upload and render in its gallery", async ({ page }) => {
   await expect.poll(() => thumb.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
 
   // remove it again (keeps the dev DB tidy) — the thumbnail goes away
-  await row.getByRole("button", { name: /^Remove photo / }).click();
+  await row.getByRole("button", { name: /^Delete photo / }).click();
   await expect(row.locator("img")).toHaveCount(0);
 });
 

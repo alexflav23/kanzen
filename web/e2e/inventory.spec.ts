@@ -92,15 +92,15 @@ test("an asset detail shows a Photos gallery; upload renders, remove clears", as
   await expect(thumb).toBeVisible();
   await expect.poll(() => thumb.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
 
-  // clicking the thumbnail opens the full-resolution lightbox; Escape closes it
+  // clicking the thumbnail opens the full-res lightbox; the image actually loads
   await page.getByRole("button", { name: "View watch.png" }).click();
-  await expect(page.getByTestId("lightbox")).toBeVisible();
+  const lb = page.getByTestId("lightbox");
+  await expect(lb).toBeVisible();
   await expect.poll(() => page.getByTestId("lightbox-image").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("lightbox")).toHaveCount(0);
 
-  // remove it again — no dangling photo link is left on the shared seeded asset
-  await page.getByRole("button", { name: "Remove photo watch.png" }).click();
+  // delete it from the lightbox → the viewer closes and it's gone from the gallery (no dangling link)
+  await lb.getByRole("button", { name: "Delete photo watch.png" }).click();
+  await expect(lb).toHaveCount(0);
   await expect(page.getByRole("img", { name: "watch.png" })).toHaveCount(0);
 });
 
@@ -134,7 +134,7 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await expect(page.getByRole("img", { name: "hero.png" })).toBeVisible();
   await page.getByRole("button", { name: "Set hero.png as hero photo" }).click();
   await expect(page.getByTestId("asset-hero")).toBeVisible();
-  await page.getByRole("button", { name: "Remove photo hero.png" }).click();
+  await page.getByRole("button", { name: "Delete photo hero.png" }).click();
   await expect(page.getByTestId("asset-hero")).toHaveCount(0); // hero clears once its photo is gone
 });
 

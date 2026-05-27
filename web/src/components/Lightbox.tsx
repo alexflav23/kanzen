@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { useCallback, useEffect, useRef } from "react";
 import { colors, radius } from "../styles/tokens.stylex";
-import { X, ChevronRight } from "./icons";
+import { X, ChevronRight, Trash } from "./icons";
 
 const styles = stylex.create({
   overlay: { position: "fixed", inset: 0, zIndex: 100, backgroundColor: colors.scrimHeavy, display: "grid", gridTemplateRows: "auto 1fr auto", padding: "16px" },
   bar: { display: "flex", alignItems: "center", justifyContent: "space-between", color: "#fff" },
   caption: { fontSize: "13.5px", fontWeight: 500, opacity: 0.95, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   counter: { fontSize: "12px", opacity: 0.7, fontVariantNumeric: "tabular-nums", marginLeft: "10px", flexShrink: 0 },
+  actions: { display: "inline-flex", alignItems: "center", gap: "8px", flexShrink: 0 },
   stage: { position: "relative", display: "grid", placeItems: "center", minHeight: 0 },
   img: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: radius.sm, display: "block" },
   iconBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: "40px", height: "40px", borderRadius: radius.pill, border: 0, backgroundColor: "rgba(255,255,255,.12)", color: "#fff", cursor: "pointer" },
@@ -24,11 +25,13 @@ export function Lightbox({
   index,
   onClose,
   onIndex,
+  onDelete,
 }: {
   photos: { id: string; url: string; name: string }[];
   index: number | null;
   onClose: () => void;
   onIndex: (i: number) => void;
+  onDelete?: (id: string) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const open = index != null && index >= 0 && index < photos.length;
@@ -74,7 +77,12 @@ export function Lightbox({
     >
       <div {...stylex.props(styles.bar)}>
         <span {...stylex.props(styles.caption)}>{photo.name}<span {...stylex.props(styles.counter)}>{index! + 1} / {photos.length}</span></span>
-        <button type="button" {...stylex.props(styles.iconBtn)} aria-label="Close viewer" onClick={onClose}><X size={18} /></button>
+        <span {...stylex.props(styles.actions)}>
+          {onDelete && (
+            <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Delete photo ${photo.name}`} onClick={() => onDelete(photo.id)}><Trash size={17} /></button>
+          )}
+          <button type="button" {...stylex.props(styles.iconBtn)} aria-label="Close viewer" onClick={onClose}><X size={18} /></button>
+        </span>
       </div>
       <div {...stylex.props(styles.stage)}>
         <img {...stylex.props(styles.img)} src={photo.url} alt={photo.name} data-testid="lightbox-image" />
