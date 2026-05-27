@@ -35,9 +35,11 @@ export const rbac = stylex.create({
   seg: { display: "inline-flex", border: `1px solid ${colors.line}`, borderRadius: radius.sm, overflow: "hidden" },
   segBtn: { appearance: "none", border: 0, background: colors.bgElev, color: colors.ink3, padding: "5px 11px", fontSize: "12px", cursor: "pointer", borderRight: `1px solid ${colors.line}` },
   segBtnLast: { borderRight: 0 },
-  segActive: { backgroundColor: colors.bgSunken, color: colors.ink, fontWeight: 600 },
-  segAllow: { backgroundColor: colors.positiveSoft, color: colors.positive, fontWeight: 600 },
-  segDeny: { backgroundColor: colors.dangerSoft, color: colors.danger, fontWeight: 600 },
+  // active states use high-contrast ink on the soft tint (positive/danger as text fail AA at 12px); the tint +
+  // the "Allow"/"Deny" label + aria-pressed convey state without relying on colour alone.
+  segActive: { backgroundColor: colors.bgSunken, color: colors.ink, fontWeight: 700 },
+  segAllow: { backgroundColor: colors.positiveSoft, color: colors.ink, fontWeight: 700 },
+  segDeny: { backgroundColor: colors.dangerSoft, color: colors.ink, fontWeight: 700 },
 
   select: { padding: "5px 8px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, fontSize: "12px", cursor: "pointer" },
   input: { padding: "7px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13px", minWidth: "180px" },

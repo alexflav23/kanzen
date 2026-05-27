@@ -100,6 +100,31 @@ object RbacAdminIT extends IOSuite {
     } yield expect(cyc.left.exists(_._1.code == 409))
   }
 
+  test("S5 — starter system sets are seeded, deletion-protected, and complete") { xa =>
+    listSets(xa, admin).flatMap { res =>
+      val list = res.toOption.getOrElse(Nil)
+      val readOnly = list.find(_.name == "Registry — read only")
+      readOnly.fold(IO.pure(expect(false))) { s =>
+        deleteSet(xa, admin, s.id).map { del =>
+          expect(s.isSystem) and
+            expect(s.grantCount == 4) and // asset:view, asset_event:view, document:view+download
+            expect(list.exists(_.name == "Finance — bill approver")) and
+            expect(list.exists(_.name == "Property — caretaker")) and
+            expect(del.left.exists(_._1.code == 409)) // system sets can't be deleted
+        }
+      }
+    }
+  }
+
+  test("S5 — the starter sets are attached to no role (seeding changed nothing → non-breaking)") { xa =>
+    sql"""select count(*) from role_sets rs join permission_sets s on s.id = rs.set_id
+          where s.is_system and s.deleted_at is null"""
+      .query[Int]
+      .unique
+      .transact(xa)
+      .map(n => expect(n == 0))
+  }
+
   test("grant validation: an unknown action is rejected (400)") { xa =>
     val s = sfx
     for {

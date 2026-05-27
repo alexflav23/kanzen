@@ -103,6 +103,23 @@ Each step ships green (full regression) and non-breaking; "done" only when the w
   (`rbac-builder.spec`: compose a set → grant → preview → cleanup) + an **axe sweep in both themes** (0 serious/
   critical). Full regression on a pristine DB: backend 382/382, web 90/90 unit, 78/78 e2e + a11y clean.
 
+## S5 outcome — starter sets + close-out (done) → **F02 v2 COMPLETE**
+- **Canonical starter permission sets** seeded as system-owned bundles (`V2_72_0`): *Registry — read only*,
+  *Registry — curator*, *Finance — bill approver*, *Operations — lists & calendar*, *Property — caretaker* —
+  reusable building blocks an admin composes into roles/teams via the builder. **Deliberately NOT a 1:1 mapping of
+  the legacy matrix into grants**: the matrix + bridge stay the source of truth for the 4 system roles, so there is
+  exactly one source of truth per role and the migration is provably non-breaking (the sets are attached to nobody →
+  every user resolves to today's permissions). `RbacAdminIT` proves the sets are seeded, complete, deletion-
+  protected (system), and attached to **zero** roles.
+- a11y fix: the active Allow/Deny segment now uses high-contrast `ink` on the soft tint (the green/red-as-text
+  pairing was 4.06:1 at 12px); the tint + label + `aria-pressed` carry state without relying on colour. Builder is
+  axe-clean (serious/critical = 0) in both themes.
+- Full regression on a pristine, seeded DB: backend **384/384**, web **90/90** unit + **78/78** e2e + a11y clean.
+
+F02 v2 ships the whole arc — catalogue + `can(action)` bridge (S1) · composed `Authz.forUser` over sets/inheritance/
+nested teams/multi-role (S2) · whole API on `can(action)` + scope (S3) · management API + HubSpot-style builder UI
+with effective preview (S4) · starter sets + close-out (S5) — cohesively and non-breaking throughout.
+
 ## Invariants (unchanged)
 Default-deny · AuthZ once, centrally (agent included) · field-level response filtering (valuations) ·
 registry/finance Principal-private with the Manager carve-out · every authz change audited · root grant
