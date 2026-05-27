@@ -9,7 +9,7 @@ import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import com.kanzen.events.{Consumers, Relay}
 import com.kanzen.identity.Principals
-import com.kanzen.s3.ObjectStore
+import com.kanzen.s3.{ObjectStore, S3ObjectStore}
 import doobie.util.transactor.Transactor
 import org.http4s.HttpApp
 import org.http4s.ember.server.EmberServerBuilder
@@ -61,22 +61,36 @@ object Main extends IOApp.Simple {
           jwks = dev.map(_.jwks).getOrElse(Jwks.empty)
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
-          // a per-boot secret signs short-lived blob capability URLs (the local presigned-URL equivalent);
-          // the local/dev store serves them via /api/blobs. S3 (AWS SDK + LocalStack) wires in here later.
-          blobSecret <- IO(java.util.UUID.randomUUID().toString + java.util.UUID.randomUUID().toString)
-          store <- ObjectStore.localServed(cfg.publicBaseUrl, blobSecret)
+          // stable secret signing short-lived /api/blobs capability URLs (config so restarts don't break URLs).
+          blobSecret = cfg.blobSecret
+          _ <- log.info(s"Object store: S3 bucket '${cfg.s3.bucket}'${cfg.s3.endpoint match {
+              case "" => " (AWS)"; case e => s" @ $e"
+            }}")
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
-          _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
-            val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
-            val servers = (
-              server(host"0.0.0.0", p, primaryApp(auth, xa, store, blobSecret, dev)),
-              server(host"0.0.0.0", a, Admin.routes.orNotFound)
-            ).tupled.useForever
-            // F34: the transactional-outbox relay runs alongside the servers (in-process
-            // consumers in sandbox; Pulsar transport is infra, deferred to hardening).
-            val relay = log.info("F34 event relay started") *> Relay.run(xa, Consumers.sandbox)
-            IO.both(servers, relay).void
-          }
+          // persistent S3 store (LocalStack in dev, AWS in prod) — bytes survive restarts; bucket ensured on boot
+          _ <- S3ObjectStore
+            .resource(
+              cfg.publicBaseUrl,
+              blobSecret,
+              cfg.s3.region,
+              Some(cfg.s3.endpoint),
+              cfg.s3.bucket,
+              cfg.s3.accessKey,
+              cfg.s3.secretKey
+            )
+            .use { store =>
+              Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
+                val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
+                val servers = (
+                  server(host"0.0.0.0", p, primaryApp(auth, xa, store, blobSecret, dev)),
+                  server(host"0.0.0.0", a, Admin.routes.orNotFound)
+                ).tupled.useForever
+                // F34: the transactional-outbox relay runs alongside the servers (in-process
+                // consumers in sandbox; Pulsar transport is infra, deferred to hardening).
+                val relay = log.info("F34 event relay started") *> Relay.run(xa, Consumers.sandbox)
+                IO.both(servers, relay).void
+              }
+            }
         } yield ()
     }
 }

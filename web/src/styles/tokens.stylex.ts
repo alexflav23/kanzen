@@ -26,6 +26,7 @@ export const colors = stylex.defineVars({
   danger: "#B91C1C",
   dangerSoft: "rgba(185, 28, 28, .10)",
   scrim: "rgba(10, 11, 15, .32)",
+  scrimHeavy: "rgba(8, 9, 12, .9)", // full-screen backdrops (lightbox) — dark in both themes by design
   // elevation — themed in the SAME group so dark is a single global override (no second theme class)
   shadow1: "0 1px 0 rgba(10,11,15,.04), 0 1px 2px rgba(10,11,15,.04)",
   shadow2: "0 1px 0 rgba(10,11,15,.04), 0 8px 24px -8px rgba(10,11,15,.10)",

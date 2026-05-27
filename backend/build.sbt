@@ -17,6 +17,7 @@ lazy val V = new {
   val weaver = "0.8.4"
   val scalatest = "3.2.18"
   val jwt = "9.4.5"
+  val awssdk = "2.25.70"
 }
 
 lazy val root = (project in file("."))
@@ -42,6 +43,9 @@ lazy val root = (project in file("."))
       "org.flywaydb" % "flyway-core" % V.flyway,
       "org.postgresql" % "postgresql" % V.postgres,
       "com.github.jwt-scala" %% "jwt-circe" % V.jwt,
+      // S3 object store (LocalStack in dev, real S3 in prod) — url-connection-client = light sync HTTP, no netty
+      ("software.amazon.awssdk" % "s3" % V.awssdk).exclude("software.amazon.awssdk", "netty-nio-client"),
+      "software.amazon.awssdk" % "url-connection-client" % V.awssdk,
       // tests: weaver (effectful/server/integration) + ScalaTest FreeSpec (pure units)
       "com.disneystreaming" %% "weaver-cats" % V.weaver % Test,
       "org.scalatest" %% "scalatest" % V.scalatest % Test,

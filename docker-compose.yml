@@ -32,9 +32,11 @@ services:
     image: localstack/localstack:3
     environment:
       SERVICES: s3
-    # Network-internal only (the backend reaches it at localstack:4566). Not published to the
-    # host — the blob store is in-memory until S3 lands, and this avoids clashing with another
-    # project's LocalStack on :4566. Publish a host port here when wiring host-side S3 dev.
+      PERSISTENCE: "1"            # persist S3 to the volume so blobs survive LocalStack restarts too
+    volumes:
+      - localstack-data:/var/lib/localstack
+    # Network-internal only (the backend reaches it at localstack:4566). Browsers never hit S3 directly —
+    # blob bytes are streamed through the backend's signed /api/blobs URL.
     expose:
       - "4566"
 
@@ -49,6 +51,12 @@ services:
       # The base URL the browser uses to reach the API — used to build signed blob/download URLs
       # (the local presigned-URL equivalent served at /api/blobs). Matches VITE_API_URL below.
       PUBLIC_BASE_URL: http://localhost:8080
+      # F05 persistent object store — LocalStack S3 in dev (bytes survive backend restarts).
+      S3_ENDPOINT: http://localstack:4566
+      S3_BUCKET: kanzen-documents
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: test
+      S3_SECRET_KEY: test
       # Flyway migrates + seeds the household (incl. the Flavian principal) on boot.
       DATABASE_URL: jdbc:postgresql://postgres:5432/kanzen
       DB_USER: kanzen
@@ -59,6 +67,8 @@ services:
       - "9464:9464"
     depends_on:
       postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9990/health"]
@@ -79,3 +89,4 @@ services:
 
 volumes:
   pgdata:
+  localstack-data:

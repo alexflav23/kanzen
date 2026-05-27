@@ -24,6 +24,13 @@ object ObjectStore {
   def sha256Hex(bytes: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).map("%02x".format(_)).mkString
 
+  /** A signed, short-lived capability URL served by `api.Blobs` (`$baseUrl/api/blobs/<token>`) — used by every
+    * browser-facing store so the bytes are fetched through the backend (no public objects, no S3 presign-host issues).
+    * Shared by [[localServed]] and the S3 store.
+    */
+  def servedUrl(baseUrl: String, secret: String, key: String, ttlSeconds: Int): IO[String] =
+    IO.realTimeInstant.map(now => s"$baseUrl/api/blobs/${BlobToken.sign(key, now.getEpochSecond + ttlSeconds, secret)}")
+
   def inMemory: IO[ObjectStore] =
     Ref.of[IO, Map[String, (String, Array[Byte])]](Map.empty).map { ref =>
       new ObjectStore {
@@ -53,10 +60,7 @@ object ObjectStore {
         def get(key: String): IO[Option[Array[Byte]]] = under.get(key)
         def getObject(key: String): IO[Option[(String, Array[Byte])]] = under.getObject(key)
         def exists(key: String): IO[Boolean] = under.exists(key)
-        def presignGet(key: String, ttlSeconds: Int): IO[String] =
-          IO.realTimeInstant.map(now =>
-            s"$baseUrl/api/blobs/${BlobToken.sign(key, now.getEpochSecond + ttlSeconds, secret)}"
-          )
+        def presignGet(key: String, ttlSeconds: Int): IO[String] = servedUrl(baseUrl, secret, key, ttlSeconds)
       }
     }
 }

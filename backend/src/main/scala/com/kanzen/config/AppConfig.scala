@@ -10,6 +10,10 @@ final case class DbConfig(url: String, user: String, password: String)
   * JWKS is empty and `/api/me` 401s; tests inject a local test-JWKS. See the plan's auth decision + ADR.
   */
 final case class CognitoConfig(issuer: String, audience: String, jwksUri: String)
+
+/** F05 object store. `endpoint` empty ⇒ real AWS S3; set (e.g. http://localstack:4566) ⇒ LocalStack/custom. */
+final case class S3Config(bucket: String, endpoint: String, region: String, accessKey: String, secretKey: String)
+
 final case class AppConfig(
     env: String,
     port: Int,
@@ -17,8 +21,11 @@ final case class AppConfig(
     metricsPort: Int,
     /** The base URL the browser uses to reach this API — used to build signed blob/download URLs. */
     publicBaseUrl: String,
+    /** HMAC secret for signed /api/blobs capability URLs. Stable across restarts so issued URLs stay valid. */
+    blobSecret: String,
     db: DbConfig,
-    cognito: CognitoConfig
+    cognito: CognitoConfig,
+    s3: S3Config
 )
 
 /** F00 config — typesafe-config + ValidatedNel accumulation (Hypervolt athena pattern): report **all** missing keys at
@@ -50,7 +57,15 @@ object AppConfig {
         jwksUri = strOr("kanzen.cognito.jwks-uri", "")
       )
       val publicBaseUrl = strOr("kanzen.public-base-url", s"http://localhost:$port")
-      AppConfig(env, port, admin, metrics, publicBaseUrl, DbConfig(url, user, pass), cognito)
+      val blobSecret = strOr("kanzen.blob-secret", "kanzen-dev-blob-secret")
+      val s3 = S3Config(
+        bucket = strOr("kanzen.s3.bucket", "kanzen-documents"),
+        endpoint = strOr("kanzen.s3.endpoint", ""),
+        region = strOr("kanzen.s3.region", "us-east-1"),
+        accessKey = strOr("kanzen.s3.access-key", "test"),
+        secretKey = strOr("kanzen.s3.secret-key", "test")
+      )
+      AppConfig(env, port, admin, metrics, publicBaseUrl, blobSecret, DbConfig(url, user, pass), cognito, s3)
     }.toEither
       .leftMap(_.toList)
   }
