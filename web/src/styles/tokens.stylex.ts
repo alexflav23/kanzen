@@ -25,6 +25,11 @@ export const colors = stylex.defineVars({
   warnSoft: "rgba(180, 83, 9, .12)",
   danger: "#B91C1C",
   dangerSoft: "rgba(185, 28, 28, .10)",
+  // F19 timeline categories (design EventDot): service/clean = cyan, move/custody = violet.
+  info: "#0E7DB0", // one shade darker than the design's #0EA5E9 so it clears AA where used as text/icon-on-tint
+  infoSoft: "rgba(14, 165, 233, .12)",
+  violet: "#8B5CF6",
+  violetSoft: "rgba(168, 85, 247, .12)",
   scrim: "rgba(10, 11, 15, .32)",
   scrimHeavy: "rgba(8, 9, 12, .9)", // full-screen backdrops (lightbox) — dark in both themes by design
   // elevation — themed in the SAME group so dark is a single global override (no second theme class)

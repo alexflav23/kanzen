@@ -69,8 +69,9 @@ test("opening an asset shows its detail + specifications", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
   await expect(page.getByText("Specifications")).toBeVisible();
   await expect(page.getByText("AP-15500")).toBeVisible(); // from the JSONB attributes
-  // F19 lifecycle timeline (seeded acquisition event) + lifetime cost
+  // F19 lifecycle timeline (seeded acquisition event) + lifetime cost — typed colour-coded event dots
   await expect(page.getByText("Lifecycle")).toBeVisible();
+  await expect(page.getByTestId("timeline-row").first()).toBeVisible();
   await expect(page.getByText("Lifetime cost")).toBeVisible();
   // F04 in-collections: Royal Oak is seeded in the "Watches" collection
   await expect(page.getByTestId("asset-collections")).toContainText("Watches");
@@ -88,7 +89,10 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await ev.getByLabel("Event type").selectOption("serviced");
   await ev.getByLabel("Note").fill("Annual service");
   await ev.getByRole("button", { name: "Log event" }).click();
-  await expect(page.getByText("Annual service").first()).toBeVisible(); // .first(): the dev DB accumulates events across runs
+  // the new entry lands on the typed timeline as a service event (cyan = info tone)
+  const serviceRow = page.getByTestId("timeline-row").filter({ hasText: "Annual service" }).first();
+  await expect(serviceRow).toBeVisible();
+  await expect(serviceRow).toHaveAttribute("data-tone", "info");
 
   // record a valuation (Principal) → it appears in the Valuations history
   await page.getByRole("button", { name: "Record valuation" }).click();

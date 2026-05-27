@@ -9,6 +9,7 @@ import { Plus } from "../components/icons";
 import { MediaGallery } from "../components/MediaGallery";
 import { TagChips } from "../components/TagChips";
 import { AssetGroups } from "../components/AssetGroups";
+import { Timeline } from "../components/Timeline";
 import {
   changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
   logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
@@ -413,15 +414,18 @@ export function AssetDetail() {
             : timelineQ.data.events.length === 0 ? <EmptyState title="No events yet">Log acquisition, service, and movement events to build the timeline.</EmptyState>
             : (
               <>
-                {timelineQ.data.events.map((e) => (
-                  <CardRow key={e.id}>
-                    <div {...stylex.props(styles.grow)}>
-                      <div {...stylex.props(styles.evTitle)}>{e.eventType}</div>
-                      <div {...stylex.props(styles.evSub)}>{e.occurredAt.slice(0, 10)}{e.note ? ` · ${e.note}` : ""}</div>
-                    </div>
-                    {e.costMinor != null && <span {...stylex.props(styles.evCost)}>{money(e.costMinor, e.currency)}</span>}
-                  </CardRow>
-                ))}
+                <Timeline
+                  items={timelineQ.data.events.map((e) => ({
+                    id: e.id,
+                    type: e.eventType,
+                    at: e.occurredAt,
+                    title: e.eventType.replace(/_/g, " "),
+                    subtitle: e.note,
+                    party: e.party,
+                    amountMinor: e.costMinor,
+                    currency: e.currency,
+                  }))}
+                />
                 <div {...stylex.props(styles.lifetime)}><span>Lifetime cost</span><span>{money(timelineQ.data.lifetimeCostMinor, "GBP")}</span></div>
               </>
             )}
