@@ -20,6 +20,18 @@ Full **web UI** (all states, light/dark, a11y) · **mobile** surface (or N/A) ·
 ## The unit of work — Vertical-Slice Playbook
 1 read spec → 2 DB migration/seed → 3 API (Tapir + authz + audit + OpenAPI) → 4 backend tests (FreeSpec + weaver + Testcontainers) → 5 web service+Zod+TanStack (delete mock) → 6 web UI + states (design-matched) → 7 web tests (Vitest + Playwright vs real API) → 8 mobile + widget test → 9 verify (visual diff + DoD) → flip status.
 
+**Per-slice gates (do ALL before flipping status — the robust step-through):**
+0. **Frame** — read the feature spec's acceptance + the `input/` design; state this slice's scope + explicit out-of-scope (record deferrals in the plan so they're never lost).
+1. **Backend rigor** — Flyway migration (idempotent, registered in `specs/01-data-model.md` order) + **real seed** (not mocks); DB invariants (uuid PK · timestamptz · money = integer minor units + ISO currency · `owner_id` · soft-delete); every meaningful write → `audit_log_entries`.
+2. **AuthZ — test the DENY paths**, not just the happy path: 403 wrong role · 404 out-of-scope · field-level stripping (e.g. valuations for Manager) · search/aggregates filtered server-side.
+3. **House invariants checklist** (every slice): never moves money · financial/asset creation always *proposed*, never auto-commit · ledger hidden in UI (statements/registers only) · source documents immutable · everything permission+scope-filtered server-side · registry/finance Principal-private (Manager carve-out).
+4. **Tapir/OpenAPI** — every endpoint `.summary(...)`'d, live at `/docs`.
+5. **UI** — design parity with `input/`; render **all states** (loading/empty/error/forbidden); **ThemeContext only** (one token contract + dark `createTheme`; no inline `style={{}}`, no stacked conditional theming); idiomatic, accessible React.
+6. **Tests** — Vitest unit + Playwright e2e vs the **real backend**; a11y beyond axe (keyboard · focus-trap + Escape on modals · focus return); assertions **pollution-robust + idempotent**.
+7. **Regression gate** — full web unit suite + `tsc` + scalafmt + backend tests green; **a11y (axe AA) + full-route audit clean in light & dark** (the cross-slice safety net).
+8. **Verify live at :3020** against the real backend — round-trip the flow; **screenshot in both themes**; leave the **dev DB pristine** (clean any test/demo pollution).
+9. **Close out** — wire the UI to the real API (delete the mock); keep `SETUP.md` + data-model docs current; one focused commit on the build branch; **flip status in this plan** (record deferrals).
+
 ## Decisions (locked; override any)
 - **Auth:** real **Cognito** from the start (JWKS middleware → `Principal` → default-deny `Authorizer`); CI/tests use a local **test-JWKS**. Cognito dev pool = first `SETUP.md` item (critical path).
 - **Deployable:** Phase 1 = builds + runs on dockerised Postgres + CI green; real AWS (Terraform/NixOS) is the final wave.
