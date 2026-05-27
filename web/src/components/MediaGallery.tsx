@@ -2,7 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
-import { Plus, Trash, Image } from "./icons";
+import { Plus, Trash, Image, Star, StarFill } from "./icons";
 import { documentsFor, unlinkDocument, uploadAndLink } from "../services/documents";
 import { useAuth } from "../state/AuthContext";
 
@@ -12,6 +12,8 @@ const styles = stylex.create({
   thumb: { position: "relative", width: "64px", height: "64px", borderRadius: radius.sm, overflow: "hidden", border: `1px solid ${colors.line}`, backgroundColor: colors.bgSunken, flexShrink: 0 },
   img: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
   remove: { position: "absolute", top: "3px", right: "3px", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", borderRadius: "999px", border: 0, backgroundColor: colors.scrim, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity .12s ease" },
+  hero: { position: "absolute", top: "3px", left: "3px", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", borderRadius: "999px", border: 0, backgroundColor: colors.scrim, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity .12s ease" },
+  heroOn: { opacity: 1, backgroundColor: colors.accent, color: colors.accentInk },
   // dynamic via :hover would need a parent selector; reveal the remove control on thumb hover
   thumbHover: { ":hover": {} },
   dropTile: { width: "64px", height: "64px", borderRadius: radius.sm, border: `1.5px dashed ${colors.line}`, backgroundColor: "transparent", color: colors.ink3, cursor: "pointer", display: "inline-flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2px", flexShrink: 0 },
@@ -25,7 +27,12 @@ const styles = stylex.create({
 
 // reveal-on-hover for the remove control (StyleX keyed selector on the thumb)
 const hoverReveal = stylex.create({
-  group: { ":hover > [data-role='remove']": { opacity: 1 }, ":focus-within > [data-role='remove']": { opacity: 1 } },
+  group: {
+    ":hover > [data-role='remove']": { opacity: 1 },
+    ":focus-within > [data-role='remove']": { opacity: 1 },
+    ":hover > [data-role='hero']": { opacity: 1 },
+    ":focus-within > [data-role='hero']": { opacity: 1 },
+  },
 });
 
 /**
@@ -39,12 +46,17 @@ export function MediaGallery({
   propertyId,
   label = "photos",
   readOnly = false,
+  heroDocumentId,
+  onSetHero,
 }: {
   targetType: string;
   targetId: string;
   propertyId?: string | null;
   label?: string;
   readOnly?: boolean;
+  /** When set (asset photos), each thumb gets a "set as hero" control + the current hero is marked. */
+  heroDocumentId?: string | null;
+  onSetHero?: (documentId: string) => void;
 }) {
   const { token } = useAuth();
   const qc = useQueryClient();
@@ -84,6 +96,18 @@ export function MediaGallery({
         {photos.map((d) => (
           <div {...stylex.props(styles.thumb, hoverReveal.group)} key={d.id}>
             <img {...stylex.props(styles.img)} src={d.url} alt={d.name} loading="lazy" />
+            {onSetHero && (
+              <button
+                type="button"
+                data-role="hero"
+                {...stylex.props(styles.hero, d.id === heroDocumentId && styles.heroOn)}
+                aria-label={d.id === heroDocumentId ? `${d.name} is the hero photo` : `Set ${d.name} as hero photo`}
+                aria-pressed={d.id === heroDocumentId}
+                onClick={() => onSetHero(d.id)}
+              >
+                {d.id === heroDocumentId ? <StarFill size={11} /> : <Star size={11} />}
+              </button>
+            )}
             {!readOnly && (
               <button
                 type="button"

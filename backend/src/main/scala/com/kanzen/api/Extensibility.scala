@@ -87,6 +87,7 @@ object Extensibility {
   def entitiesWithTag(xa: Transactor[IO], p: Principal, tagId: UUID): IO[Out[List[TaggedEntity]]] =
     gate(p, Level.Read, "tag")(TagRepo.entitiesWithTag(tagId).map(_.map { case (t, i) => TaggedEntity(t, i) }))
       .transact(xa)
+
   /** The tags on a given entity (asset/property/…) — for chip display + removal. */
   def tagsForEntity(xa: Transactor[IO], p: Principal, entityType: String, entityId: UUID): IO[Out[List[TagView]]] =
     if (!ENTITIES.contains(entityType)) IO.pure(Left(badReq(s"entityType must be one of ${ENTITIES.mkString(", ")}")))

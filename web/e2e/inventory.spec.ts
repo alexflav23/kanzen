@@ -97,6 +97,40 @@ test("an asset detail shows a Photos gallery; upload renders, remove clears", as
   await expect(page.getByRole("img", { name: "watch.png" })).toHaveCount(0);
 });
 
+// F04 (W1.4) — move / custody / hero photo. Move + custody persist (realistic); the hero photo
+// is removed at the end so no dangling hero survives a backend rebuild (which drops in-memory bytes).
+test("an asset can be moved, have its custody changed, and a hero photo set", async ({ page }) => {
+  await page.goto("/inventory");
+  await page.getByText("Royal Oak 15500ST").click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+
+  // Move → the Location key fact resolves + a location-history row appears
+  await page.getByTestId("move-btn").click();
+  const mv = page.getByTestId("move-asset");
+  await mv.getByLabel("Property").selectOption({ label: "Wardian — Apt 5206" });
+  await mv.getByLabel("Location").selectOption({ index: 1 });
+  await mv.getByRole("button", { name: "Move" }).click();
+  await expect(page.getByTestId("move-asset")).toHaveCount(0); // modal closed → succeeded
+  await expect(page.getByTestId("kv-location")).toContainText("Wardian"); // resolved property label
+  await expect(page.getByTestId("location-history-row").first()).toBeVisible();
+
+  // Change custody → the Custody key fact updates + a custody-history row appears
+  await page.getByTestId("custody-btn").click();
+  const cu = page.getByTestId("change-custody");
+  await cu.getByLabel("Custody").selectOption("with_repair_shop");
+  await cu.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("kv-custody")).toContainText("With repair shop");
+  await expect(page.getByTestId("custody-history-row").first()).toBeVisible();
+
+  // Upload a photo, set it as hero → the hero banner renders; then remove it (cleanup)
+  await page.getByLabel("Upload photos").setInputFiles({ name: "hero.png", mimeType: "image/png", buffer: uniquePng() });
+  await expect(page.getByRole("img", { name: "hero.png" })).toBeVisible();
+  await page.getByRole("button", { name: "Set hero.png as hero photo" }).click();
+  await expect(page.getByTestId("asset-hero")).toBeVisible();
+  await page.getByRole("button", { name: "Remove photo hero.png" }).click();
+  await expect(page.getByTestId("asset-hero")).toHaveCount(0); // hero clears once its photo is gone
+});
+
 // F33 — tags display on the asset detail: add (create-or-reuse) + remove chips.
 test("an asset's tags can be added and removed", async ({ page }) => {
   const tag = `vintage-${Date.now()}`;

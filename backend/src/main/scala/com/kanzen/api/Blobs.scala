@@ -26,7 +26,7 @@ object Blobs {
         case Some(key) =>
           store.getObject(key).map {
             case Some((ct, bytes)) => Right((ct, bytes))
-            case None              => Left(StatusCode.NotFound)
+            case None => Left(StatusCode.NotFound)
           }
       }
     }

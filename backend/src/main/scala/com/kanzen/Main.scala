@@ -64,7 +64,7 @@ object Main extends IOApp.Simple {
           // a per-boot secret signs short-lived blob capability URLs (the local presigned-URL equivalent);
           // the local/dev store serves them via /api/blobs. S3 (AWS SDK + LocalStack) wires in here later.
           blobSecret <- IO(java.util.UUID.randomUUID().toString + java.util.UUID.randomUUID().toString)
-          store      <- ObjectStore.localServed(cfg.publicBaseUrl, blobSecret)
+          store <- ObjectStore.localServed(cfg.publicBaseUrl, blobSecret)
           _ <- log.info(s"Serving api :${cfg.port} (/api,/docs) · admin :${cfg.adminPort} (/health)")
           _ <- Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
             val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))

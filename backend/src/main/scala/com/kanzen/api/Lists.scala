@@ -110,6 +110,7 @@ object Lists {
         .createList(r.propertyId, r.name, r.vendor)
         .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active"))
     ).transact(xa)
+
   /** Reconfigure a list (Manager+). */
   def update(xa: Transactor[IO], p: Principal, listId: UUID, r: EditListReq): IO[Out[ListView]] = {
     val tx = for {
@@ -121,7 +122,11 @@ object Lists {
         else
           ListRepo
             .update(listId, r.name, r.propertyId, r.vendor, r.cycle, r.nextOrder, r.`type`)
-            .as(Right(ListView(listId, r.name, r.vendor, r.propertyId, r.`type`, r.cycle, r.nextOrder, "active")): Out[ListView])
+            .as(
+              Right(ListView(listId, r.name, r.vendor, r.propertyId, r.`type`, r.cycle, r.nextOrder, "active")): Out[
+                ListView
+              ]
+            )
     } yield res
     tx.transact(xa)
   }

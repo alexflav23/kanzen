@@ -9,11 +9,16 @@ import { Plus } from "../components/icons";
 import { MediaGallery } from "../components/MediaGallery";
 import { TagChips } from "../components/TagChips";
 import {
-  editAsset, getAsset, getAssetTimeline, getInsurance, getValuations, listWarranties, logAssetEvent, recordValuation,
+  changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
+  logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
   type AssetDetail as AssetDetailT,
 } from "../services/assets";
 import { listCategories } from "../services/categories";
 import { collectionsForAsset } from "../services/collections";
+import { documentsFor } from "../services/documents";
+import { listProperties } from "../services/properties";
+import { listLocations } from "../services/locations";
+import { Move } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -31,6 +36,15 @@ const styles = stylex.create({
   note: { padding: "14px 20px", fontSize: "12.5px", color: colors.ink3 },
   section: { marginTop: "24px" },
   cardPad: { padding: "16px 20px" },
+  heroWrap: { width: "100%", height: "240px", borderRadius: radius.lg, overflow: "hidden", marginBottom: "20px", backgroundColor: colors.bgSunken, border: `1px solid ${colors.line}` },
+  heroImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  kvActions: { display: "flex", gap: "8px", padding: "12px 20px", borderBottom: `1px solid ${colors.line}` },
+  kvBtn: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px" },
+  histRow: { display: "flex", gap: "12px", padding: "12px 20px", borderBottom: `1px solid ${colors.line}` },
+  histGrow: { flex: 1, minWidth: 0 },
+  histTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink },
+  histSub: { fontSize: "12px", color: colors.ink3, marginTop: "2px" },
+  histWhen: { fontSize: "12px", color: colors.ink3, flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   grow: { flex: 1 },
   evTitle: { fontSize: "13.5px", fontWeight: 500, textTransform: "capitalize" },
   evSub: { fontSize: "12px", color: colors.ink3 },
@@ -59,6 +73,9 @@ function money(minor: number | null, currency: string | null): string {
 
 // Mirrors the backend's allowed lifecycle event types (api.AssetEvents.TYPES).
 const EVENT_TYPES = ["serviced", "repaired", "cleaned", "moved", "appraised", "inspected", "restored", "lent", "returned", "note"];
+
+const humanCustody = (s: string) => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+const fmtWhen = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 function LogEventModal({ id, token, onClose }: { id: string; token: string | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -172,6 +189,82 @@ function EditAssetModal(
   );
 }
 
+function MoveModal({ asset, token, onClose }: { asset: AssetDetailT; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const [propertyId, setPropertyId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [note, setNote] = useState("");
+  const locsQ = useQuery({ queryKey: ["locations", propertyId, token], queryFn: () => listLocations(propertyId, token), enabled: !!propertyId });
+  const mutation = useMutation({
+    mutationFn: () => moveAsset(asset.id, token, { locationId: locationId || null, note: note.trim() || null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["asset", asset.id] });
+      qc.invalidateQueries({ queryKey: ["asset-history", asset.id] });
+      onClose();
+    },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="move-asset" onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+            onSubmit={(e) => { e.preventDefault(); if (locationId) mutation.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Move asset</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Property</span>
+          <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => { setPropertyId(e.target.value); setLocationId(""); }}>
+            <option value="" disabled>Select a property…</option>
+            {(propsQ.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Location</span>
+          <select {...stylex.props(styles.control)} aria-label="Location" value={locationId} disabled={!propertyId} onChange={(e) => setLocationId(e.target.value)}>
+            <option value="" disabled>{propertyId ? "Select a location…" : "Pick a property first"}</option>
+            {(locsQ.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Note (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. moved to the safe" /></label>
+        {mutation.isError && <div {...stylex.props(styles.note)}>Couldn’t move — the location may be out of your scope.</div>}
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending || !locationId}>{mutation.isPending ? "Moving…" : "Move"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CustodyModal({ asset, token, onClose }: { asset: AssetDetailT; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState(asset.custodyStatus);
+  const [note, setNote] = useState("");
+  const mutation = useMutation({
+    mutationFn: () => changeCustody(asset.id, token, { custodyStatus: status, note: note.trim() || null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["asset", asset.id] });
+      qc.invalidateQueries({ queryKey: ["asset-history", asset.id] });
+      onClose();
+    },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="change-custody" onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+            onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Change custody</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Custody</span>
+          <select {...stylex.props(styles.control)} aria-label="Custody" value={status} onChange={(e) => setStatus(e.target.value)}>
+            {CUSTODY_STATUSES.map((s) => <option key={s} value={s}>{humanCustody(s)}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Note (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. sent to AP for service" autoFocus /></label>
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={mutation.isPending}>{mutation.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function AssetDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -179,6 +272,9 @@ export function AssetDetail() {
   const [logging, setLogging] = useState(false);
   const [valuing, setValuing] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [changingCustody, setChangingCustody] = useState(false);
+  const qc = useQueryClient();
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
   const timelineQ = useQuery({ queryKey: ["asset-timeline", id, token], queryFn: () => getAssetTimeline(id, token), enabled: assetQ.isSuccess });
@@ -187,7 +283,12 @@ export function AssetDetail() {
   // Valuation history + insurance are Principal-only; a Manager session 403s — render only on success.
   const valuationsQ = useQuery({ queryKey: ["asset-valuations", id, token], queryFn: () => getValuations(id, token), enabled: assetQ.isSuccess, retry: false });
   const insuranceQ = useQuery({ queryKey: ["asset-insurance", id, token], queryFn: () => getInsurance(id, token), enabled: assetQ.isSuccess, retry: false });
+  // shares the gallery's cache key — the hero is whichever linked photo matches heroDocumentId
+  const photosQ = useQuery({ queryKey: ["docs-for", "asset", id, token], queryFn: () => documentsFor("asset", id, token), enabled: assetQ.isSuccess });
+  const historyQ = useQuery({ queryKey: ["asset-history", id, token], queryFn: () => getAssetHistory(id, token), enabled: assetQ.isSuccess });
+  const setHero = useMutation({ mutationFn: (docId: string) => setHeroPhoto(id, token, docId), onSuccess: () => qc.invalidateQueries({ queryKey: ["asset", id] }) });
   const isPrincipal = can("*", "admin");
+  const canWrite = can("asset", "write");
 
   const back = <button type="button" onClick={() => navigate("/inventory")} {...stylex.props(styles.back)}>← Inventory</button>;
   if (assetQ.isPending) return <div {...stylex.props(styles.page)}>{back}<Loading label="Loading the asset…" /></div>;
@@ -197,6 +298,9 @@ export function AssetDetail() {
   const categoryName = (catsQ.data ?? []).find((c) => c.id === a.categoryId)?.name ?? "—";
   const attrs = Object.entries(a.attributes ?? {});
   const modeLabel = a.trackingMode === "grouped_quantity" ? `grouped ×${a.quantity}` : a.trackingMode.replace("_", " ");
+  const heroUrl = (photosQ.data ?? []).find((d) => d.id === a.heroDocumentId)?.url;
+  const locationLabel = a.propertyName ? [a.propertyName, a.locationName].filter(Boolean).join(" · ") : "—";
+  const history = historyQ.data;
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -204,6 +308,13 @@ export function AssetDetail() {
       {logging && <LogEventModal id={id} token={token} onClose={() => setLogging(false)} />}
       {valuing && <RecordValuationModal id={id} token={token} onClose={() => setValuing(false)} />}
       {editing && <EditAssetModal asset={assetQ.data} categories={catsQ.data ?? []} token={token} onClose={() => setEditing(false)} />}
+      {moving && <MoveModal asset={a} token={token} onClose={() => setMoving(false)} />}
+      {changingCustody && <CustodyModal asset={a} token={token} onClose={() => setChangingCustody(false)} />}
+      {heroUrl && (
+        <div {...stylex.props(styles.heroWrap)} data-testid="asset-hero">
+          <img {...stylex.props(styles.heroImg)} src={heroUrl} alt={`${a.title} — hero photo`} />
+        </div>
+      )}
       <div>
         {a.maker && <div {...stylex.props(styles.eyebrow)}>{a.maker}</div>}
         <h1 {...stylex.props(styles.title)}>{a.title}</h1>
@@ -221,7 +332,14 @@ export function AssetDetail() {
         <Card>
           <CardHeader><CardTitle>Photos</CardTitle></CardHeader>
           <div {...stylex.props(styles.cardPad)}>
-            <MediaGallery targetType="asset" targetId={id} label="photos" readOnly={!can("asset", "write")} />
+            <MediaGallery
+              targetType="asset"
+              targetId={id}
+              label="photos"
+              readOnly={!canWrite}
+              heroDocumentId={a.heroDocumentId}
+              onSetHero={canWrite ? (docId) => setHero.mutate(docId) : undefined}
+            />
           </div>
         </Card>
       </div>
@@ -237,6 +355,14 @@ export function AssetDetail() {
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Quantity</span><span {...stylex.props(styles.kvV)}>{a.quantity}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquisition</span><span {...stylex.props(styles.kvV)}>{money(a.acquisitionCostMinor, a.acquisitionCurrency)}</span></div>
           {a.acquisitionDate && <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquired</span><span {...stylex.props(styles.kvV)}>{new Date(`${a.acquisitionDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div>}
+          <div {...stylex.props(styles.kv)} data-testid="kv-location"><span {...stylex.props(styles.kvK)}>Location</span><span {...stylex.props(styles.kvV)}>{locationLabel}</span></div>
+          <div {...stylex.props(styles.kv)} data-testid="kv-custody"><span {...stylex.props(styles.kvK)}>Custody</span><span {...stylex.props(styles.kvV)}>{humanCustody(a.custodyStatus)}</span></div>
+          {canWrite && (
+            <div {...stylex.props(styles.kvActions)}>
+              <button type="button" {...stylex.props(styles.kvBtn)} data-testid="move-btn" onClick={() => setMoving(true)}><Move size={12} /> Move</button>
+              <button type="button" {...stylex.props(styles.kvBtn)} data-testid="custody-btn" onClick={() => setChangingCustody(true)}>Change custody</button>
+            </div>
+          )}
           {(collectionsQ.data?.length ?? 0) > 0 && (
             <div {...stylex.props(styles.kv)} data-testid="asset-collections">
               <span {...stylex.props(styles.kvK)}>Collections</span>
@@ -291,6 +417,32 @@ export function AssetDetail() {
             )}
         </Card>
       </div>
+
+      {((history?.location.length ?? 0) > 0 || (history?.custody.length ?? 0) > 0) && (
+        <div {...stylex.props(styles.section)}>
+          <Card>
+            <CardHeader><CardTitle>Location &amp; custody history</CardTitle></CardHeader>
+            {history!.location.map((h) => (
+              <div {...stylex.props(styles.histRow)} key={h.id} data-testid="location-history-row">
+                <div {...stylex.props(styles.histGrow)}>
+                  <div {...stylex.props(styles.histTitle)}>Moved to {[h.propertyName, h.locationName].filter(Boolean).join(" · ") || "unspecified"}</div>
+                  <div {...stylex.props(styles.histSub)}>{[h.movedBy && `by ${h.movedBy}`, h.note].filter(Boolean).join(" · ") || " "}</div>
+                </div>
+                <span {...stylex.props(styles.histWhen)}>{fmtWhen(h.movedAt)}</span>
+              </div>
+            ))}
+            {history!.custody.map((h) => (
+              <div {...stylex.props(styles.histRow)} key={h.id} data-testid="custody-history-row">
+                <div {...stylex.props(styles.histGrow)}>
+                  <div {...stylex.props(styles.histTitle)}>Custody → {humanCustody(h.custodyStatus)}</div>
+                  <div {...stylex.props(styles.histSub)}>{[h.changedBy && `by ${h.changedBy}`, h.note].filter(Boolean).join(" · ") || " "}</div>
+                </div>
+                <span {...stylex.props(styles.histWhen)}>{fmtWhen(h.changedAt)}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
 
       {isPrincipal && (
         <div {...stylex.props(styles.section)}>

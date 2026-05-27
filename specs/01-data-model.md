@@ -44,7 +44,7 @@ A cross-feature view of every table, the key relationships, and the **Flyway mig
 - **Extensibility (F33)**: polymorphic `entity_tags(tag_id, entity_type, entity_id)` + `entity_taxonomy_links(taxonomy_node_id, entity_type, entity_id)` (no entity FKs — works for any object); `taxonomy_nodes.parent_id` = infinite tree; `attributes jsonb` on every extensible entity (the asset `categories` tree is the built-in `is_system` taxonomy).
 
 ## Cross-feature watch-list (resolved by ordering/notes above)
-- `asset_location_history`/`asset_custody_history` are **defined in F03** but their **asset FK is added in F04** (assets exist later).
+- `asset_location_history`/`asset_custody_history` (+ `assets.hero_document_id`) land in **`V2_66_0` (F04 W1.4)** — append-only move/custody history (actor + timestamp) written alongside the current-value update; hero references an immutable F05 document.
 - `users.role` (text, F01) becomes **`users.role_id` (FK, F02)** — backfill by name.
 - `notifications` (F06) and `reminders` (F11) are **shared infra** consumed by many features (agent, finance, HR, backup).
 - `merchants` (F12) reused by F13 (receipts) and F14 (reconciliation).

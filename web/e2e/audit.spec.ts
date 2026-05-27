@@ -71,7 +71,8 @@ test("full UI audit: every route + interaction is clean", async ({ page }, testI
 
   where.v = "property-bible";
   await nav.getByRole("link", { name: "Properties", exact: true }).click();
-  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByRole("heading", { name: "Properties", exact: true })).toBeVisible(); // list rendered (prior detail unmounted)
+  await page.getByText("Wardian — Apt 5206").first().click();
   await expect(page.getByText("Particulars")).toBeVisible();
 
   // Finance tabs (each tab fetches; watch for query/render errors)

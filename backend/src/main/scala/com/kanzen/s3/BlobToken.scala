@@ -40,7 +40,7 @@ object BlobToken {
           else
             new String(payload, StandardCharsets.UTF_8).split("\\|", 2) match {
               case Array(key, exp) if exp.toLong >= nowEpochSec => Some(key)
-              case _                                            => None
+              case _ => None
             }
         }.toOption.flatten
       case _ => None

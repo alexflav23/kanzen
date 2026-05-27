@@ -3,13 +3,26 @@ package com.kanzen.api
 import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.all._
-import com.kanzen.asset.{Asset, AssetRepo, Category, TemplateRepo, TemplateService, ValuationRepo}
+import com.kanzen.asset.{
+  Asset,
+  AssetRepo,
+  Category,
+  CustodyHistoryRow,
+  LocationHistoryRow,
+  TemplateRepo,
+  TemplateService,
+  ValuationRepo
+}
+import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
+import com.kanzen.docs.DocumentRepo
+import com.kanzen.property.PropertyRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.Json
+import io.circe.syntax._
 import io.circe.generic.auto._
 import sttp.model.StatusCode
 import sttp.tapir._
@@ -57,12 +70,37 @@ object Assets {
       ownershipStatus: String,
       locationId: Option[UUID],
       attributes: Json,
+      custodyStatus: String,
+      heroDocumentId: Option[UUID],
+      // resolved current-location label (W1.4)
+      locationName: Option[String] = None,
+      propertyName: Option[String] = None,
       // F20 — Principal-only; stripped server-side for Manager (F02/F04 AC5)
       marketValueMinor: Option[Long] = None,
       insuredValueMinor: Option[Long] = None,
       valuationCurrency: Option[String] = None
   )
   final case class CategoryView(id: UUID, name: String, parentId: Option[UUID])
+  // W1.4 — move / custody / hero requests + history views
+  final case class MoveReq(locationId: Option[UUID], note: Option[String])
+  final case class CustodyReq(custodyStatus: String, note: Option[String])
+  final case class HeroReq(documentId: UUID)
+  final case class LocationHistoryView(
+      id: UUID,
+      locationName: Option[String],
+      propertyName: Option[String],
+      movedBy: Option[String],
+      movedAt: String,
+      note: Option[String]
+  )
+  final case class CustodyHistoryView(
+      id: UUID,
+      custodyStatus: String,
+      changedBy: Option[String],
+      changedAt: String,
+      note: Option[String]
+  )
+  final case class HistoryView(location: List[LocationHistoryView], custody: List[CustodyHistoryView])
   final case class CreateReq(
       title: String,
       maker: Option[String],
@@ -81,8 +119,18 @@ object Assets {
 
   private def view(card: (Asset, Option[UUID])): AssetView = {
     val a = card._1
-    AssetView(a.id, a.title, a.maker, a.categoryId, a.trackingMode, a.quantity, a.ownershipStatus,
-      a.acquisitionCostMinor, a.acquisitionCurrency, card._2)
+    AssetView(
+      a.id,
+      a.title,
+      a.maker,
+      a.categoryId,
+      a.trackingMode,
+      a.quantity,
+      a.ownershipStatus,
+      a.acquisitionCostMinor,
+      a.acquisitionCurrency,
+      card._2
+    )
   }
   private def detailOf(a: Asset): AssetDetail =
     AssetDetail(
@@ -99,8 +147,13 @@ object Assets {
       a.acquisitionDate,
       a.ownershipStatus,
       a.locationId,
-      a.attributes
+      a.attributes,
+      a.custodyStatus,
+      a.heroDocumentId
     )
+
+  private val CUSTODY =
+    Set("with_owner", "with_manager", "on_loan", "in_storage", "with_repair_shop", "in_transit")
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to the registry"))
@@ -118,7 +171,9 @@ object Assets {
       status: Option[String] = None
   ): IO[Out[List[AssetView]]] = {
     def run(cats: Option[NonEmptyList[UUID]]) =
-      AssetRepo.list(cats, q, vertical, property, collection, status).map(as => Right(as.map(view)): Out[List[AssetView]])
+      AssetRepo
+        .list(cats, q, vertical, property, collection, status)
+        .map(as => Right(as.map(view)): Out[List[AssetView]])
     val tx = Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
       else
@@ -127,7 +182,7 @@ object Assets {
           case Some(cid) =>
             AssetRepo.categoryDescendants(cid).flatMap { ds =>
               NonEmptyList.fromList(ds) match {
-                case None      => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
+                case None => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
                 case Some(nel) => run(Some(nel))
               }
             }
@@ -147,8 +202,9 @@ object Assets {
     tx.transact(xa)
   }
 
-  def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[AssetDetail]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+  /** Build the field-filtered detail (valuation stripping + resolved location label) for a principal. */
+  private def loadDetail(p: Principal, id: UUID): ConnectionIO[Out[AssetDetail]] =
+    Authz.authorizer(p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
       else
         AssetRepo.get(id).flatMap {
@@ -162,8 +218,12 @@ object Assets {
             val ins =
               if (authz.canRead("asset", Some("insured_value"))) ValuationRepo.latest(a.id, "insured")
               else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
-            for { m <- mkt; i <- ins } yield Right(
+            val lbl = a.locationId
+              .fold(Option.empty[com.kanzen.asset.LocationLabel].pure[ConnectionIO])(AssetRepo.locationLabel)
+            for { m <- mkt; i <- ins; l <- lbl } yield Right(
               detailOf(a).copy(
+                locationName = l.map(_.locationName),
+                propertyName = l.map(_.propertyName),
                 marketValueMinor = m.map(_.amountMinor),
                 insuredValueMinor = i.map(_.amountMinor),
                 valuationCurrency = m.map(_.currency).orElse(i.map(_.currency))
@@ -171,8 +231,9 @@ object Assets {
             ): Out[AssetDetail]
         }
     }
-    tx.transact(xa)
-  }
+
+  def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[AssetDetail]] =
+    loadDetail(p, id).transact(xa)
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[AssetDetail]] = {
     if (!MODES.contains(req.trackingMode))
@@ -242,12 +303,139 @@ object Assets {
     }
   }
 
+  /** Move the asset to a new location — Manager+. The target location must be in the actor's scope (AC4: a
+    * Wardian-scoped Manager moving to a Singapore location → 403). Updates the current location AND writes an
+    * `asset_location_history` row (corrections are events) + audit.
+    */
+  def move(xa: Transactor[IO], p: Principal, id: UUID, req: MoveReq): IO[Out[AssetDetail]] = {
+    val tx = for {
+      authz <- Authz.authorizer(p.role)
+      exists <- AssetRepo.exists(id)
+      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      targetProp <- req.locationId.fold(Option.empty[UUID].pure[ConnectionIO])(AssetRepo.propertyOfLocation)
+      res <-
+        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
+        else if (req.locationId.isDefined && targetProp.isEmpty)
+          (Left(badReq("location not found")): Out[Unit]).pure[ConnectionIO]
+        else if (targetProp.exists(tp => !scoped.contains(tp)))
+          (Left(forbidden): Out[Unit]).pure[ConnectionIO] // AC4 — target location out of the actor's scope
+        else
+          (AssetRepo.move(id, req.locationId, p.userId, req.note) *>
+            AuditRepo.write(
+              "user",
+              Some(p.userId),
+              "asset.move",
+              Some("asset"),
+              Some(id),
+              Json.obj("locationId" -> req.locationId.map(_.toString).asJson, "note" -> req.note.asJson),
+              Some(p.userId)
+            )).as(Right(()): Out[Unit])
+    } yield res
+    tx.transact(xa).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(_) => detail(xa, p, id) // refreshed detail (resolved location label)
+    }
+  }
+
+  /** Change custody — Manager+. Updates current custody AND writes an `asset_custody_history` row + audit. */
+  def changeCustody(xa: Transactor[IO], p: Principal, id: UUID, req: CustodyReq): IO[Out[AssetDetail]] =
+    if (!CUSTODY.contains(req.custodyStatus))
+      IO.pure(Left(badReq(s"custody_status must be one of ${CUSTODY.mkString(", ")}")))
+    else {
+      val tx = for {
+        authz <- Authz.authorizer(p.role)
+        exists <- AssetRepo.exists(id)
+        res <-
+          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+          else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
+          else
+            (AssetRepo.changeCustody(id, req.custodyStatus, p.userId, req.note) *>
+              AuditRepo.write(
+                "user",
+                Some(p.userId),
+                "asset.custody",
+                Some("asset"),
+                Some(id),
+                Json.obj("custodyStatus" -> req.custodyStatus.asJson, "note" -> req.note.asJson),
+                Some(p.userId)
+              )).as(Right(()): Out[Unit])
+      } yield res
+      tx.transact(xa).flatMap {
+        case Left(e) => IO.pure(Left(e))
+        case Right(_) => detail(xa, p, id)
+      }
+    }
+
+  /** Set the hero photo from an existing document (F05) — Manager+. */
+  def setHero(xa: Transactor[IO], p: Principal, id: UUID, req: HeroReq): IO[Out[AssetDetail]] = {
+    val tx = for {
+      authz <- Authz.authorizer(p.role)
+      exists <- AssetRepo.exists(id)
+      doc <- DocumentRepo.find(req.documentId)
+      res <-
+        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
+        else if (doc.isEmpty) (Left(badReq("document not found")): Out[Unit]).pure[ConnectionIO]
+        else
+          (AssetRepo.setHero(id, req.documentId) *>
+            AuditRepo.write(
+              "user",
+              Some(p.userId),
+              "asset.hero",
+              Some("asset"),
+              Some(id),
+              Json.obj("documentId" -> req.documentId.toString.asJson),
+              Some(p.userId)
+            )).as(Right(()): Out[Unit])
+    } yield res
+    tx.transact(xa).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(_) => detail(xa, p, id)
+    }
+  }
+
+  /** Location + custody history (newest first) — Manager+ read. */
+  def history(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[HistoryView]] = {
+    val tx = Authz.authorizer(p.role).flatMap { authz =>
+      if (!authz.canRead("asset")) (Left(forbidden): Out[HistoryView]).pure[ConnectionIO]
+      else
+        for {
+          loc <- AssetRepo.locationHistory(id)
+          cus <- AssetRepo.custodyHistory(id)
+        } yield Right(
+          HistoryView(
+            loc.map((r: LocationHistoryRow) =>
+              LocationHistoryView(r.id, r.locationName, r.propertyName, r.movedBy, r.movedAt.toString, r.note)
+            ),
+            cus.map((r: CustodyHistoryRow) =>
+              CustodyHistoryView(r.id, r.custodyStatus, r.changedBy, r.changedAt.toString, r.note)
+            )
+          )
+        ): Out[HistoryView]
+    }
+    tx.transact(xa)
+  }
+
   // ---- endpoints ----
   private val err = statusCode.and(jsonBody[ApiError])
 
-  val listEndpoint: Endpoint[String, (Option[UUID], Option[String], Option[String], Option[UUID], Option[
-    UUID
-  ], Option[String]), (StatusCode, ApiError), List[AssetView], Any] =
+  val listEndpoint: Endpoint[
+    String,
+    (
+        Option[UUID],
+        Option[String],
+        Option[String],
+        Option[UUID],
+        Option[
+          UUID
+        ],
+        Option[String]
+    ),
+    (StatusCode, ApiError),
+    List[AssetView],
+    Any
+  ] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
       .in("api" / "assets")
@@ -295,6 +483,41 @@ object Assets {
       .out(jsonBody[List[CategoryView]])
       .summary("The asset category tree (Principal-private)")
 
+  val moveEndpoint: Endpoint[String, (UUID, MoveReq), (StatusCode, ApiError), AssetDetail, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("id") / "location")
+      .in(jsonBody[MoveReq])
+      .errorOut(err)
+      .out(jsonBody[AssetDetail])
+      .summary("Move an asset to a location (Manager+; target must be in scope) — writes location history")
+
+  val custodyEndpoint: Endpoint[String, (UUID, CustodyReq), (StatusCode, ApiError), AssetDetail, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("id") / "custody")
+      .in(jsonBody[CustodyReq])
+      .errorOut(err)
+      .out(jsonBody[AssetDetail])
+      .summary("Change an asset's custody (Manager+) — writes custody history")
+
+  val heroEndpoint: Endpoint[String, (UUID, HeroReq), (StatusCode, ApiError), AssetDetail, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("id") / "hero-photo")
+      .in(jsonBody[HeroReq])
+      .errorOut(err)
+      .out(jsonBody[AssetDetail])
+      .summary("Set an asset's hero photo from a document (Manager+)")
+
+  val historyEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), HistoryView, Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("id") / "history")
+      .errorOut(err)
+      .out(jsonBody[HistoryView])
+      .summary("Location + custody history for an asset (newest first)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint
       .serverSecurityLogic(a.securityLogic)
@@ -304,9 +527,25 @@ object Assets {
     patchEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (id: UUID, r: EditReq) => update(xa, p, id, r) }),
-    categoriesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => categories(xa, p))
+    categoriesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => categories(xa, p)),
+    moveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => move(xa, p, id, r) }),
+    custodyEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, r) => changeCustody(xa, p, id, r) }),
+    heroEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => setHero(xa, p, id, r) }),
+    historyEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => history(xa, p, id))
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(listEndpoint, detailEndpoint, createEndpoint, patchEndpoint, categoriesEndpoint)
+    List(
+      listEndpoint,
+      detailEndpoint,
+      createEndpoint,
+      patchEndpoint,
+      categoriesEndpoint,
+      moveEndpoint,
+      custodyEndpoint,
+      heroEndpoint,
+      historyEndpoint
+    )
 }

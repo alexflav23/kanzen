@@ -11,6 +11,7 @@ import java.security.MessageDigest
 trait ObjectStore {
   def put(key: String, contentType: String, bytes: Array[Byte]): IO[Unit]
   def get(key: String): IO[Option[Array[Byte]]]
+
   /** The stored content-type + bytes, for serving back (the blob capability endpoint). */
   def getObject(key: String): IO[Option[(String, Array[Byte])]]
   def exists(key: String): IO[Boolean]

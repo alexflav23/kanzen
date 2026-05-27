@@ -24,16 +24,41 @@ final case class Asset(
     acquisitionDate: Option[LocalDate],
     ownershipStatus: String,
     locationId: Option[UUID],
-    attributes: Json
+    attributes: Json,
+    custodyStatus: String,
+    heroDocumentId: Option[UUID]
 )
 
 final case class Category(id: UUID, name: String, parentId: Option[UUID])
+
+/** A resolved current-location label for the asset detail (property + node). */
+final case class LocationLabel(locationName: String, propertyId: UUID, propertyName: String)
+
+/** Append-only location-move history (newest first), with resolved names. */
+final case class LocationHistoryRow(
+    id: UUID,
+    locationName: Option[String],
+    propertyName: Option[String],
+    movedBy: Option[String],
+    movedAt: java.time.Instant,
+    note: Option[String]
+)
+
+/** Append-only custody-change history (newest first). */
+final case class CustodyHistoryRow(
+    id: UUID,
+    custodyStatus: String,
+    changedBy: Option[String],
+    changedAt: java.time.Instant,
+    note: Option[String]
+)
 
 /** F04 — asset registry core. Vertical attributes are a JSONB column (not EAV). */
 object AssetRepo {
   private val cols =
     fr"""id, title, maker, category_id, vertical, tracking_mode, quantity, parent_asset_id,
-         acquisition_cost_minor, acquisition_currency, acquisition_date, ownership_status, location_id, attributes"""
+         acquisition_cost_minor, acquisition_currency, acquisition_date, ownership_status, location_id, attributes,
+         custody_status, hero_document_id"""
 
   def createCategory(name: String, parentId: Option[UUID]): ConnectionIO[UUID] =
     sql"insert into categories (name, parent_id) values ($name, $parentId) returning id".query[UUID].unique
@@ -118,11 +143,11 @@ object AssetRepo {
   private val cardCols =
     fr"""a.id, a.title, a.maker, a.category_id, a.vertical, a.tracking_mode, a.quantity, a.parent_asset_id,
          a.acquisition_cost_minor, a.acquisition_currency, a.acquisition_date, a.ownership_status, a.location_id,
-         a.attributes, loc.property_id"""
+         a.attributes, a.custody_status, a.hero_document_id, loc.property_id"""
 
-  /** Faceted list for the Inventory grid. Joins locations to resolve the property (for the Property
-    * facet + value rollups) and collection_members when a collection facet is applied. Returns each
-    * asset paired with its resolved `property_id`.
+  /** Faceted list for the Inventory grid. Joins locations to resolve the property (for the Property facet + value
+    * rollups) and collection_members when a collection facet is applied. Returns each asset paired with its resolved
+    * `property_id`.
     */
   def list(
       categoryIds: Option[NonEmptyList[UUID]],
@@ -147,4 +172,49 @@ object AssetRepo {
     (fr"select" ++ cardCols ++ fr"from assets a left join locations loc on loc.id = a.location_id" ++ join ++
       fr"where" ++ where ++ fr"order by a.title").query[(Asset, Option[UUID])].to[List]
   }
+
+  // ---- move / custody / hero (W1.4) ------------------------------------------------------------
+  /** The property a location belongs to (for scope checks on a target location). */
+  def propertyOfLocation(locationId: UUID): ConnectionIO[Option[UUID]] =
+    sql"select property_id from locations where id = $locationId".query[UUID].option
+
+  /** A resolved current-location label (property + node) for the asset detail. */
+  def locationLabel(locationId: UUID): ConnectionIO[Option[LocationLabel]] =
+    sql"""select loc.name, p.id, p.name from locations loc join properties p on p.id = loc.property_id
+          where loc.id = $locationId""".query[LocationLabel].option
+
+  /** Move the asset: update its current location AND append a history row (corrections are events). */
+  def move(assetId: UUID, locationId: Option[UUID], actor: UUID, note: Option[String]): ConnectionIO[Int] =
+    for {
+      n <-
+        sql"update assets set location_id = $locationId, updated_at = now() where id = $assetId and deleted_at is null".update.run
+      _ <- sql"""insert into asset_location_history (asset_id, location_id, moved_by, note)
+                 values ($assetId, $locationId, $actor, $note)""".update.run
+    } yield n
+
+  /** Change custody: update current custody AND append a history row. */
+  def changeCustody(assetId: UUID, status: String, actor: UUID, note: Option[String]): ConnectionIO[Int] =
+    for {
+      n <-
+        sql"update assets set custody_status = $status, updated_at = now() where id = $assetId and deleted_at is null".update.run
+      _ <- sql"""insert into asset_custody_history (asset_id, custody_status, changed_by, note)
+                 values ($assetId, $status, $actor, $note)""".update.run
+    } yield n
+
+  /** Set the asset's hero photo to a document (F05). */
+  def setHero(assetId: UUID, documentId: UUID): ConnectionIO[Int] =
+    sql"update assets set hero_document_id = $documentId, updated_at = now() where id = $assetId and deleted_at is null".update.run
+
+  def locationHistory(assetId: UUID): ConnectionIO[List[LocationHistoryRow]] =
+    sql"""select h.id, loc.name, p.name, u.display_name, h.moved_at, h.note
+          from asset_location_history h
+          left join locations loc on loc.id = h.location_id
+          left join properties p on p.id = loc.property_id
+          left join users u on u.id = h.moved_by
+          where h.asset_id = $assetId order by h.moved_at desc""".query[LocationHistoryRow].to[List]
+
+  def custodyHistory(assetId: UUID): ConnectionIO[List[CustodyHistoryRow]] =
+    sql"""select h.id, h.custody_status, u.display_name, h.changed_at, h.note
+          from asset_custody_history h left join users u on u.id = h.changed_by
+          where h.asset_id = $assetId order by h.changed_at desc""".query[CustodyHistoryRow].to[List]
 }

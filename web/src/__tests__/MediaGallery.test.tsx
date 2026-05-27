@@ -68,4 +68,19 @@ describe("MediaGallery", () => {
     expect(screen.queryByRole("button", { name: "Add photos" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove photo/ })).not.toBeInTheDocument();
   });
+
+  it("offers a set-hero control and marks the current hero (when onSetHero given)", async () => {
+    const onSetHero = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AuthProvider>
+          <MediaGallery targetType="asset" targetId="a1" heroDocumentId="d1" onSetHero={onSetHero} />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+    // d1 is the current hero → its control reads "is the hero photo"
+    expect(await screen.findByRole("button", { name: "fridge.jpg is the hero photo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "fridge.jpg is the hero photo" }));
+    expect(onSetHero).toHaveBeenCalledWith("d1");
+  });
 });

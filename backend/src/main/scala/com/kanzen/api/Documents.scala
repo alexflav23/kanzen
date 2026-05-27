@@ -53,6 +53,7 @@ object Documents {
   final case class LinkReq(targetType: String, targetId: UUID, role: Option[String])
   final case class PresignResult(url: String, expiresInSeconds: Int)
   final case class OkResult(ok: Boolean)
+
   /** A document attached to a target, with a ready-to-render presigned URL (for galleries/thumbnails). */
   final case class LinkedDoc(
       id: UUID,
@@ -235,7 +236,9 @@ object Documents {
           .traverse(d =>
             d.s3Key match {
               case Some(k) =>
-                store.presignGet(k, PRESIGN_TTL).map(u => Some(LinkedDoc(d.id, d.name, d.contentType, d.sizeBytes, u, PRESIGN_TTL)))
+                store
+                  .presignGet(k, PRESIGN_TTL)
+                  .map(u => Some(LinkedDoc(d.id, d.name, d.contentType, d.sizeBytes, u, PRESIGN_TTL)))
               case None => IO.pure(None)
             }
           )
@@ -305,8 +308,7 @@ object Documents {
       .out(jsonBody[OkResult])
       .summary("Soft-delete (metadata only; the original is retained)")
 
-  val forTargetEndpoint
-      : Endpoint[String, (String, UUID), (StatusCode, ApiError), List[LinkedDoc], Any] =
+  val forTargetEndpoint: Endpoint[String, (String, UUID), (StatusCode, ApiError), List[LinkedDoc], Any] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
       .in("api" / "documents" / "for" / path[String]("targetType") / path[UUID]("targetId"))
@@ -314,8 +316,7 @@ object Documents {
       .out(jsonBody[List[LinkedDoc]])
       .summary("Documents attached to a target, each with a presigned URL (galleries)")
 
-  val unlinkEndpoint
-      : Endpoint[String, (UUID, String, UUID), (StatusCode, ApiError), OkResult, Any] =
+  val unlinkEndpoint: Endpoint[String, (UUID, String, UUID), (StatusCode, ApiError), OkResult, Any] =
     sttp.tapir.endpoint.delete
       .securityIn(auth.bearer[String]())
       .in("api" / "documents" / path[UUID]("id") / "links" / path[String]("targetType") / path[UUID]("targetId"))
@@ -339,5 +340,14 @@ object Documents {
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(uploadEndpoint, listEndpoint, detailEndpoint, downloadEndpoint, linkEndpoint, deleteEndpoint, forTargetEndpoint, unlinkEndpoint)
+    List(
+      uploadEndpoint,
+      listEndpoint,
+      detailEndpoint,
+      downloadEndpoint,
+      linkEndpoint,
+      deleteEndpoint,
+      forTargetEndpoint,
+      unlinkEndpoint
+    )
 }

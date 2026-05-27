@@ -25,6 +25,11 @@ export const AssetDetailSchema = AssetViewSchema.extend({
   acquisitionDate: z.string().nullable(),
   locationId: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
+  custodyStatus: z.string(),
+  heroDocumentId: z.string().nullable(),
+  // W1.4 — resolved current-location label
+  locationName: z.string().nullable().optional(),
+  propertyName: z.string().nullable().optional(),
   // F20 — Principal-only; absent/null for Manager (stripped server-side)
   marketValueMinor: z.number().nullable().optional(),
   insuredValueMinor: z.number().nullable().optional(),
@@ -139,4 +144,49 @@ export function editAsset(id: string, token: string | null, req: EditAssetReq): 
 
 export function createAsset(req: CreateAssetReq, token: string | null): Promise<AssetDetail> {
   return api("/api/assets", AssetDetailSchema, { method: "POST", body: req, token });
+}
+
+// ---- W1.4: move / custody / hero / history --------------------------------------------------
+
+/** Move the asset to a location (Manager+; target must be in scope) — writes location history. */
+export function moveAsset(id: string, token: string | null, body: { locationId: string | null; note: string | null }): Promise<AssetDetail> {
+  return api(`/api/assets/${id}/location`, AssetDetailSchema, { method: "POST", token, body });
+}
+
+export const CUSTODY_STATUSES = ["with_owner", "with_manager", "on_loan", "in_storage", "with_repair_shop", "in_transit"] as const;
+
+/** Change the asset's custody (Manager+) — writes custody history. */
+export function changeCustody(id: string, token: string | null, body: { custodyStatus: string; note: string | null }): Promise<AssetDetail> {
+  return api(`/api/assets/${id}/custody`, AssetDetailSchema, { method: "POST", token, body });
+}
+
+/** Set the asset's hero photo from a document (Manager+). */
+export function setHeroPhoto(id: string, token: string | null, documentId: string): Promise<AssetDetail> {
+  return api(`/api/assets/${id}/hero-photo`, AssetDetailSchema, { method: "POST", token, body: { documentId } });
+}
+
+export const LocationHistorySchema = z.object({
+  id: z.string(),
+  locationName: z.string().nullable(),
+  propertyName: z.string().nullable(),
+  movedBy: z.string().nullable(),
+  movedAt: z.string(),
+  note: z.string().nullable(),
+});
+export const CustodyHistorySchema = z.object({
+  id: z.string(),
+  custodyStatus: z.string(),
+  changedBy: z.string().nullable(),
+  changedAt: z.string(),
+  note: z.string().nullable(),
+});
+export const AssetHistorySchema = z.object({
+  location: z.array(LocationHistorySchema),
+  custody: z.array(CustodyHistorySchema),
+});
+export type AssetHistory = z.infer<typeof AssetHistorySchema>;
+
+/** Location + custody history (newest first). */
+export function getAssetHistory(id: string, token: string | null): Promise<AssetHistory> {
+  return api(`/api/assets/${id}/history`, AssetHistorySchema, { token });
 }
