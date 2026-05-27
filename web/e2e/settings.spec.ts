@@ -56,6 +56,28 @@ test("admin manages roles — defaults seeded; create + delete a custom role", a
   await expect(page.getByText(name)).toHaveCount(0);
 });
 
+// F19/W2 — the platform audited action log: an action taken in the app shows up in Settings → Audit log.
+test("the Audit log records platform actions (action → log)", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await page.goto("/settings");
+  // perform an audited action — create a permission set in the Builder (writes rbac.set.create)
+  const name = `Audit Probe ${Date.now()}`;
+  await page.getByLabel("New permission set").fill(name);
+  await page.getByRole("button", { name: "Add set", exact: true }).click();
+  await expect(page.getByText(name).first()).toBeVisible();
+
+  // it appears in the Audit log timeline
+  await page.getByRole("tab", { name: "Audit log" }).click();
+  await expect(page.getByTestId("audit-count")).toBeVisible();
+  await expect(page.getByTestId("timeline-row").first()).toBeVisible();
+  await expect(page.getByText(/rbac set create/).first()).toBeVisible();
+
+  // cleanup the probe set — back to the Builder mode (Permission sets is the Builder's default sub-tab)
+  await page.getByRole("tab", { name: "Builder" }).click();
+  await page.getByRole("button", { name: new RegExp(name) }).click();
+  await page.getByRole("button", { name: "Delete set" }).click();
+});
+
 // Settings is admin-gated — it appears in the nav for the admin (Flavian) principal.
 test("Settings appears in the nav for an admin", async ({ page }) => {
   await page.goto("/");

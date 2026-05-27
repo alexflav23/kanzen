@@ -9,6 +9,7 @@ import { useAuth } from "../state/AuthContext";
 import { createRole, deletePermission, deleteRole, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
 import { ApiError } from "../services/http";
 import { RbacBuilder } from "../features/rbac/RbacBuilder";
+import { AuditLog } from "../features/audit/AuditLog";
 
 // "" = no explicit rule (the role falls back to default-deny / the '*' wildcard).
 const LEVELS = ["", "none", "read", "write", "admin"] as const;
@@ -58,7 +59,7 @@ export function Settings() {
   const roles = useQuery({ queryKey: ["roles", token], queryFn: () => getRoles(token), enabled: can("*", "admin") });
   const perms = useQuery({ queryKey: ["permissions", token], queryFn: () => getPermissions(token), enabled: can("*", "admin") });
 
-  const [mode, setMode] = useState<"builder" | "matrix">("builder");
+  const [mode, setMode] = useState<"builder" | "matrix" | "audit">("builder");
   const [draft, setDraft] = useState({ role: "", resource: "", field: "", level: "read" });
   const [newRole, setNewRole] = useState({ name: "", description: "" });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["permissions"] });
@@ -133,9 +134,13 @@ export function Settings() {
         <button type="button" role="tab" aria-selected={mode === "matrix"} {...stylex.props(styles.modeTab, mode === "matrix" && styles.modeTabActive)} onClick={() => setMode("matrix")}>
           Advanced matrix
         </button>
+        <button type="button" role="tab" aria-selected={mode === "audit"} {...stylex.props(styles.modeTab, mode === "audit" && styles.modeTabActive)} onClick={() => setMode("audit")}>
+          Audit log
+        </button>
       </div>
 
       {mode === "builder" && <RbacBuilder />}
+      {mode === "audit" && <AuditLog />}
 
       {mode === "matrix" && (<>
       <Card style={styles.rolesCard}>
