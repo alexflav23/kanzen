@@ -37,8 +37,8 @@ describe("App shell", () => {
   it("shows the Kanzen brand + the signed-in persona", () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderApp();
-    expect(screen.getByText("Kanzen")).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(nav.getByText("Kanzen")).toBeInTheDocument(); // brand in the sidebar (the boot splash also shows the wordmark)
     expect(nav.getByText("Flavian")).toBeInTheDocument();
     expect(nav.getByText("Sign out")).toBeInTheDocument();
   });

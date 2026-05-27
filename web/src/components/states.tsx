@@ -23,7 +23,7 @@ const styles = stylex.create({
 export function Loading({ label = "Loading…" }: { label?: string }) {
   return (
     <div {...stylex.props(styles.panel)} role="status" aria-live="polite" data-testid="state-loading">
-      <div {...stylex.props(styles.loaderWrap)}><KanzenLoader size={40} /></div>
+      <div {...stylex.props(styles.loaderWrap)}><KanzenLoader size={52} /></div>
       {label}
     </div>
   );

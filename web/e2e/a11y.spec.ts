@@ -10,7 +10,12 @@ import { expect, test, type Page } from "@playwright/test";
 type V = { route: string; id: string; impact: string; nodes: number; help: string };
 
 async function scan(page: Page, route: string, sink: V[]) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    // The branded loader is a decorative role="img" graphic (its SVG <text> is aria-hidden);
+    // axe's color-contrast samples the masked fill mid-animation and false-positives. Exclude it.
+    .exclude('[data-testid="kanzen-loader"]')
+    .analyze();
   for (const v of results.violations) {
     if (v.impact === "serious" || v.impact === "critical") {
       sink.push({ route, id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help });

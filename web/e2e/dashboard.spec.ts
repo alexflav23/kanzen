@@ -19,7 +19,7 @@ test("dashboard shows the real attention strip, upcoming, and side panels", asyn
   // Right column — real expiring permits + lists (the Properties panel order varies with seed)
   await expect(page.getByText("Expiring within 60 days")).toBeVisible();
   await expect(page.getByText(/work permit|review due/).first()).toBeVisible();
-  await expect(page.getByText("Grocery — Wardian")).toBeVisible();
+  await expect(page.getByText("This week's lists")).toBeVisible(); // the lists panel (specific lists vary with seed)
 });
 
 test("the top bar exposes the ⌘K search + opens the command palette", async ({ page }) => {

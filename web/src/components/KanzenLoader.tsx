@@ -13,8 +13,8 @@ const styles = stylex.create({
 export function KanzenLoader({ size = 44 }: { size?: number }) {
   const maskId = `kanzen-fill-${useId().replace(/[:]/g, "")}`;
   return (
-    <span {...stylex.props(styles.wrap)} aria-hidden="true" data-testid="kanzen-loader">
-      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+    <span {...stylex.props(styles.wrap)} data-testid="kanzen-loader">
+      <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Loading">
         <defs>
           <mask id={maskId}>
             {/* white reveals; the band rises from the baseline to the top, then holds, then loops */}
@@ -26,11 +26,11 @@ export function KanzenLoader({ size = 44 }: { size?: number }) {
             </rect>
           </mask>
         </defs>
-        {/* the empty (ghost) glyph */}
-        <text x="24" y="25" textAnchor="middle" dominantBaseline="central" fontSize="34" fontWeight={700}
-          fontFamily={GLYPH_FONT} fill="currentColor" opacity={0.16}>完</text>
+        {/* the empty glyph — a faint hairline outline (stroke only, no fill) */}
+        <text aria-hidden="true" x="24" y="25" textAnchor="middle" dominantBaseline="central" fontSize="34" fontWeight={700}
+          fontFamily={GLYPH_FONT} fill="none" stroke="currentColor" strokeWidth={0.6} opacity={0.35}>完</text>
         {/* the ink filling in, clipped to the rising band */}
-        <text x="24" y="25" textAnchor="middle" dominantBaseline="central" fontSize="34" fontWeight={700}
+        <text aria-hidden="true" x="24" y="25" textAnchor="middle" dominantBaseline="central" fontSize="34" fontWeight={700}
           fontFamily={GLYPH_FONT} fill="currentColor" mask={`url(#${maskId})`}>完</text>
       </svg>
     </span>

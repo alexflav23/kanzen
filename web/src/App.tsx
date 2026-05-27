@@ -23,6 +23,7 @@ import { Backup } from "./pages/Backup";
 import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
 import { CommandPalette } from "./components/CommandPalette";
+import { BootSplash } from "./components/BootSplash";
 import { useTheme } from "./theme/ThemeContext";
 import * as I from "./components/icons";
 import { useAuth } from "./state/AuthContext";
@@ -113,11 +114,11 @@ const initials = (name?: string) => (name ?? "?").split(" ").map((w) => w[0]).sl
 
 export function App() {
   const { token } = useAuth();
-  if (!token) return <DevLogin />;
   return (
-    <BrowserRouter>
-      <Shell />
-    </BrowserRouter>
+    <>
+      {token ? <BrowserRouter><Shell /></BrowserRouter> : <DevLogin />}
+      <BootSplash />
+    </>
   );
 }
 
