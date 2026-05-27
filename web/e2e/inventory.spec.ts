@@ -92,6 +92,13 @@ test("an asset detail shows a Photos gallery; upload renders, remove clears", as
   await expect(thumb).toBeVisible();
   await expect.poll(() => thumb.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
 
+  // clicking the thumbnail opens the full-resolution lightbox; Escape closes it
+  await page.getByRole("button", { name: "View watch.png" }).click();
+  await expect(page.getByTestId("lightbox")).toBeVisible();
+  await expect.poll(() => page.getByTestId("lightbox-image").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("lightbox")).toHaveCount(0);
+
   // remove it again — no dangling photo link is left on the shared seeded asset
   await page.getByRole("button", { name: "Remove photo watch.png" }).click();
   await expect(page.getByRole("img", { name: "watch.png" })).toHaveCount(0);

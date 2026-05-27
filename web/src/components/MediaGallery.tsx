@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Plus, Trash, Image, Star, StarFill } from "./icons";
+import { Lightbox } from "./Lightbox";
 import { documentsFor, unlinkDocument, uploadAndLink } from "../services/documents";
 import { useAuth } from "../state/AuthContext";
 
@@ -10,6 +11,7 @@ const styles = stylex.create({
   wrap: { display: "flex", flexDirection: "column", gap: "8px" },
   grid: { display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" },
   thumb: { position: "relative", width: "64px", height: "64px", borderRadius: radius.sm, overflow: "hidden", border: `1px solid ${colors.line}`, backgroundColor: colors.bgSunken, flexShrink: 0 },
+  viewBtn: { display: "block", width: "100%", height: "100%", padding: 0, border: 0, background: "transparent", cursor: "zoom-in" },
   img: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
   remove: { position: "absolute", top: "3px", right: "3px", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", borderRadius: "999px", border: 0, backgroundColor: colors.scrim, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity .12s ease" },
   hero: { position: "absolute", top: "3px", left: "3px", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", borderRadius: "999px", border: 0, backgroundColor: colors.scrim, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity .12s ease" },
@@ -62,6 +64,7 @@ export function MediaGallery({
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [viewer, setViewer] = useState<number | null>(null);
 
   const key = ["docs-for", targetType, targetId, token];
   const q = useQuery({ queryKey: key, queryFn: () => documentsFor(targetType, targetId, token) });
@@ -93,9 +96,11 @@ export function MediaGallery({
         onDragLeave={readOnly ? undefined : () => setOver(false)}
         onDrop={readOnly ? undefined : (e) => { e.preventDefault(); setOver(false); accept(e.dataTransfer.files); }}
       >
-        {photos.map((d) => (
+        {photos.map((d, i) => (
           <div {...stylex.props(styles.thumb, hoverReveal.group)} key={d.id}>
-            <img {...stylex.props(styles.img)} src={d.url} alt={d.name} loading="lazy" />
+            <button type="button" {...stylex.props(styles.viewBtn)} aria-label={`View ${d.name}`} onClick={() => setViewer(i)}>
+              <img {...stylex.props(styles.img)} src={d.url} alt={d.name} loading="lazy" />
+            </button>
             {onSetHero && (
               <button
                 type="button"
@@ -153,6 +158,8 @@ export function MediaGallery({
         <span {...stylex.props(styles.hint)}>Drag &amp; drop {label} here, or click to upload.</span>
       )}
       {upload.isError && <span {...stylex.props(styles.hint)}>Upload failed — try again.</span>}
+
+      <Lightbox photos={photos} index={viewer} onClose={() => setViewer(null)} onIndex={setViewer} />
     </div>
   );
 }

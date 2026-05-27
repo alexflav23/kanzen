@@ -69,6 +69,14 @@ describe("MediaGallery", () => {
     expect(screen.queryByRole("button", { name: /Remove photo/ })).not.toBeInTheDocument();
   });
 
+  it("opens the full-res lightbox when a thumbnail is clicked", async () => {
+    renderGallery();
+    await screen.findByRole("img", { name: "fridge.jpg" });
+    fireEvent.click(screen.getByRole("button", { name: "View fridge.jpg" }));
+    expect(screen.getByTestId("lightbox")).toBeInTheDocument();
+    expect(screen.getByTestId("lightbox-image")).toHaveAttribute("src", "https://signed/d1");
+  });
+
   it("offers a set-hero control and marks the current hero (when onSetHero given)", async () => {
     const onSetHero = vi.fn();
     render(
