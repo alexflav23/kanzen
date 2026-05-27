@@ -63,7 +63,7 @@ object Locations {
     */
   private def authorizeWrite(p: Principal, propertyId: UUID): ConnectionIO[Out[Unit]] =
     for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       prop <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == propertyId))
     } yield prop match {
       case None => Left(notFound)
@@ -89,7 +89,7 @@ object Locations {
 
   def tree(xa: Transactor[IO], p: Principal, propertyId: UUID): IO[Out[List[LocationView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.exists(_.id == propertyId))
       res <- (authz.canRead("property"), visible) match {
         case (false, _) => (Left(forbidden): Out[List[LocationView]]).pure[ConnectionIO]

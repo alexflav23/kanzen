@@ -58,7 +58,7 @@ object Reconciliation {
     )
 
   def unmatched(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[MatchableTx]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[MatchableTx]]).pure[ConnectionIO]
       else
         BankRepo
@@ -76,7 +76,7 @@ object Reconciliation {
     * [[ReconciliationService.scoreMatch]] (amount/merchant/currency), best first.
     */
   def suggestions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[Suggestion]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[Suggestion]]).pure[ConnectionIO]
       else
         for {
@@ -111,7 +111,7 @@ object Reconciliation {
 
   def matchTxn(xa: Transactor[IO], p: Principal, req: MatchReq): IO[Out[MatchResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       txn <- BankRepo.findTx(req.txnId)
       receipt <- ReceiptStore.get(req.receiptId)
       res <-

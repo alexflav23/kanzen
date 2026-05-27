@@ -55,13 +55,13 @@ object Calendar {
 
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.canRead("calendar")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
   private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Write, "calendar")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -90,7 +90,7 @@ object Calendar {
 
   def update(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateReq): IO[Out[Ok]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       exists <- CalendarRepo.exists(id)
       res <-
         if (!a.can(Level.Write, "calendar")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]

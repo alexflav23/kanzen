@@ -59,7 +59,7 @@ object Maintenance {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[PlanView]]] = {
     val today = LocalDate.now()
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("maintenance")) (Left(forbidden): Out[List[PlanView]]).pure[ConnectionIO]
       else MaintenanceRepo.list.map(ps => Right(ps.map(view(_, today))): Out[List[PlanView]])
     }
@@ -68,7 +68,7 @@ object Maintenance {
 
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[PlanView]] = {
     val today = LocalDate.now()
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "maintenance")) (Left(forbidden): Out[PlanView]).pure[ConnectionIO]
       else
         MaintenanceRepo
@@ -80,7 +80,7 @@ object Maintenance {
 
   def complete(xa: Transactor[IO], p: Principal, id: UUID, r: CompleteReq): IO[Out[CompleteResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- MaintenanceRepo.exists(id)
       res <-
         if (!authz.can(Level.Write, "maintenance")) (Left(forbidden): Out[CompleteResult]).pure[ConnectionIO]

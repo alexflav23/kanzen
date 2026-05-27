@@ -58,7 +58,7 @@ object Roles {
 
   private def adminOnly[A](p: Principal)(body: => ConnectionIO[Out[A]]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(authz => if (authz.can(Level.Admin, "*")) body else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   def listRoles(xa: Transactor[IO], p: Principal): IO[Out[List[RoleDto]]] =

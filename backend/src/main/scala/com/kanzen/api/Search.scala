@@ -43,7 +43,7 @@ object Search {
 
   def search(xa: Transactor[IO], p: Principal, q: String): IO[Out[Results]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("search")) (Left(forbidden): Out[Results]).pure[ConnectionIO]
         else

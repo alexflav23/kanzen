@@ -53,7 +53,7 @@ object Ledger {
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
   def createAccount(xa: Transactor[IO], p: Principal, req: AccountReq): IO[Out[AccountView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "ledger")) (Left(forbidden): Out[AccountView]).pure[ConnectionIO]
       else
         GlRepo
@@ -68,7 +68,7 @@ object Ledger {
       IO.pure(Left(badReq("transaction does not balance — signed splits must sum to zero (≥2 splits, ≥1 non-zero)")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         accountsOk <- req.splits.map(_.accountId).distinct.traverse(GlRepo.accountExists).map(_.forall(identity))
         res <-
           if (!authz.can(Level.Write, "ledger")) (Left(forbidden): Out[PostResult]).pure[ConnectionIO]
@@ -91,7 +91,7 @@ object Ledger {
 
   def reverse(xa: Transactor[IO], p: Principal, txnId: UUID): IO[Out[ReverseResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- GlRepo.transactionExists(txnId)
       splits <- if (exists) GlRepo.splitsOf(txnId) else List.empty[(UUID, Long, Option[String])].pure[ConnectionIO]
       res <-
@@ -113,7 +113,7 @@ object Ledger {
   }
 
   def balance(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[BalanceResult]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Read, "ledger")) (Left(forbidden): Out[BalanceResult]).pure[ConnectionIO]
       else GlRepo.balanceOf(accountId).map(b => Right(BalanceResult(accountId, b)): Out[BalanceResult])
     }
@@ -121,7 +121,7 @@ object Ledger {
   }
 
   def register(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[RegisterRowView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Read, "ledger")) (Left(forbidden): Out[List[RegisterRowView]]).pure[ConnectionIO]
       else
         GlRepo

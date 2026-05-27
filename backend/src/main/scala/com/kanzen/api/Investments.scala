@@ -64,7 +64,7 @@ object Investments {
 
   private def principal[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Admin, "wealth")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -82,7 +82,7 @@ object Investments {
 
   def setPrice(xa: Transactor[IO], p: Principal, securityId: UUID, r: PriceReq): IO[Out[Ok]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       exists <- InvestmentRepo.securityExists(securityId)
       res <-
         if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
@@ -116,7 +116,7 @@ object Investments {
     if (r.quantity <= 0) IO.pure(Left(badReq("quantity must be > 0")))
     else {
       val tx = for {
-        a <- Authz.authorizer(p.role)
+        a <- Authz.forUser(p.userId, p.role)
         lots <- InvestmentRepo.openLots(r.entityId, r.securityId)
         res <-
           if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[SellResult]).pure[ConnectionIO]

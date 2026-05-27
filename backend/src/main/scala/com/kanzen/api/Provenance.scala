@@ -54,7 +54,7 @@ object Provenance {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
 
   def warranties(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[WarrantyView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[WarrantyView]]).pure[ConnectionIO]
       else InsuranceRepo.warranties(assetId).map(ws => Right(ws.map(wview)): Out[List[WarrantyView]])
     }
@@ -63,7 +63,7 @@ object Provenance {
 
   def addWarranty(xa: Transactor[IO], p: Principal, assetId: UUID, req: AddWarrantyReq): IO[Out[OkResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(assetId)
       res <-
         if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
@@ -78,7 +78,7 @@ object Provenance {
 
   /** Insurance is Principal-only (carries `insured_value`). */
   def getInsurance(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[InsuranceView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Read, "asset", Some("insured_value")))
         (Left(forbidden): Out[InsuranceView]).pure[ConnectionIO]
       else
@@ -95,7 +95,7 @@ object Provenance {
 
   def setInsurance(xa: Transactor[IO], p: Principal, assetId: UUID, req: SetInsuranceReq): IO[Out[OkResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(assetId)
       res <-
         if (!authz.can(Level.Write, "asset", Some("insured_value"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]

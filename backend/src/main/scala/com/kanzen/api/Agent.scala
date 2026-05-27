@@ -46,11 +46,11 @@ object Agent {
 
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a => if (a.canRead("agent")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
   private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Write, "agent")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -81,7 +81,7 @@ object Agent {
 
   private def actOn(xa: Transactor[IO], p: Principal, id: UUID, execute: Boolean): IO[Out[Ok]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       cat <- AgentRepo.actionCategory(id)
       res <-
         if (!a.can(Level.Write, "agent")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
@@ -102,7 +102,7 @@ object Agent {
     */
   def autoExecute(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Ok]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       cat <- AgentRepo.actionCategory(id)
       res <-
         if (!a.can(Level.Write, "agent")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]

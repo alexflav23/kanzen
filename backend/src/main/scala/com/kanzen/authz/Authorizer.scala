@@ -101,12 +101,16 @@ object Authorizer {
   /** F02 v2 — merge several roles' rules into one Authorizer. Roles are **additive**: for each `(resource, field)` the
     * effective level is the **max across roles** (each role evaluated with its own most-specific-wins). A single role
     * composes to its own effective rules (so this is non-breaking).
+    *
+    * Every per-key level is kept — **including `Deny`** — so an explicit field/resource-level deny that overrides a
+    * broader allow within a role (e.g. `asset.market_value = none` over `asset = read`) survives the merge: query-time
+    * most-specific-wins then re-applies it. (Dropping `Deny` would let the broader allow leak through.)
     */
   def compose(roleRuleSets: List[List[Rule]], grants: List[Grant]): Authorizer = {
     val keys = roleRuleSets.flatten.map(r => (r.resource, r.field)).distinct
-    val merged = keys.flatMap { case (res, fld) =>
+    val merged = keys.map { case (res, fld) =>
       val lvl = roleRuleSets.map(rs => Authorizer(rs).level(res, fld)).maxByOption(_.rank).getOrElse(Level.Deny)
-      if (lvl == Level.Deny) Nil else List(Rule(res, fld, lvl))
+      Rule(res, fld, lvl)
     }
     Authorizer(merged, grants)
   }

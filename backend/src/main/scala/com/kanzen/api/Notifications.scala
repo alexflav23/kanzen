@@ -68,7 +68,7 @@ object Notifications {
 
   private def authed[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Write, "notification")) q.map(Right(_): Out[A])
         else (Left(forbidden): Out[A]).pure[ConnectionIO]

@@ -33,7 +33,7 @@ object Tax {
     if (grossMinor < 0L) IO.pure(Left(badReq("income must be ≥ 0")))
     else
       Authz
-        .authorizer(p.role)
+        .forUser(p.userId, p.role)
         .map { authz =>
           if (!authz.can(Level.Read, "ledger")) Left(forbidden)
           else {
@@ -46,7 +46,7 @@ object Tax {
 
   def deductibleReport(xa: Transactor[IO], p: Principal): IO[Out[DeductibleReport]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       summary <- if (authz.can(Level.Read, "ledger")) ExpenseRepo.deductibleSummary else (0L, 0L, 0).pure[ConnectionIO]
     } yield
       if (!authz.can(Level.Read, "ledger")) Left(forbidden)

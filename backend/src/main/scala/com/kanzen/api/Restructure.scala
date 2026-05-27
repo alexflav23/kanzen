@@ -48,7 +48,8 @@ object Restructure {
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
   private def conflict(m: String): (StatusCode, ApiError) = (StatusCode.Conflict, ApiError(409, "conflict", m))
 
-  private def canWrite(p: Principal): ConnectionIO[Boolean] = Authz.authorizer(p.role).map(_.can(Level.Write, "asset"))
+  private def canWrite(p: Principal): ConnectionIO[Boolean] =
+    Authz.forUser(p.userId, p.role).map(_.can(Level.Write, "asset"))
 
   /** AC1 — legacy create: approximate fields + uncertainty note, no receipt; valid but flaggable. */
   def legacyCreate(xa: Transactor[IO], p: Principal, r: LegacyCreateReq): IO[Out[Created]] =

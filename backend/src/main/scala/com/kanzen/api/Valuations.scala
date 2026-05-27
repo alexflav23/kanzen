@@ -39,7 +39,7 @@ object Valuations {
     else if (req.amountMinor < 0) IO.pure(Left(badReq("amount must be ≥ 0")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(assetId)
         res <-
           if (!authz.can(Level.Write, "asset", Some("valuation_snapshots")))
@@ -55,7 +55,7 @@ object Valuations {
   }
 
   def list(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[ValuationView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Read, "asset", Some("valuation_snapshots")))
         (Left(forbidden): Out[List[ValuationView]]).pure[ConnectionIO]
       else ValuationRepo.history(assetId).map(vs => Right(vs.map(view)): Out[List[ValuationView]])

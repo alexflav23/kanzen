@@ -43,7 +43,7 @@ object Collections {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[CollectionView]]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { authz =>
         if (!authz.canRead("asset")) (Left(forbidden): Out[List[CollectionView]]).pure[ConnectionIO]
         else
@@ -55,7 +55,7 @@ object Collections {
 
   def members(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[List[MemberView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       res <-
         if (!authz.canRead("asset")) (Left(forbidden): Out[List[MemberView]]).pure[ConnectionIO]
         else
@@ -73,7 +73,7 @@ object Collections {
   /** The collections a given asset is in (registry-private read). */
   def forAsset(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[CollectionRef]]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { authz =>
         if (!authz.canRead("asset")) (Left(forbidden): Out[List[CollectionRef]]).pure[ConnectionIO]
         else
@@ -85,7 +85,7 @@ object Collections {
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[CollectionView]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { authz =>
         if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[CollectionView]).pure[ConnectionIO]
         else if (req.name.trim.isEmpty) (Left(badName): Out[CollectionView]).pure[ConnectionIO]
@@ -108,7 +108,7 @@ object Collections {
 
   def addMember(xa: Transactor[IO], p: Principal, id: UUID, req: AddMemberReq): IO[Out[Ok]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       res <-
         if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else

@@ -106,7 +106,7 @@ object Wealth {
 
   private def principal[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Admin, "wealth")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -137,7 +137,7 @@ object Wealth {
   /** F39 — post a balanced double-entry transaction; unbalanced splits are rejected (422). */
   def post(xa: Transactor[IO], p: Principal, r: PostReq): IO[Out[PostResult]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       res <-
         if (!a.can(Level.Admin, "wealth")) (Left(forbidden): Out[PostResult]).pure[ConnectionIO]
         else if (!GeneralLedger.balanced(r.splits.map(_.amountMinor)))

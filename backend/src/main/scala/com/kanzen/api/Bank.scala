@@ -77,7 +77,7 @@ object Bank {
   }
 
   def accounts(xa: Transactor[IO], p: Principal): IO[Out[List[AccountView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[AccountView]]).pure[ConnectionIO]
       else BankRepo.listAccounts.map(as => Right(as.map(av)): Out[List[AccountView]])
     }
@@ -85,7 +85,7 @@ object Bank {
   }
 
   def transactions(xa: Transactor[IO], p: Principal, accountId: UUID): IO[Out[List[TxView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("bank_account")) (Left(forbidden): Out[List[TxView]]).pure[ConnectionIO]
       else BankRepo.list(accountId).map(ts => Right(ts.map(tv)): Out[List[TxView]])
     }
@@ -97,7 +97,7 @@ object Bank {
       case Left(err) => IO.pure(Left(badReq(err)))
       case Right(txs) =>
         val tx = for {
-          authz <- Authz.authorizer(p.role)
+          authz <- Authz.forUser(p.userId, p.role)
           exists <- BankRepo.accountExists(accountId)
           res <-
             if (!authz.can(Level.Write, "bank_account")) (Left(forbidden): Out[ImportResult]).pure[ConnectionIO]

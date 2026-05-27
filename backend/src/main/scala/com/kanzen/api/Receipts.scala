@@ -80,7 +80,7 @@ object Receipts {
     (StatusCode.NotFound, ApiError(404, "not_found", "No such receipt or line."))
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[ReceiptDetail]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[ReceiptDetail]).pure[ConnectionIO]
       else
         for {
@@ -95,7 +95,7 @@ object Receipts {
   }
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[ReceiptView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("receipt")) (Left(forbidden): Out[List[ReceiptView]]).pure[ConnectionIO]
       else ReceiptRepo.list.map(rs => Right(rs.map(rv)): Out[List[ReceiptView]])
     }
@@ -104,7 +104,7 @@ object Receipts {
 
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ReceiptDetail]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       r <- ReceiptRepo.get(id)
       ls <- r.fold(List.empty[LineItem].pure[ConnectionIO])(_ => ReceiptRepo.lines(id))
     } yield
@@ -121,7 +121,7 @@ object Receipts {
       category: String
   ): IO[Out[OkResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- ReceiptRepo.lineExists(lineId, receiptId)
       res <-
         if (!authz.can(Level.Write, "receipt")) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
@@ -134,7 +134,7 @@ object Receipts {
   /** F32 preview — product-level spend across receipt line items by brand. */
   def spend(xa: Transactor[IO], p: Principal, brand: String): IO[Out[SpendResult]] = {
     val key = ReceiptService.brandNorm(brand)
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("receipt")) (Left(forbidden): Out[SpendResult]).pure[ConnectionIO]
       else ReceiptRepo.spendByBrand(key).map(total => Right(SpendResult(key, total)): Out[SpendResult])
     }

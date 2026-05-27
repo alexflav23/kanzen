@@ -31,7 +31,7 @@ object NlQuery {
 
   def query(xa: Transactor[IO], p: Principal, prompt: String): IO[Out[QueryResult]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("asset"))
           (Left(forbidden): Out[QueryResult]).pure[ConnectionIO] // NL reads the registry → registry read

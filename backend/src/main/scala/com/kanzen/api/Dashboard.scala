@@ -28,7 +28,7 @@ object Dashboard {
 
   def summary(xa: Transactor[IO], p: Principal): IO[Out[Summary]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       props <- PropertyRepo.listForPrincipal(p.userId)
       assets <- if (authz.canRead("asset")) AssetRepo.list(None, None) else List.empty.pure[ConnectionIO]
       pending <-

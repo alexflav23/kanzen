@@ -50,7 +50,7 @@ object Products {
   private def badReq(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { a =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.canRead("product")) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
       else ProductRepo.list.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
     }
@@ -58,7 +58,7 @@ object Products {
   }
 
   def reorder(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { a =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.canRead("product")) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
       else ProductRepo.needingReorder.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
     }
@@ -66,7 +66,7 @@ object Products {
   }
 
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[ProductView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { a =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.can(Level.Write, "product")) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
       else ProductRepo.insertOwned(p.userId, r.name, r.preferredSpec, r.unit).map(x => Right(pv(x)): Out[ProductView])
     }
@@ -77,7 +77,7 @@ object Products {
     if (!STOCK.contains(status)) IO.pure(Left(badReq(s"status must be one of ${STOCK.mkString(", ")}")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         exists <- ProductRepo.exists(id)
         res <-
           if (!authz.can(Level.Write, "product")) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
@@ -114,7 +114,7 @@ object Products {
   /** F36 — given purchase history, predict the next purchase + flag if due within lead. */
   def forecast(xa: Transactor[IO], p: Principal, r: ForecastReq): IO[Out[ForecastResult]] = {
     val parsed = r.purchaseDates.flatMap(s => Try(LocalDate.parse(s)).toOption).sorted
-    val tx = Authz.authorizer(p.role).map { a =>
+    val tx = Authz.forUser(p.userId, p.role).map { a =>
       if (!a.canRead("product")) Left(forbidden)
       else {
         val avg = ReplenishmentService.avgIntervalDays(parsed)

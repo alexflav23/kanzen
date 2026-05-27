@@ -83,7 +83,7 @@ object Properties {
     */
   def list(xa: Transactor[IO], p: Principal): IO[Either[(StatusCode, ApiError), List[PropertyView]]] = {
     val tx: ConnectionIO[(Boolean, List[(Property, PropertyCounts)])] = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       allowed = authz.canRead("property")
       props <-
         if (allowed) PropertyRepo.listForPrincipalWithCounts(p.userId)
@@ -98,7 +98,7 @@ object Properties {
   }
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[PropertyView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "property")) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
       else
         PropertyRepo
@@ -110,7 +110,7 @@ object Properties {
 
   def patch(xa: Transactor[IO], p: Principal, id: UUID, req: PatchReq): IO[Out[PropertyView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
       res <- visible match {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
@@ -127,7 +127,7 @@ object Properties {
 
   def archive(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PropertyView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
       res <- visible match {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
@@ -144,7 +144,7 @@ object Properties {
     */
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Either[(StatusCode, ApiError), PropertyDetail]] = {
     val tx: ConnectionIO[Either[(StatusCode, ApiError), PropertyDetail]] = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       visible <-
         if (authz.canRead("property")) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
         else Option.empty[Property].pure[ConnectionIO]

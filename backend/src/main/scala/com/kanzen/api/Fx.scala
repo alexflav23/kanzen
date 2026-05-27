@@ -54,7 +54,7 @@ object Fx {
 
   private def gate[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a => if (a.canRead("fx")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
   private def label(rate: Double, on: LocalDate): String = f"≈ at $on rate (×$rate%.4f)"
@@ -65,7 +65,7 @@ object Fx {
   def convert(xa: Transactor[IO], p: Principal, r: ConvertReq): IO[Out[Conversion]] = {
     val on = r.on.getOrElse(LocalDate.now())
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("fx")) (Left(forbidden): Out[Conversion]).pure[ConnectionIO]
         else
@@ -91,7 +91,7 @@ object Fx {
   def rollup(xa: Transactor[IO], p: Principal, r: RollupReq): IO[Out[Rollup]] = {
     val on = r.on.getOrElse(LocalDate.now())
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("fx")) (Left(forbidden): Out[Rollup]).pure[ConnectionIO]
         else {

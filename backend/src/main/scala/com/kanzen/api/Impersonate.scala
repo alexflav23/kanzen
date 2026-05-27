@@ -48,7 +48,7 @@ object Impersonate {
       case None => IO.pure(Left(unavailable))
       case Some(d) =>
         val tx = for {
-          authz <- Authz.authorizer(p.role)
+          authz <- Authz.forUser(p.userId, p.role)
           target <- UserRepo.findByEmail(req.email)
           res <-
             if (!authz.can(Level.Admin, "*")) (Left(forbidden): Out[ImpersonateResult]).pure[ConnectionIO]

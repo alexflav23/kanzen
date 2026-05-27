@@ -106,7 +106,7 @@ object Documents {
         val key = s"documents/${p.userId}/$id/original.${extOf(req.name)}"
 
         val pre: ConnectionIO[Out[Either[Document, Unit]]] = for {
-          authz <- Authz.authorizer(p.role)
+          authz <- Authz.forUser(p.userId, p.role)
           scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
           dup <- DocumentRepo.findBySha256(sha)
         } yield {
@@ -152,7 +152,7 @@ object Documents {
       q: Option[String]
   ): IO[Out[List[DocumentView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       docs <- if (authz.canRead("document")) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
     } yield
@@ -164,7 +164,7 @@ object Documents {
   /** Load + authorize a single document for a read op; Right(doc) or the right error. */
   private def readable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       doc <- DocumentRepo.find(id)
     } yield
@@ -189,7 +189,7 @@ object Documents {
   /** Load + authorize for a write op (link/delete): 404 if not visible, 403 if no write. */
   private def writable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       doc <- DocumentRepo.find(id)
     } yield doc.filter(d => visibleTo(p, d, scoped)) match {
@@ -221,7 +221,7 @@ object Documents {
       targetId: UUID
   ): IO[Out[List[LinkedDoc]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       docs <-
         if (authz.canRead("document")) DocumentRepo.documentsFor(targetType, targetId)

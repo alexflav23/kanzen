@@ -55,7 +55,7 @@ object Expenses {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such expense."))
 
   def submit(xa: Transactor[IO], p: Principal, req: SubmitReq): IO[Out[ExpenseView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "expense")) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
       else
         ExpenseRepo
@@ -78,7 +78,7 @@ object Expenses {
   }
 
   def list(xa: Transactor[IO], p: Principal, status: Option[String]): IO[Out[List[ExpenseView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("expense")) (Left(forbidden): Out[List[ExpenseView]]).pure[ConnectionIO]
       else ExpenseRepo.list(status).map(es => Right(es.map(view)): Out[List[ExpenseView]])
     }
@@ -93,7 +93,7 @@ object Expenses {
       action: (UUID, UUID) => ConnectionIO[Int]
   ): IO[Out[ExpenseView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exp <- ExpenseRepo.get(id)
       res <- exp match {
         case None => (Left(notFound): Out[ExpenseView]).pure[ConnectionIO]

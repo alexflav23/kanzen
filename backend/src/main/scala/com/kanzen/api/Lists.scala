@@ -92,11 +92,11 @@ object Lists {
 
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a => if (a.canRead("list")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
   private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Write, "list")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -114,7 +114,7 @@ object Lists {
   /** Reconfigure a list (Manager+). */
   def update(xa: Transactor[IO], p: Principal, listId: UUID, r: EditListReq): IO[Out[ListView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.listExists(listId)
       res <-
         if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
@@ -158,7 +158,7 @@ object Lists {
   /** Approve/decline — Manager/Principal only (Staff can't approve their own proposals). */
   private def decide(xa: Transactor[IO], p: Principal, itemId: UUID, op: UUID => ConnectionIO[Int]): IO[Out[Unit]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.itemExists(itemId)
       res <-
         if (!authz.can(Level.Write, "list") || p.role == "staff") (Left(forbidden): Out[Unit]).pure[ConnectionIO]
@@ -173,7 +173,7 @@ object Lists {
   /** Place the order — rolls next-order forward by the list's cycle (Manager+). */
   def placeOrder(xa: Transactor[IO], p: Principal, listId: UUID): IO[Out[Unit]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- ListRepo.listExists(listId)
       res <-
         if (!authz.can(Level.Write, "list")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]

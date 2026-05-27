@@ -63,7 +63,7 @@ object Defects {
     */
   private def authorize(p: Principal, propertyId: UUID, level: Level, field: Option[String]): ConnectionIO[Out[Unit]] =
     for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       prop <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == propertyId))
     } yield prop match {
       case None => Left(notFound)

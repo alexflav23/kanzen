@@ -58,7 +58,7 @@ object People {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[PersonView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       rows <-
         if (!authz.canRead("person")) List.empty[Person].pure[ConnectionIO]
@@ -70,7 +70,7 @@ object People {
 
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PersonView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       person <- PeopleRepo.find(id)
     } yield
@@ -89,7 +89,7 @@ object People {
   }
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[PersonView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "person")) (Left(forbidden): Out[PersonView]).pure[ConnectionIO]
       else
         PeopleRepo
@@ -110,7 +110,7 @@ object People {
 
   def expiring(xa: Transactor[IO], p: Principal, days: Int): IO[Out[List[PersonView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       rows <- if (authz.canRead("person")) PeopleRepo.expiringPermits(days) else List.empty[Person].pure[ConnectionIO]
     } yield

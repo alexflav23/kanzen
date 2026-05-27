@@ -87,6 +87,21 @@ object AuthzComposeIT extends IOSuite {
     }
   }
 
+  test("field-deny survives composition: an explicit field-level deny overrides the broader resource allow") { xa =>
+    val u = UUID.randomUUID(); val s = sfx
+    val r = s"rbac_fd_$s"
+    (for {
+      _ <- PermissionRepo.createRole(r, None)
+      _ <- PermissionRepo.upsert(r, "asset", None, "read") // broad: read the asset
+      _ <- PermissionRepo.upsert(r, "asset", Some("market_value"), "none") // but NOT its valuation
+      az <- Authz.forUser(u, r)
+    } yield az).transact(xa).map { az =>
+      expect(az.canRead("asset")) and // resource still readable
+        expect(!az.canRead("asset", Some("market_value"))) and // field deny preserved through compose
+        expect(az.filterReadable("asset", Map("title" -> 1, "market_value" -> 2)) == Map("title" -> 1))
+    }
+  }
+
   test("non-breaking: with no v2 config, forUser equals the single-role authorizer for the primary") { xa =>
     val u = UUID.randomUUID(); val s = sfx
     val r = s"rbac_eq_$s"

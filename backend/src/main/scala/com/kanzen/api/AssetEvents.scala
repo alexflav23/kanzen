@@ -62,7 +62,7 @@ object AssetEvents {
 
   def timeline(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[Timeline]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       events <-
         if (authz.canRead("asset")) AssetEventRepo.timeline(assetId) else List.empty[AssetEvent].pure[ConnectionIO]
       cost <- if (authz.canRead("asset")) AssetEventRepo.lifetimeCostMinor(assetId) else 0L.pure[ConnectionIO]
@@ -74,7 +74,7 @@ object AssetEvents {
     if (!TYPES.contains(req.eventType)) IO.pure(Left(badReq(s"type must be one of ${TYPES.mkString(", ")}")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(assetId)
         res <-
           if (!authz.can(Level.Write, "asset_event")) (Left(forbidden): Out[EventView]).pure[ConnectionIO]

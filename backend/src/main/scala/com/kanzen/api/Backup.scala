@@ -40,7 +40,7 @@ object Backup {
 
   private def principalOnly[A](p: Principal)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Admin, "backup")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -73,7 +73,7 @@ object Backup {
     if (r.mode != "dry_run" && r.mode != "full") IO.pure(Left(badReq("mode must be dry_run or full")))
     else {
       val tx = for {
-        a <- Authz.authorizer(p.role)
+        a <- Authz.forUser(p.userId, p.role)
         res <-
           if (!a.can(Level.Admin, "backup")) (Left(forbidden): Out[RestoreResult]).pure[ConnectionIO]
           else {

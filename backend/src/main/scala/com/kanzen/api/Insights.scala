@@ -34,7 +34,7 @@ object Insights {
 
   def analytics(xa: Transactor[IO], p: Principal): IO[Out[RegistryAnalytics]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("asset")) (Left(forbidden): Out[RegistryAnalytics]).pure[ConnectionIO]
         else

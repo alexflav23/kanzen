@@ -60,7 +60,7 @@ object Vendors {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[VendorView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       rows <-
         if (!authz.canRead("vendor")) List.empty[Vendor].pure[ConnectionIO]
@@ -73,7 +73,7 @@ object Vendors {
 
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[VendorDetail]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       vendor <- VendorRepo.find(id)
       props <- vendor.fold(List.empty[UUID].pure[ConnectionIO])(v => VendorRepo.propertiesOf(v.id))
@@ -91,7 +91,7 @@ object Vendors {
   }
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[VendorView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Level.Write, "vendor")) (Left(forbidden): Out[VendorView]).pure[ConnectionIO]
       else
         VendorRepo
@@ -111,7 +111,7 @@ object Vendors {
 
   def approve(xa: Transactor[IO], p: Principal, vendorId: UUID, propertyId: UUID): IO[Out[OkResult]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       vendor <- VendorRepo.find(vendorId)
       res <-
@@ -125,7 +125,7 @@ object Vendors {
 
   def selectable(xa: Transactor[IO], p: Principal, propertyId: UUID): IO[Out[List[VendorView]]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
       rows <-
         if (authz.canRead("vendor") && scoped.contains(propertyId)) VendorRepo.selectableFor(propertyId)

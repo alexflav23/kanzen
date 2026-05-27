@@ -69,11 +69,11 @@ object Finance {
 
   private def read[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a => if (a.canRead("bill")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
   private def write[A](p: Principal, q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(Level.Write, "bill")) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -104,7 +104,7 @@ object Finance {
   /** Mark paid — only for manual payments (never moves money). */
   def markPaid(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PaymentView]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       pay <- PaymentRepo.get(id)
       res <- pay match {
         case None => (Left(notFound): Out[PaymentView]).pure[ConnectionIO]

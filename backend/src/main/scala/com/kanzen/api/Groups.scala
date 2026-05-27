@@ -40,7 +40,7 @@ object Groups {
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[GroupView]]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { authz =>
         if (!authz.canRead("asset")) (Left(forbidden): Out[List[GroupView]]).pure[ConnectionIO]
         else
@@ -52,7 +52,7 @@ object Groups {
 
   def forAsset(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[GroupRef]]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { authz =>
         if (!authz.canRead("asset")) (Left(forbidden): Out[List[GroupRef]]).pure[ConnectionIO]
         else
@@ -65,7 +65,7 @@ object Groups {
     else if (!KINDS.contains(req.kind)) IO.pure(Left(badReq(s"kind must be one of ${KINDS.mkString(", ")}")))
     else
       Authz
-        .authorizer(p.role)
+        .forUser(p.userId, p.role)
         .flatMap { authz =>
           if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[GroupView]).pure[ConnectionIO]
           else
@@ -87,7 +87,7 @@ object Groups {
 
   def addToGroup(xa: Transactor[IO], p: Principal, assetId: UUID, req: AddReq): IO[Out[Ok]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- GroupRepo.exists(req.groupId)
       res <-
         if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
@@ -109,7 +109,7 @@ object Groups {
 
   def removeFromGroup(xa: Transactor[IO], p: Principal, assetId: UUID, groupId: UUID): IO[Out[Ok]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       res <-
         if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else

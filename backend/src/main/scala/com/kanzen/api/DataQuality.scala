@@ -46,14 +46,14 @@ object DataQuality {
 
   private def gate[A](p: Principal, level: Level, resource: String)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
 
   def completeness(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[Completeness]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap { a =>
         if (!a.canRead("asset")) (Left(forbidden): Out[Completeness]).pure[ConnectionIO]
         else

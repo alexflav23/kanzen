@@ -70,7 +70,7 @@ object Extensibility {
 
   private def gate[A](p: Principal, level: Level, resource: String)(q: ConnectionIO[A]): ConnectionIO[Out[A]] =
     Authz
-      .authorizer(p.role)
+      .forUser(p.userId, p.role)
       .flatMap(a =>
         if (a.can(level, resource)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO]
       )
@@ -111,7 +111,7 @@ object Extensibility {
     ).transact(xa)
   def addNode(xa: Transactor[IO], p: Principal, taxonomyId: UUID, r: NodeReq): IO[Out[NodeView]] = {
     val tx = for {
-      a <- Authz.authorizer(p.role)
+      a <- Authz.forUser(p.userId, p.role)
       exists <- TaxonomyRepo.exists(taxonomyId)
       res <-
         if (!a.can(Level.Write, "taxonomy")) (Left(forbidden): Out[NodeView]).pure[ConnectionIO]

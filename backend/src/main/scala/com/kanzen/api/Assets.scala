@@ -174,7 +174,7 @@ object Assets {
       AssetRepo
         .list(cats, q, vertical, property, collection, status)
         .map(as => Right(as.map(view)): Out[List[AssetView]])
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
       else
         category match {
@@ -192,7 +192,7 @@ object Assets {
   }
 
   def categories(xa: Transactor[IO], p: Principal): IO[Out[List[CategoryView]]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[List[CategoryView]]).pure[ConnectionIO]
       else
         AssetRepo.listCategories.map(cs =>
@@ -204,7 +204,7 @@ object Assets {
 
   /** Build the field-filtered detail (valuation stripping + resolved location label) for a principal. */
   private def loadDetail(p: Principal, id: UUID): ConnectionIO[Out[AssetDetail]] =
-    Authz.authorizer(p.role).flatMap { authz =>
+    Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
       else
         AssetRepo.get(id).flatMap {
@@ -242,7 +242,7 @@ object Assets {
     else {
       val attrs = req.attributes.getOrElse(Json.obj())
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         catOk <- AssetRepo.categoryExists(req.categoryId)
         parentOk <- req.parentAssetId.fold(true.pure[ConnectionIO])(AssetRepo.exists)
         // F22: validate attributes against the vertical's template (if any). Unknown keys
@@ -288,7 +288,7 @@ object Assets {
       IO.pure(Left(badReq(s"status must be one of ${STATUSES.mkString(", ")}")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(id)
         catOk <- AssetRepo.categoryExists(req.categoryId)
         res <-
@@ -309,7 +309,7 @@ object Assets {
     */
   def move(xa: Transactor[IO], p: Principal, id: UUID, req: MoveReq): IO[Out[AssetDetail]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(id)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       targetProp <- req.locationId.fold(Option.empty[UUID].pure[ConnectionIO])(AssetRepo.propertyOfLocation)
@@ -344,7 +344,7 @@ object Assets {
       IO.pure(Left(badReq(s"custody_status must be one of ${CUSTODY.mkString(", ")}")))
     else {
       val tx = for {
-        authz <- Authz.authorizer(p.role)
+        authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(id)
         res <-
           if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
@@ -370,7 +370,7 @@ object Assets {
   /** Set the hero photo from an existing document (F05) — Manager+. */
   def setHero(xa: Transactor[IO], p: Principal, id: UUID, req: HeroReq): IO[Out[AssetDetail]] = {
     val tx = for {
-      authz <- Authz.authorizer(p.role)
+      authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(id)
       doc <- DocumentRepo.find(req.documentId)
       res <-
@@ -397,7 +397,7 @@ object Assets {
 
   /** Location + custody history (newest first) — Manager+ read. */
   def history(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[HistoryView]] = {
-    val tx = Authz.authorizer(p.role).flatMap { authz =>
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.canRead("asset")) (Left(forbidden): Out[HistoryView]).pure[ConnectionIO]
       else
         for {
