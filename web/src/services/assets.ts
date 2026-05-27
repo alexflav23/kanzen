@@ -107,9 +107,20 @@ export function logAssetEvent(id: string, token: string | null, req: LogEventReq
 }
 
 /** F20 — dated valuation snapshots (Principal-only). */
-export const ValuationSchema = z.object({ id: z.string(), assetId: z.string(), kind: z.string(), amountMinor: z.number(), currency: z.string() });
+export const ValuationSchema = z.object({ id: z.string(), assetId: z.string(), kind: z.string(), amountMinor: z.number(), currency: z.string(), valuedAt: z.string() });
 export type Valuation = z.infer<typeof ValuationSchema>;
 export type RecordValuationReq = { kind: string; amountMinor: number; currency: string; source: string | null };
+
+/** F21 — provenance party-roles on an asset. */
+export const PartySchema = z.object({ id: z.string(), role: z.string(), name: z.string(), note: z.string().nullable() });
+export type AssetPartyRole = z.infer<typeof PartySchema>;
+export const PARTY_ROLES = ["maker", "restorer", "appraiser", "prior_owner", "dealer", "insurer", "other"] as const;
+export const listParties = (id: string, token: string | null) =>
+  api(`/api/assets/${id}/parties`, z.array(PartySchema), { token });
+export const addParty = (id: string, token: string | null, body: { role: string; name: string; note: string | null }) =>
+  api(`/api/assets/${id}/parties`, PartySchema, { method: "POST", token, body });
+export const removeParty = (id: string, token: string | null, partyId: string) =>
+  api(`/api/assets/${id}/parties/${partyId}`, z.object({ ok: z.boolean() }), { method: "DELETE", token });
 
 export function getValuations(id: string, token: string | null): Promise<Valuation[]> {
   return api(`/api/assets/${id}/valuations`, z.array(ValuationSchema), { token });

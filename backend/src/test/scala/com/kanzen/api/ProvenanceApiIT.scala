@@ -1,7 +1,7 @@
 package com.kanzen.api
 
 import cats.effect.IO
-import com.kanzen.api.Provenance.{AddWarrantyReq, SetInsuranceReq}
+import com.kanzen.api.Provenance.{AddPartyReq, AddWarrantyReq, SetInsuranceReq}
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
@@ -72,5 +72,24 @@ object ProvenanceApiIT extends IOSuite {
       expect(pGet.insured && pGet.insuredValueMinor.contains(4_200_000L) && pGet.policyRef.contains("Hiscox-2026")) and
       expect(mSet.left.exists(_._1.code == 403)) and // Manager cannot set insurance
       expect(mGet.left.exists(_._1.code == 403)) // nor read it (Principal-private)
+  }
+
+  // F21 — provenance party-roles
+  test("Manager adds + lists provenance parties; bad role rejected; Staff denied") { xa =>
+    for {
+      id <- newAsset(xa)
+      add <- Provenance.addParty(xa, lorna, id, AddPartyReq("maker", "Audemars Piguet", Some("Le Brassus")))
+      add2 <- Provenance.addParty(xa, lorna, id, AddPartyReq("appraiser", "Watchfinder", None))
+      ps <- Provenance.parties(xa, toby, id).map(_.toOption.get)
+      badRole <- Provenance.addParty(xa, lorna, id, AddPartyReq("wizard", "X", None))
+      staffAdd <- Provenance.addParty(xa, marcia, id, AddPartyReq("maker", "Y", None))
+      staffList <- Provenance.parties(xa, marcia, id)
+      del <- Provenance.deleteParty(xa, lorna, id, add.toOption.get.id)
+      after <- Provenance.parties(xa, toby, id).map(_.toOption.get)
+    } yield expect(add.isRight) and expect(add2.isRight) and
+      expect(ps.exists(p => p.role == "maker" && p.name == "Audemars Piguet")) and
+      expect(badRole.left.exists(_._1.code == 400)) and // role must be a known provenance role
+      expect(staffAdd.left.exists(_._1.code == 403)) and expect(staffList.left.exists(_._1.code == 403)) and
+      expect(del.isRight) and expect(!after.exists(_.role == "maker")) // the maker party was removed
   }
 }

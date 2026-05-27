@@ -10,7 +10,9 @@ import { MediaGallery } from "../components/MediaGallery";
 import { TagChips } from "../components/TagChips";
 import { AssetGroups } from "../components/AssetGroups";
 import { Timeline } from "../components/Timeline";
+import { Bar } from "../components/Bar";
 import { ActivityFeed } from "../features/audit/ActivityFeed";
+import { ProvenanceParties } from "../components/ProvenanceParties";
 import {
   changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
   logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
@@ -52,6 +54,7 @@ const styles = stylex.create({
   evTitle: { fontSize: "13.5px", fontWeight: 500, textTransform: "capitalize" },
   evSub: { fontSize: "12px", color: colors.ink3 },
   evCost: { fontVariantNumeric: "tabular-nums", fontWeight: 500 },
+  valBar: { marginTop: "7px", maxWidth: "240px" },
   lifetime: { display: "flex", justifyContent: "space-between", padding: "14px 20px", borderTop: `1px solid ${colors.line}`, fontSize: "13.5px", fontWeight: 600 },
   action: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "12.5px" },
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
@@ -449,6 +452,13 @@ export function AssetDetail() {
 
       <div {...stylex.props(styles.section)}>
         <Card>
+          <CardHeader><CardTitle>Provenance</CardTitle></CardHeader>
+          <ProvenanceParties assetId={id} canEdit={canWrite} />
+        </Card>
+      </div>
+
+      <div {...stylex.props(styles.section)}>
+        <Card>
           <CardHeader><CardTitle>Activity</CardTitle></CardHeader>
           <ActivityFeed targetType="asset" targetId={id} />
         </Card>
@@ -490,12 +500,19 @@ export function AssetDetail() {
             {valuationsQ.isPending ? <Loading label="Loading valuations…" />
               : valuationsQ.isError ? <div {...stylex.props(styles.note)}>Valuations are Principal-only.</div>
               : valuationsQ.data.length === 0 ? <EmptyState title="No valuations recorded">Record a market or insured valuation to track this asset's worth over time.</EmptyState>
-              : valuationsQ.data.map((v) => (
-                  <CardRow key={v.id} testId="valuation-row">
-                    <div {...stylex.props(styles.grow)}><div {...stylex.props(styles.evTitle)}>{v.kind}</div></div>
-                    <span {...stylex.props(styles.evCost)}>{money(v.amountMinor, v.currency)}</span>
-                  </CardRow>
-                ))}
+              : (() => {
+                  const max = Math.max(1, ...valuationsQ.data.map((v) => v.amountMinor));
+                  return valuationsQ.data.map((v) => (
+                    <CardRow key={v.id} testId="valuation-row">
+                      <div {...stylex.props(styles.grow)}>
+                        <div {...stylex.props(styles.evTitle)}>{v.kind}</div>
+                        <div {...stylex.props(styles.evSub)}>{v.valuedAt}</div>
+                        <div {...stylex.props(styles.valBar)}><Bar pct={(v.amountMinor / max) * 100} /></div>
+                      </div>
+                      <span {...stylex.props(styles.evCost)}>{money(v.amountMinor, v.currency)}</span>
+                    </CardRow>
+                  ));
+                })()}
           </Card>
         </div>
       )}

@@ -73,6 +73,9 @@ test("opening an asset shows its detail + specifications", async ({ page }) => {
   await expect(page.getByText("Lifecycle")).toBeVisible();
   await expect(page.getByTestId("timeline-row").first()).toBeVisible();
   await expect(page.getByText("Lifetime cost")).toBeVisible();
+  // F21 provenance party-roles (seeded: Audemars Piguet as maker)
+  await page.getByText("Provenance").scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("party-row").filter({ hasText: "Audemars Piguet" })).toBeVisible();
   // F04 in-collections: Royal Oak is seeded in the "Watches" collection
   await expect(page.getByTestId("asset-collections")).toContainText("Watches");
 });

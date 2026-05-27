@@ -24,10 +24,18 @@ object Valuations {
   private type Out[A] = Either[(StatusCode, ApiError), A]
   private val KINDS = Set("acquisition", "replacement", "market", "insured", "appraisal", "realised")
 
-  final case class ValuationView(id: UUID, assetId: UUID, kind: String, amountMinor: Long, currency: String)
+  final case class ValuationView(
+      id: UUID,
+      assetId: UUID,
+      kind: String,
+      amountMinor: Long,
+      currency: String,
+      valuedAt: String
+  )
   final case class RecordReq(kind: String, amountMinor: Long, currency: String, source: Option[String])
 
-  private def view(v: Valuation): ValuationView = ValuationView(v.id, v.assetId, v.kind, v.amountMinor, v.currency)
+  private def view(v: Valuation): ValuationView =
+    ValuationView(v.id, v.assetId, v.kind, v.amountMinor, v.currency, v.valuedAt)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "valuations are Principal-only"))
