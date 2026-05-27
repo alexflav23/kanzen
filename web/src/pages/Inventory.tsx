@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
@@ -12,6 +12,7 @@ import { getRegistryHealth } from "../services/insights";
 import { listProperties } from "../services/properties";
 import { listLocations } from "../services/locations";
 import { listCollections, addMember } from "../services/collections";
+import { searchBrands, recordBrand } from "../services/brands";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
@@ -118,9 +119,19 @@ function FilterChip({ children, onClear }: { children: ReactNode; onClear: () =>
 
 function NewAssetModal({ token, categories, vertical, onClose }: { token: string | null; categories: Category[]; vertical?: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const brandListId = useId();
+  // When launched from a vertical (e.g. Vehicles), default the category to that vertical's category
+  // (the vertical is roughly the singular of the category name: vehicle→Vehicles, watch→Watches).
+  const presetCatId = vertical
+    ? categories.find((c) => { const n = c.name.toLowerCase(); const v = vertical.toLowerCase(); return n === v || n === `${v}s`; })?.id
+    : undefined;
   const [title, setTitle] = useState("");
   const [maker, setMaker] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(presetCatId ?? categories[0]?.id ?? "");
+  // Categories may still be loading when the modal opens — apply the preset once they arrive.
+  useEffect(() => {
+    if (!categoryId && categories.length > 0) setCategoryId(presetCatId ?? categories[0].id);
+  }, [categories, categoryId, presetCatId]);
   const [trackingMode, setMode] = useState("unique");
   const [quantity, setQuantity] = useState(2);
   // Location (property → its location tree)
@@ -133,9 +144,24 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
   // Collection
   const [collectionId, setCollectionId] = useState("");
 
+  const selectedCategoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
+  // Debounce the maker text so the catalogue search doesn't fire on every keystroke.
+  const [debouncedMaker, setDebouncedMaker] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedMaker(maker), 180);
+    return () => clearTimeout(t);
+  }, [maker]);
+
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
   const locsQ = useQuery({ queryKey: ["locations", propertyId, token], queryFn: () => listLocations(propertyId, token), enabled: !!propertyId });
   const collsQ = useQuery({ queryKey: ["collections", token], queryFn: () => listCollections(token) });
+  // Maker autocomplete from the global brand catalogue, keyed to the selected category.
+  const brandsQ = useQuery({
+    queryKey: ["brands", selectedCategoryName, debouncedMaker, token],
+    queryFn: () => searchBrands(selectedCategoryName, debouncedMaker, token),
+    enabled: !!selectedCategoryName,
+  });
+  const brandExample = (debouncedMaker.trim() === "" ? brandsQ.data?.[0]?.name : undefined) ?? undefined;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -150,6 +176,10 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
         attributes: null,
       }, token);
       if (collectionId) await addMember(token, collectionId, asset.id);
+      // grow the global brand catalogue + this account's hot cache from real usage (non-fatal)
+      if (maker.trim() && selectedCategoryName) {
+        try { await recordBrand(maker.trim(), selectedCategoryName, token); } catch { /* enrichment is best-effort */ }
+      }
       return asset;
     },
     onSuccess: () => {
@@ -169,7 +199,18 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
           <input {...stylex.props(styles.control)} aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Royal Oak 15500ST" autoFocus /></label>
         <div {...stylex.props(styles.two)}>
           <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Maker</span>
-            <input {...stylex.props(styles.control)} aria-label="Maker" value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="e.g. Audemars Piguet" /></label>
+            <input
+              {...stylex.props(styles.control)}
+              aria-label="Maker"
+              list={brandListId}
+              autoComplete="off"
+              value={maker}
+              onChange={(e) => setMaker(e.target.value)}
+              placeholder={brandExample ? `e.g. ${brandExample}` : "e.g. maker / brand"}
+            />
+            <datalist id={brandListId}>
+              {(brandsQ.data ?? []).map((b) => <option key={b.id} value={b.name} />)}
+            </datalist></label>
           <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
             <select {...stylex.props(styles.control)} aria-label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

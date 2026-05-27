@@ -151,6 +151,23 @@ test("an asset can be added to and removed from a group", async ({ page }) => {
   await expect(section.getByTestId("group-chip").filter({ hasText: group })).toHaveCount(0);
 });
 
+// Brand catalogue (specs/03) — launching create from Vehicles offers a catalogue-backed,
+// car-brand autocomplete + a vehicle-appropriate placeholder (not a watch brand).
+test("creating from Vehicles offers a catalogue-backed car-brand autocomplete", async ({ page }) => {
+  await page.goto("/vehicles");
+  await expect(page.getByRole("heading", { name: "Vehicles" })).toBeVisible();
+  await page.getByRole("button", { name: "New vehicle" }).click();
+  const modal = page.getByTestId("new-asset");
+  await expect(modal).toBeVisible();
+
+  const maker = modal.getByLabel("Maker");
+  // placeholder is the catalogue's top car brand for Vehicles (not the old hardcoded watch brand)
+  await expect(maker).toHaveAttribute("placeholder", /e\.g\. (Mercedes-Benz|Porsche|BMW|Ferrari|Audi)/);
+  // the <datalist> is populated with car brands from the global catalogue
+  const options = await maker.evaluate((el: HTMLInputElement) => [...(el.list?.options ?? [])].map((o) => o.value));
+  expect(options.some((o) => /Mercedes-Benz|Porsche|Ferrari|BMW|Audi|Bentley/.test(o))).toBeTruthy();
+});
+
 // F33 — tags display on the asset detail: add (create-or-reuse) + remove chips.
 test("an asset's tags can be added and removed", async ({ page }) => {
   const tag = `vintage-${Date.now()}`;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,17 @@ import { AuthProvider } from "../state/AuthContext";
 import type { AssetView } from "../services/assets";
 
 const WATCHES = "30000000-0000-0000-0000-000000000001";
+const VEHICLES = "30000000-0000-0000-0000-000000000009";
+
+// the global brand catalogue, keyed by the selected category
+const { searchBrands, recordBrand } = vi.hoisted(() => ({
+  searchBrands: vi.fn(async (category: string) =>
+    category.toLowerCase() === "vehicles"
+      ? [{ id: "b1", name: "Mercedes-Benz", category: "vehicles", status: "verified" }, { id: "b2", name: "Porsche", category: "vehicles", status: "verified" }]
+      : [{ id: "b9", name: "Rolex", category: "watches", status: "verified" }]),
+  recordBrand: vi.fn(async (name: string, category: string) => ({ id: "bx", name, category, status: "community" })),
+}));
+vi.mock("../services/brands", () => ({ searchBrands, recordBrand }));
 const v = (o: Partial<AssetView> & Pick<AssetView, "id" | "title" | "categoryId">): AssetView => ({
   maker: null, trackingMode: "unique", quantity: 1, ownershipStatus: "owned",
   acquisitionCostMinor: null, acquisitionCurrency: null, propertyId: null, ...o,
@@ -26,7 +37,10 @@ vi.mock("../services/assets", () => ({
   }),
 }));
 vi.mock("../services/categories", () => ({
-  listCategories: vi.fn(async () => [{ id: WATCHES, name: "Watches", parentId: null }]),
+  listCategories: vi.fn(async () => [
+    { id: WATCHES, name: "Watches", parentId: null },
+    { id: VEHICLES, name: "Vehicles", parentId: null },
+  ]),
 }));
 vi.mock("../services/properties", () => ({ listProperties: vi.fn(async () => []) }));
 vi.mock("../services/collections", () => ({ listCollections: vi.fn(async () => []), addMember: vi.fn() }));
@@ -59,6 +73,22 @@ describe("Inventory", () => {
     expect(await screen.findByRole("heading", { name: "Vehicles" })).toBeInTheDocument();
     await screen.findAllByTestId("asset-card");
     expect(listAssets).toHaveBeenCalledWith("t", expect.objectContaining({ vertical: "vehicle" }));
+  });
+
+  it("launching create from Vehicles presets the category + a vehicle-keyed brand autocomplete", async () => {
+    renderInv({ vertical: "vehicle", label: "Vehicles" });
+    await screen.findAllByTestId("asset-card");
+    fireEvent.click(screen.getByRole("button", { name: "New vehicle" }));
+    const modal = await screen.findByTestId("new-asset");
+    // category is preset to the vertical's category (not the first/Watches)
+    expect((modal.querySelector("[aria-label='Category']") as HTMLSelectElement).value).toBe(VEHICLES);
+    // brand catalogue is queried for the Vehicles category, and the placeholder is the top car brand
+    // (generous timeout: the maker query is debounced ~180ms and the suite runs files in parallel)
+    await waitFor(() => expect(searchBrands).toHaveBeenCalledWith("Vehicles", "", "t"), { timeout: 4000 });
+    const maker = screen.getByLabelText("Maker") as HTMLInputElement;
+    await waitFor(() => expect(maker.placeholder).toBe("e.g. Mercedes-Benz"), { timeout: 4000 });
+    // the datalist offers the catalogue suggestions
+    expect(maker.list?.querySelector("option[value='Mercedes-Benz']")).toBeTruthy();
   });
 
   it("shows real registry completeness from the health aggregate", async () => {
