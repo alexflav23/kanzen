@@ -42,6 +42,17 @@ object CollectionsApiIT extends IOSuite {
       expect(add.isRight) and expect(members.exists(_.title == "1959 Les Paul Standard"))
   }
 
+  test("forAsset returns the collections an asset belongs to; staff is forbidden (403)") { xa =>
+    val asset = UUID.fromString("40000000-0000-0000-0000-000000000003") // seeded 1959 Les Paul
+    for {
+      c <- Collections.create(xa, principal, CreateReq("ForAsset-test", None)).map(_.toOption.get)
+      _ <- Collections.addMember(xa, principal, c.id, AddMemberReq(asset)).map(_.toOption.get)
+      refs <- Collections.forAsset(xa, principal, asset).map(_.toOption.get)
+      staffR <- Collections.forAsset(xa, staff, asset)
+    } yield expect(refs.exists(r => r.id == c.id && r.name == "ForAsset-test")) and
+      expect(staffR.left.exists(_._1.code == 403))
+  }
+
   test("members of an unknown collection is 404") { xa =>
     Collections.members(xa, principal, UUID.randomUUID()).map(r => expect(r.left.exists(_._1.code == 404)))
   }

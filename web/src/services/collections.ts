@@ -13,6 +13,13 @@ export type Collection = z.infer<typeof CollectionSchema>;
 export const MemberSchema = z.object({ assetId: z.string(), title: z.string() });
 export type CollectionMember = z.infer<typeof MemberSchema>;
 
+export const CollectionRefSchema = z.object({ id: z.string(), name: z.string() });
+export type CollectionRef = z.infer<typeof CollectionRefSchema>;
+
+/** The collections a given asset belongs to (for the asset-detail "in collections" display). */
+export const collectionsForAsset = (token: string | null, assetId: string) =>
+  api(`/api/assets/${assetId}/collections`, z.array(CollectionRefSchema), { token });
+
 export const listCollections = (token: string | null) =>
   api("/api/collections", z.array(CollectionSchema), { token });
 

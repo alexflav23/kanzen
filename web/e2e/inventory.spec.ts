@@ -51,6 +51,8 @@ test("opening an asset shows its detail + specifications", async ({ page }) => {
   // F19 lifecycle timeline (seeded acquisition event) + lifetime cost
   await expect(page.getByText("Lifecycle")).toBeVisible();
   await expect(page.getByText("Lifetime cost")).toBeVisible();
+  // F04 in-collections: Royal Oak is seeded in the "Watches" collection
+  await expect(page.getByTestId("asset-collections")).toContainText("Watches");
 });
 
 test("an asset is a living record — log a timeline event + record a valuation", async ({ page }) => {

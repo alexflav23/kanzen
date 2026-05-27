@@ -28,6 +28,7 @@ object Collections {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class CollectionView(id: UUID, name: String, description: Option[String], memberCount: Int)
+  final case class CollectionRef(id: UUID, name: String)
   final case class MemberView(assetId: UUID, title: String)
   final case class CreateReq(name: String, description: Option[String])
   final case class AddMemberReq(assetId: UUID)
@@ -68,6 +69,19 @@ object Collections {
     } yield res
     tx.transact(xa)
   }
+
+  /** The collections a given asset is in (registry-private read). */
+  def forAsset(xa: Transactor[IO], p: Principal, assetId: UUID): IO[Out[List[CollectionRef]]] =
+    Authz
+      .authorizer(p.role)
+      .flatMap { authz =>
+        if (!authz.canRead("asset")) (Left(forbidden): Out[List[CollectionRef]]).pure[ConnectionIO]
+        else
+          CollectionRepo
+            .forAsset(assetId)
+            .map(cs => Right(cs.map { case (i, n) => CollectionRef(i, n) }): Out[List[CollectionRef]])
+      }
+      .transact(xa)
 
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[CollectionView]] =
     Authz
@@ -136,6 +150,14 @@ object Collections {
       .out(jsonBody[List[MemberView]])
       .summary("Assets in a collection")
 
+  val forAssetEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), List[CollectionRef], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "assets" / path[UUID]("assetId") / "collections")
+      .errorOut(err)
+      .out(jsonBody[List[CollectionRef]])
+      .summary("Collections a given asset belongs to")
+
   val createEndpoint: Endpoint[String, CreateReq, (StatusCode, ApiError), CollectionView, Any] =
     sttp.tapir.endpoint.post
       .securityIn(auth.bearer[String]())
@@ -157,11 +179,13 @@ object Collections {
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => list(xa, p)),
     membersEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => members(xa, p, id)),
+    forAssetEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (aid: UUID) => forAsset(xa, p, aid)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     addMemberEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (id: UUID, r: AddMemberReq) => addMember(xa, p, id, r) })
   )
 
-  val endpoints: List[AnyEndpoint] = List(listEndpoint, membersEndpoint, createEndpoint, addMemberEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(listEndpoint, membersEndpoint, forAssetEndpoint, createEndpoint, addMemberEndpoint)
 }

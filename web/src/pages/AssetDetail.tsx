@@ -13,6 +13,7 @@ import {
   type AssetDetail as AssetDetailT,
 } from "../services/assets";
 import { listCategories } from "../services/categories";
+import { collectionsForAsset } from "../services/collections";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -182,6 +183,7 @@ export function AssetDetail() {
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
   const timelineQ = useQuery({ queryKey: ["asset-timeline", id, token], queryFn: () => getAssetTimeline(id, token), enabled: assetQ.isSuccess });
   const warrantiesQ = useQuery({ queryKey: ["asset-warranties", id, token], queryFn: () => listWarranties(id, token), enabled: assetQ.isSuccess });
+  const collectionsQ = useQuery({ queryKey: ["asset-collections", id, token], queryFn: () => collectionsForAsset(token, id), enabled: assetQ.isSuccess });
   // Valuation history + insurance are Principal-only; a Manager session 403s — render only on success.
   const valuationsQ = useQuery({ queryKey: ["asset-valuations", id, token], queryFn: () => getValuations(id, token), enabled: assetQ.isSuccess, retry: false });
   const insuranceQ = useQuery({ queryKey: ["asset-insurance", id, token], queryFn: () => getInsurance(id, token), enabled: assetQ.isSuccess, retry: false });
@@ -235,6 +237,12 @@ export function AssetDetail() {
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Quantity</span><span {...stylex.props(styles.kvV)}>{a.quantity}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquisition</span><span {...stylex.props(styles.kvV)}>{money(a.acquisitionCostMinor, a.acquisitionCurrency)}</span></div>
           {a.acquisitionDate && <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquired</span><span {...stylex.props(styles.kvV)}>{new Date(`${a.acquisitionDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div>}
+          {(collectionsQ.data?.length ?? 0) > 0 && (
+            <div {...stylex.props(styles.kv)} data-testid="asset-collections">
+              <span {...stylex.props(styles.kvK)}>Collections</span>
+              <span {...stylex.props(styles.kvV)}>{collectionsQ.data!.map((c) => c.name).join(", ")}</span>
+            </div>
+          )}
           {(a.marketValueMinor != null || a.insuredValueMinor != null) && (
             <>
               <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Market value</span><span {...stylex.props(styles.kvV)}>{money(a.marketValueMinor ?? null, a.valuationCurrency ?? null)}</span></div>

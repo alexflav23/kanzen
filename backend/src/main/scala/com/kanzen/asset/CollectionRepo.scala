@@ -28,6 +28,13 @@ object CollectionRepo {
       .to[List]
       .map(_.map { case (i, t) => CollectionMember(i, t) })
 
+  /** The collections a given asset belongs to (for the asset-detail "in collections" display). */
+  def forAsset(assetId: UUID): ConnectionIO[List[(UUID, String)]] =
+    sql"""select c.id, c.name from collection_members m join collections c on c.id = m.collection_id
+          where m.asset_id = $assetId and c.deleted_at is null order by c.name"""
+      .query[(UUID, String)]
+      .to[List]
+
   def exists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from collections where id = $id and deleted_at is null)".query[Boolean].unique
 
