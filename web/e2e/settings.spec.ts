@@ -6,6 +6,7 @@ import { expect, test } from "./fixtures";
 test("admin views the matrix, adds a rule, and it persists + can be cleared", async ({ page }) => {
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
+  await page.getByRole("tab", { name: "Advanced matrix" }).click(); // the matrix is the advanced view now
   // the principal's root admin grant is protected — rendered locked, not as an editable select
   await expect(page.getByText("admin 🔒").first()).toBeVisible();
 
@@ -15,9 +16,11 @@ test("admin views the matrix, adds a rule, and it persists + can be cleared", as
   await page.getByLabel("Level").selectOption("read");
   await page.getByRole("button", { name: "Add rule" }).click();
 
-  // it shows as an editable cell and survives a reload (persisted server-side)
+  // it shows as an editable cell and survives a reload (persisted server-side). Reload resets to the
+  // Builder tab, so re-open the advanced matrix each time.
   await expect(page.getByLabel("staff · report")).toHaveValue("read");
   await page.reload();
+  await page.getByRole("tab", { name: "Advanced matrix" }).click();
   await expect(page.getByLabel("staff · report")).toHaveValue("read");
 
   // clearing the cell to — deletes the rule; wait for the delete+refetch to settle (the row
@@ -25,6 +28,7 @@ test("admin views the matrix, adds a rule, and it persists + can be cleared", as
   await page.getByLabel("staff · report").selectOption("");
   await expect(page.getByLabel("staff · report")).toHaveCount(0);
   await page.reload();
+  await page.getByRole("tab", { name: "Advanced matrix" }).click();
   await expect(page.getByLabel("staff · report")).toHaveCount(0);
 });
 
@@ -34,6 +38,7 @@ test("admin manages roles — defaults seeded; create + delete a custom role", a
   page.on("dialog", (d) => d.accept()); // accept the delete-confirm prompt
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
+  await page.getByRole("tab", { name: "Advanced matrix" }).click(); // role list + add-role live in the advanced view
   // the seeded household defaults are present (and non-system → deletable, so they render a Delete)
   await expect(page.getByText("Personal Assistant").first()).toBeVisible();
   await expect(page.getByLabel("Delete role Gardener")).toBeVisible();

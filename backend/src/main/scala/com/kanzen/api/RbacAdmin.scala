@@ -399,6 +399,15 @@ object RbacAdmin {
     }.transact(xa)
 
   // ── multi-role users ──────────────────────────────────────────────────────────────────────────
+  final case class UserDto(id: UUID, displayName: String, email: String, role: String)
+
+  def listUsers(xa: Transactor[IO], p: Principal): IO[Out[List[UserDto]]] =
+    adminOnly(p)(
+      RbacAdminRepo.listUsers.map(us =>
+        Right(us.map(u => UserDto(u.id, u.displayName, u.email, u.role))): Out[List[UserDto]]
+      )
+    ).transact(xa)
+
   def userRoles(xa: Transactor[IO], p: Principal, userId: UUID): IO[Out[List[String]]] =
     adminOnly(p)(RbacAdminRepo.rolesForUser(userId).map(rs => Right(rs): Out[List[String]])).transact(xa)
 
@@ -590,6 +599,12 @@ object RbacAdmin {
     .out(jsonBody[Ok])
     .summary("Remove a property scope from a team")
 
+  val listUsersEp = endpoint.get
+    .securityIn(bearer)
+    .in(base / "users")
+    .errorOut(err)
+    .out(jsonBody[List[UserDto]])
+    .summary("List accounts (for member/assignment pickers + the effective preview)")
   val userRolesEp = endpoint.get
     .securityIn(bearer)
     .in(base / "users" / path[UUID]("userId") / "roles")
@@ -657,6 +672,7 @@ object RbacAdmin {
       .serverLogic(p => { case (id, pid) =>
         removeTeamScope(xa, p, id, pid)
       }),
+    listUsersEp.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => listUsers(xa, p)),
     userRolesEp.serverSecurityLogic(a.securityLogic).serverLogic(p => (uid: UUID) => userRoles(xa, p, uid)),
     addUserRoleEp
       .serverSecurityLogic(a.securityLogic)
@@ -692,6 +708,7 @@ object RbacAdmin {
     removeTeamRoleEp,
     addTeamScopeEp,
     removeTeamScopeEp,
+    listUsersEp,
     userRolesEp,
     addUserRoleEp,
     removeUserRoleEp,

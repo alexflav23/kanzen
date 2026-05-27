@@ -171,4 +171,13 @@ object RbacAdminRepo {
   /** The primary `users.role` for a user (for the effective-permissions preview), if they have a users row. */
   def primaryRoleOf(userId: UUID): ConnectionIO[Option[String]] =
     sql"select role from users where id = $userId and deleted_at is null".query[String].option
+
+  // ── users (assignment + preview targets) ──────────────────────────────────────────────────────
+  final case class UserRow(id: UUID, displayName: String, email: String, role: String)
+
+  def listUsers: ConnectionIO[List[UserRow]] =
+    sql"select id, display_name, email, role from users where deleted_at is null order by display_name"
+      .query[(UUID, String, String, String)]
+      .to[List]
+      .map(_.map { case (i, n, e, r) => UserRow(i, n, e, r) })
 }

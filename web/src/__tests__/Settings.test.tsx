@@ -18,10 +18,20 @@ vi.mock("../services/auth", async (orig) => ({
   getMe: vi.fn(),
   impersonate: vi.fn(),
 }));
+// The builder is the default mode; stub its data calls so mounting it doesn't hit the network.
+vi.mock("../services/rbac", () => ({
+  listSets: vi.fn().mockResolvedValue([]),
+  getCatalogue: vi.fn().mockResolvedValue([]),
+  listTeams: vi.fn().mockResolvedValue([]),
+  listUsers: vi.fn().mockResolvedValue([]),
+}));
 
 import { Settings } from "../pages/Settings";
 import { getRoles, getPermissions, setPermission, deletePermission, createRole, deleteRole } from "../services/roles";
 import { getMe } from "../services/auth";
+
+/** Matrix lives behind the "Advanced matrix" tab now (Builder is default). */
+const toMatrix = async () => fireEvent.click(await screen.findByRole("tab", { name: "Advanced matrix" }));
 
 const me = (perms: { resource: string; field: string | null; level: string }[]) => ({
   userId: "u1", name: "Flavian", email: "flavian@kanzen.local", role: "principal", permissions: perms, impersonatedBy: null,
@@ -56,6 +66,7 @@ describe("Settings — role management", () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderSettings();
     expect(await screen.findByRole("heading", { name: "Roles & permissions" })).toBeInTheDocument();
+    await toMatrix();
     // the protected root grant renders locked, not as an editable select
     expect(await screen.findByText(/admin 🔒/)).toBeInTheDocument();
     // an editable cell exists for staff · asset
@@ -65,6 +76,7 @@ describe("Settings — role management", () => {
   it("changing a cell calls setPermission with the chosen level", async () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderSettings();
+    await toMatrix();
     const cell = await screen.findByLabelText("staff · asset");
     fireEvent.change(cell, { target: { value: "read" } });
     await waitFor(() =>
@@ -75,6 +87,7 @@ describe("Settings — role management", () => {
   it("clearing a cell to — deletes the rule", async () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderSettings();
+    await toMatrix();
     const cell = await screen.findByLabelText("staff · asset");
     fireEvent.change(cell, { target: { value: "" } });
     await waitFor(() => expect(deletePermission).toHaveBeenCalledWith("t", "staff", "asset", null));
@@ -90,6 +103,7 @@ describe("Settings — role management", () => {
   it("creating a role calls createRole with the name + description", async () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     renderSettings();
+    await toMatrix();
     fireEvent.change(await screen.findByLabelText("New role"), { target: { value: "Chef" } });
     fireEvent.change(screen.getByLabelText("Description (optional)"), { target: { value: "kitchen" } });
     fireEvent.click(screen.getByRole("button", { name: "Add role" }));
@@ -100,6 +114,7 @@ describe("Settings — role management", () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
     vi.spyOn(window, "confirm").mockReturnValue(true);
     renderSettings();
+    await toMatrix();
     // system roles have no delete button; the custom "Gardener" does
     expect(screen.queryByLabelText("Delete role principal")).not.toBeInTheDocument();
     fireEvent.click(await screen.findByLabelText("Delete role Gardener"));

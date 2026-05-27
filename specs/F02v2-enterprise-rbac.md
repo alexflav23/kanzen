@@ -85,6 +85,24 @@ Each step ships green (full regression) and non-breaking; "done" only when the w
   un-granted roles are unchanged; `compose` keeps explicit field/resource **denies** (fixed a bug that leaked
   Manager valuations). backend 376/376 green.
 
+## S4 outcome — management API + builder UI (done)
+- **Management API** `/api/admin/rbac/*` (26 endpoints, `RbacAdmin` + `RbacAdminRepo`): permission sets + grants
+  CRUD; role composition (attach/detach sets, set parent with a **cycle guard**); nested teams (create/reparent with
+  a cycle guard, members, roles, property scopes); multi-role users; an accounts list; and
+  `GET …/users/:id/effective` which runs the **real `Authz.forUser` resolution** and returns every catalogue action
+  the user can perform with its narrowest scope + the effective role set. All gated on the **root `*`-admin grant**
+  (RBAC admin can't be delegated/escalated), every write audited, grants validated against the catalogue
+  (unknown resource/verb → 400; scope ∈ all|property|team|own; effect ∈ allow|deny). `RbacAdminIT` (6) covers the
+  deny path, set→role→user, set→team(role) nesting, scope-in-preview, the cycle guard and grant validation.
+- **Builder UI** (`web/src/features/rbac/*`, Settings → **Builder** tab; the legacy matrix is now **Advanced
+  matrix**): four panels — **Permission sets** (object × verb Off/Allow/Deny grid off the live catalogue, with a
+  per-action scope dropdown + sensitive flags), **Roles** (parent inheritance + attach permission sets), **Teams**
+  (nested, members/roles/property scopes), **People** (assign extra roles + the effective-permissions preview,
+  grouped by resource with scope pills). Entirely token-driven through the global ThemeContext — no inline styles,
+  no per-component theme branching; verified in light + dark. Vitest (RbacBuilder + updated Settings) + Playwright
+  (`rbac-builder.spec`: compose a set → grant → preview → cleanup) + an **axe sweep in both themes** (0 serious/
+  critical). Full regression on a pristine DB: backend 382/382, web 90/90 unit, 78/78 e2e + a11y clean.
+
 ## Invariants (unchanged)
 Default-deny · AuthZ once, centrally (agent included) · field-level response filtering (valuations) ·
 registry/finance Principal-private with the Manager carve-out · every authz change audited · root grant

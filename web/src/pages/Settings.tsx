@@ -8,6 +8,7 @@ import { Loading, EmptyState, ErrorState } from "../components/states";
 import { useAuth } from "../state/AuthContext";
 import { createRole, deletePermission, deleteRole, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
 import { ApiError } from "../services/http";
+import { RbacBuilder } from "../features/rbac/RbacBuilder";
 
 // "" = no explicit rule (the role falls back to default-deny / the '*' wildcard).
 const LEVELS = ["", "none", "read", "write", "admin"] as const;
@@ -43,6 +44,9 @@ const styles = stylex.create({
   sysPill: { marginLeft: "8px", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em", color: colors.ink3, border: `1px solid ${colors.line}`, borderRadius: radius.sm, padding: "1px 6px" },
   delBtn: { padding: "5px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.danger, cursor: "pointer", fontSize: "12.5px" },
   err: { fontSize: "12.5px", color: colors.danger, padding: "8px 16px" },
+  modeBar: { display: "flex", gap: "4px", padding: "4px", borderRadius: radius.md, backgroundColor: colors.bgSunken, marginBottom: "20px", width: "fit-content" },
+  modeTab: { appearance: "none", border: 0, background: "transparent", color: colors.ink3, padding: "7px 14px", borderRadius: radius.sm, fontSize: "13px", fontWeight: 500, cursor: "pointer" },
+  modeTabActive: { backgroundColor: colors.bgElev, color: colors.ink },
 });
 
 const isRoot = (role: string, resource: string, field: string | null) =>
@@ -54,6 +58,7 @@ export function Settings() {
   const roles = useQuery({ queryKey: ["roles", token], queryFn: () => getRoles(token), enabled: can("*", "admin") });
   const perms = useQuery({ queryKey: ["permissions", token], queryFn: () => getPermissions(token), enabled: can("*", "admin") });
 
+  const [mode, setMode] = useState<"builder" | "matrix">("builder");
   const [draft, setDraft] = useState({ role: "", resource: "", field: "", level: "read" });
   const [newRole, setNewRole] = useState({ name: "", description: "" });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["permissions"] });
@@ -115,12 +120,24 @@ export function Settings() {
         <div {...stylex.props(styles.eyebrow)}>Finance &amp; system · access control</div>
         <h1 {...stylex.props(styles.title)}>Roles &amp; permissions</h1>
         <p {...stylex.props(styles.desc)}>
-          The matrix the server enforces everywhere. A blank cell (—) means default-deny (the role inherits only the
-          <code> *</code> wildcard). Field-level rows override a resource for one attribute. Changes recalibrate each
-          person's UI on their next sign-in, and every edit is audited.
+          Compose reusable <strong>permission sets</strong> from individual actions, build <strong>roles</strong> (with
+          inheritance), nest <strong>teams</strong>, and assign people — then preview exactly what each person can do.
+          The server enforces every grant; each change is audited.
         </p>
       </header>
 
+      <div {...stylex.props(styles.modeBar)} role="tablist" aria-label="Access control mode">
+        <button type="button" role="tab" aria-selected={mode === "builder"} {...stylex.props(styles.modeTab, mode === "builder" && styles.modeTabActive)} onClick={() => setMode("builder")}>
+          Builder
+        </button>
+        <button type="button" role="tab" aria-selected={mode === "matrix"} {...stylex.props(styles.modeTab, mode === "matrix" && styles.modeTabActive)} onClick={() => setMode("matrix")}>
+          Advanced matrix
+        </button>
+      </div>
+
+      {mode === "builder" && <RbacBuilder />}
+
+      {mode === "matrix" && (<>
       <Card style={styles.rolesCard}>
         <CardHeader><CardTitle>Roles</CardTitle></CardHeader>
         {roles.isPending ? <Loading /> : roles.isError ? <ErrorState error={roles.error} /> : (
@@ -251,6 +268,7 @@ export function Settings() {
           </div>
         )}
       </Card>
+      </>)}
     </div>
   );
 }
