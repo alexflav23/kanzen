@@ -150,40 +150,56 @@ Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + mi
 ## Forward build plan — actionable slices (2026-05-27)
 The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. Each `[ ]` is one **vertical-slice** (DB/seed → API gap if any → service+Zod → UI+states → tests → verify live at :3020), the same loop used for Lists/Dashboard/PropertyBible/People/Wealth. Waves are value+dependency ordered; one slice in flight; check off as shipped. 🔒 = **operator-gated** (needs SETUP.md provisioning — can't be completed in the sandbox).
 
-### W1 · Make Finance operable (today it's read + approve/reconcile/mark-paid only — no create UI)
+**Registry & property core comes FIRST** (W1–W4): it's the spine of Kanzen — everything-is-an-asset-in-a-location-with-a-timeline — and the audit under-weighted it. Finance and the rest follow. Within a wave the slices are top-to-bottom order.
+
+### W1 · Asset registry depth (F04 — the create/browse/detail spine)
+The Inventory create is unique-only (title/maker/category); filters are Category/Status only; detail lacks docs/comments/tags/collections/move. Per F04 §5.
+- [ ] **F04** **Full create form** — tracking mode (unique / **grouped_quantity** +qty / **structured_set** +children), **location picker** (F03 tree), acquisition date/cost/currency, **tags**, **collection**; card badges (×N / set / "At service").
+- [ ] **F04** **Faceted filter rail** — add **Property**, **Collection**, **Tag** facets (have Category/Status) + active-filter chips; **value-totals** summary strip (acquisition-cost sums until F20, labelled).
+- [ ] **F04** **Asset-detail completeness** — **Documents** tab (F05 links) + **Comments** tab + **in-collections** + **tags** display + sidekick **quick actions** wiring (move / upload photo / restructure).
+- [ ] **F04** **Move / custody** actions — move asset via location-tree picker + custody change → writes `asset_location_history` / `asset_custody_history`; **hero photo** from a document.
+- [ ] **F04** **Asset groups** (order / set / rig) — peer groupings UI (distinct from structured sets + collections).
+
+### W2 · Asset timeline & lifecycle (F19 + F20/F21 — the provenance heart)
+Current AssetDetail has a basic event log; the spec is a typed, side-effecting timeline. Per F19 §5/§6.
+- [ ] **F19** **Full timeline** — typed colour-coded event dots (acquired=accent · valuation=green · service/clean=cyan · move/custody=purple · damage=red · doc=grey), cost/party/value-delta pills, chronological (retroactive) insert; upgrade the Lifecycle card to this.
+- [ ] **F19** **Rich log-event** — type · date · **cost** · **vendor party** (F09) · **documents** · condition delta · location/custody · valuation delta; with side-effects: `moved`→location history, cost→lifetime cost (→F17/F18), `sold/gifted/lost`→closes asset + ownership status.
+- [ ] **F20/F21** Asset detail — **aggregate valuation** summary (history chart) + **provenance party-roles** section (maker/restorer/appraiser/prior-owner); insurance Principal-only (built).
+
+### W3 · Verticals, vehicles, tags & restructure (F22 / F33 / F24)
+- [ ] **F22** **Template-driven typed create + Specifications** — New-asset + Specs render typed fields from the vertical's category template (validation already server-side).
+- [ ] **Vehicles** — flesh the `vehicle` vertical: typed attributes (reg/VIN/mileage/MOT/road-tax/insurance), vehicle-specific timeline events + due-soon reminders (ties F11); promote the Vehicles view beyond a generic vertical filter.
+- [ ] **F33** **Tags + custom fields + taxonomies** — tag chips manager; Principal **custom-field-definition** editor; user-defined **taxonomy tree** editor.
+- [ ] **F24** **Restructure flow** — guided **merge / split / regroup** UI + **legacy bulk-import** staging (backend merge/split/legacy already done).
+
+### W4 · Property administration — the full Bible (F03)
+Bible has only Overview/Rooms/Defects; spec wants the full record. Per F03 §5.
+- [ ] **F03** **Bible tabs** — add **Assets** (F04 table scoped to the property), **Utilities** (bills, F15), **Maintenance** (plans, F11), **Documents** (F05).
+- [ ] **F03** **Overview depth** — full Particulars (address · country · type · ownership · building-mgmt · jurisdiction) + **Linked systems** card (native task project · Calendar · Drive folder · 1Password vault — *reference only, never a secret*).
+- [ ] **F03** **Location tree depth** — richer kinds (cabinet/shelf/case/garage/storage), **per-node asset list**, rename/edit, **move/reparent** subtree, delete-guard UX ("move N assets first").
+- [ ] **F03** **Defects + property admin** — assign **vendor** (F09) + **spawn task** (F06) + edit; **edit particulars** + **archive** property (read-only, preserved).
+
+### W5 · Make Finance operable (read + approve/reconcile/mark-paid only today — no create UI)
 - [ ] **F15** Add/Edit **bill** — create-bill modal (payee · category · property · amount · cadence) → POST → appears in Recurring; ±15% variance retained.
 - [ ] **F17** Add **expense** (manual) — create-expense form → threshold routes to Principal approval (so expenses aren't seed-only).
 - [ ] **F16** **Payment methods + schedule** — add a payment method; schedule a payment into the Pay queue (still never moves money).
 - [ ] **F17** **Budgets** — replace the stub tab with real per-property/category budgets + budget-vs-actual bars (needs a budget model + endpoint).
-- [ ] **F43** **Income statement** (web) + **statement export** (CSV) — balance sheet already shipped; add the P&L view + export.
+- [ ] **F43** **Income statement** (web) + **statement export** (CSV) — balance sheet already shipped.
 
-### W2 · Asset-registry depth (the platform spine)
-- [ ] **F04** Inventory **Property + Tag filters** in the FilterRail; **value-totals** header (resolve valuation-method first); photo/cover cards.
-- [ ] **F22** **Template-driven create** — New-asset form renders typed fields from the vertical's category template (server validation already exists).
-- [ ] **F33** **Tags + custom-field editor** — tag chips on assets (add/remove) + Principal custom-field-definition manager + taxonomy tree.
-- [ ] **F19/F20/F21** Asset detail — provenance **party-roles** section; **aggregate valuation** summary; custody/location-history events.
-- [ ] **F24** **Restructure flow** — guided merge/split UI + bulk-import staging (backend merge/split/legacy already done).
-
-### W3 · Operations surfaces
+### W6 · Operations surfaces
 - [ ] **F07** Calendar **week/month grid** (agenda shipped).
 - [ ] **F06** Tasks — **assignee** picker + **RRULE** recurrence editor; link task ↔ calendar.
-- [ ] **F11** Maintenance — **spawn a task + calendar event** from a plan (UI action over the existing engine).
-- [ ] **F35** **Products & stock** — web surface (list · stock state · reorder list).
-- [ ] **F36** **Replenishment** — surface due-soon predictions on Lists/Products.
+- [ ] **F11** Maintenance — **spawn a task + calendar event** from a plan.
+- [ ] **F35** **Products & stock** — web surface (list · stock state · reorder list). · [ ] **F36** **Replenishment** — due-soon predictions on Lists/Products.
 
-### W4 · Records & wealth depth
+### W7 · Records & wealth depth
 - [ ] **F10** People — **person detail/record** view; leave + offboarding; HR-doc visibility.
-- [ ] **F42** **Entity management** UI — create/edit legal entities + ownership tree (scope selector exists).
-- [ ] **F37** **FX display-currency selector** (persisted) + per-currency breakdown surfacing.
-- [ ] **F40** Investments — **dividends + corporate actions** entry; record-a-lot/trade UI; TWR/IRR.
-- [ ] **F41** Net worth — pull **illiquid asset valuations** (F04/F20) into the consolidated book.
+- [ ] **F42** **Entity management** UI (create/edit legal entities + ownership tree). · [ ] **F37** **FX display-currency selector** (persisted).
+- [ ] **F40** Investments — **dividends + corporate actions** + record-a-lot/trade UI; TWR/IRR. · [ ] **F41** pull illiquid valuations into the book.
 
-### W5 · Agent, search & system
-- [ ] **F34** Notifications — **top-bar bell** + dropdown; quiet-hours setting.
-- [ ] **F05** Documents — **embedded doc tabs** on asset + property detail.
-- [ ] **F32** **NL query UI** ("how much did I spend on X") + Drive export action.
-- [ ] **F18/F39** Ledger — Principal-only **statements/registers** view (statements only; raw postings stay hidden).
-- [ ] **F23/F29** **Spend-trend** time-series (Insights + Dashboard card); completeness cache.
+### W8 · Agent, search & system
+- [ ] **F34** Notifications **top-bar bell** + quiet-hours. · [ ] **F05** Documents **embedded tabs** on asset/property.
+- [ ] **F32** **NL query UI** + Drive export. · [ ] **F18/F39** Principal-only **statements/registers** view. · [ ] **F23/F29** **spend-trend** time-series.
 
 ### Operator-gated track (🔒 — needs you, per SETUP.md; blocks Done(prod))
 - [ ] 🔒 **F01/F00** real Cognito pool + JWKS swap · real AWS apply (Terraform/NixOS) · prod-cred swap.
