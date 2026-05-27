@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level, PermissionRepo}
+import com.kanzen.authz.{Actions, Authz, Level, PermissionRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -29,6 +29,7 @@ object Roles {
   final case class RuleDto(role: String, resource: String, field: Option[String], level: String)
   final case class SetRuleReq(role: String, resource: String, field: Option[String], level: String)
   final case class CreateRoleReq(name: String, description: Option[String])
+  final case class ActionDto(resource: String, verb: String, minLevel: String, sensitive: Boolean)
   final case class Ok(ok: Boolean)
 
   private val levels = Set("none", "read", "write", "admin")
@@ -63,6 +64,15 @@ object Roles {
   def listRoles(xa: Transactor[IO], p: Principal): IO[Out[List[RoleDto]]] =
     adminOnly(p)(
       PermissionRepo.roles.map(rs => Right(rs.map(r => RoleDto(r.name, r.description, r.isSystem))): Out[List[RoleDto]])
+    ).transact(xa)
+
+  /** F02 v2 — the canonical action catalogue (object × verb) the builder UI renders. */
+  def catalogue(xa: Transactor[IO], p: Principal): IO[Out[List[ActionDto]]] =
+    adminOnly(p)(
+      (Right(Actions.all.map(a => ActionDto(a.resource, a.verb, Level.label(a.minLevel), a.sensitive))): Out[
+        List[ActionDto]
+      ])
+        .pure[ConnectionIO]
     ).transact(xa)
 
   def listRules(xa: Transactor[IO], p: Principal): IO[Out[List[RuleDto]]] =
@@ -197,6 +207,14 @@ object Roles {
       .out(jsonBody[Ok])
       .summary("Delete a custom role + its rules (admin only; system + in-use protected; audited)")
 
+  val catalogueEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[ActionDto], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "admin" / "permission-catalogue")
+      .errorOut(err)
+      .out(jsonBody[List[ActionDto]])
+      .summary("The canonical action catalogue — object × verb (admin only)")
+
   val rulesEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[RuleDto], Any] =
     sttp.tapir.endpoint.get
       .securityIn(auth.bearer[String]())
@@ -229,6 +247,7 @@ object Roles {
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => (r: CreateRoleReq) => createRole(xa, p, r)),
     deleteRoleEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (n: String) => deleteRole(xa, p, n)),
+    catalogueEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => catalogue(xa, p)),
     rulesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => listRules(xa, p)),
     setEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: SetRuleReq) => setRule(xa, p, r)),
     deleteEndpoint
@@ -239,5 +258,13 @@ object Roles {
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(rolesEndpoint, createRoleEndpoint, deleteRoleEndpoint, rulesEndpoint, setEndpoint, deleteEndpoint)
+    List(
+      rolesEndpoint,
+      createRoleEndpoint,
+      deleteRoleEndpoint,
+      catalogueEndpoint,
+      rulesEndpoint,
+      setEndpoint,
+      deleteEndpoint
+    )
 }

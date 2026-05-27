@@ -40,6 +40,12 @@ final case class Authorizer(rules: List[Rule]) {
   def can(required: Level, resource: String, field: Option[String] = scala.None): Boolean =
     level(resource, field).rank >= required.rank
 
+  /** F02 v2 — per-action authorization. Today this bridges to the legacy resource/level model (an action is permitted
+    * if the role holds its `minLevel` on the resource), so behaviour is unchanged while endpoints migrate `can(Level,
+    * resource)` → `can(action)`. Explicit per-action grants refine this in S2.
+    */
+  def can(action: Action): Boolean = can(action.minLevel, action.resource)
+
   def canRead(resource: String, field: Option[String] = scala.None): Boolean =
     can(Level.Read, resource, field)
 
