@@ -4,6 +4,7 @@ import cats.effect.IO
 import com.kanzen.auth.Principal
 import com.kanzen.authz.PermissionRepo
 import com.kanzen.asset.AssetRepo
+import com.kanzen.s3.ObjectStore
 import com.kanzen.db.TestDb
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -48,8 +49,9 @@ object AssetsActionScopeIT extends IOSuite {
         sql"insert into permission_set_grants (set_id, resource, action, effect) values ($setId, 'asset', 'view', 'allow')".update.run
           .transact(xa)
       _ <- sql"insert into role_sets (role_name, set_id) values ($granted, $setId)".update.run.transact(xa)
-      denied <- Assets.list(xa, Principal(u, "u", "u@k.local", plain), None, None)
-      allowed <- Assets.list(xa, Principal(u, "u", "u@k.local", granted), None, None)
+      store <- ObjectStore.inMemory
+      denied <- Assets.list(xa, Principal(u, "u", "u@k.local", plain), store, None, None)
+      allowed <- Assets.list(xa, Principal(u, "u", "u@k.local", granted), store, None, None)
     } yield (denied, allowed)
     prog.map { case (denied, allowed) =>
       expect(denied.left.exists(_._1.code == 403)) and expect(allowed.isRight)
@@ -97,7 +99,8 @@ object AssetsActionScopeIT extends IOSuite {
           .transact(xa)
       _ <- sql"insert into role_sets (role_name, set_id) values ($role, $setId)".update.run.transact(xa)
       p = Principal(u, "u", "u@k.local", role)
-      listed <- Assets.list(xa, p, None, None)
+      store <- ObjectStore.inMemory
+      listed <- Assets.list(xa, p, store, None, None)
       mineDetail <- Assets.detail(xa, p, mine.id)
       otherDetail <- Assets.detail(xa, p, otherAsset)
     } yield (mine.id, otherAsset, listed, mineDetail, otherDetail)

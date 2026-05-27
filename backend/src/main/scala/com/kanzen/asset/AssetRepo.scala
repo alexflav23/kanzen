@@ -156,10 +156,17 @@ object AssetRepo {
       propertyId: Option[UUID] = None,
       collectionId: Option[UUID] = None,
       status: Option[String] = None,
-      ownerId: Option[UUID] = None // F02 v2: Own-scope restriction (records I created)
-  ): ConnectionIO[List[(Asset, Option[UUID])]] = {
-    val join =
+      ownerId: Option[UUID] = None, // F02 v2: Own-scope restriction (records I created)
+      tag: Option[UUID] = None // F04: filter to assets carrying this tag (polymorphic entity_tags)
+  ): ConnectionIO[List[(Asset, Option[UUID], Option[String])]] = {
+    val collJoin =
       collectionId.map(_ => fr"join collection_members cm on cm.asset_id = a.id").getOrElse(Fragment.empty)
+    val tagJoin =
+      tag
+        .map(t => fr"join entity_tags et on et.entity_type = 'asset' and et.entity_id = a.id and et.tag_id = $t")
+        .getOrElse(Fragment.empty)
+    // left join the hero document so each card can show its photo thumbnail (key → signed blob URL in the API layer)
+    val heroJoin = fr"left join documents hd on hd.id = a.hero_document_id and hd.deleted_at is null"
     val conds: List[Fragment] = List(
       Some(fr"a.deleted_at is null"),
       categoryIds.map(ids => Fragments.in(fr"a.category_id", ids)),
@@ -171,8 +178,10 @@ object AssetRepo {
       q.map(s => fr"(a.title ilike ${"%" + s + "%"} or a.maker ilike ${"%" + s + "%"})")
     ).flatten
     val where = conds.reduce((x, y) => x ++ fr"and" ++ y)
-    (fr"select" ++ cardCols ++ fr"from assets a left join locations loc on loc.id = a.location_id" ++ join ++
-      fr"where" ++ where ++ fr"order by a.title").query[(Asset, Option[UUID])].to[List]
+    (fr"select" ++ cardCols ++ fr", hd.s3_key from assets a left join locations loc on loc.id = a.location_id" ++
+      heroJoin ++ collJoin ++ tagJoin ++ fr"where" ++ where ++ fr"order by a.title")
+      .query[(Asset, Option[UUID], Option[String])]
+      .to[List]
   }
 
   /** The creator of an asset (for F02 v2 Own-scope checks on the detail/single-record path). */

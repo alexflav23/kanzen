@@ -26,7 +26,7 @@ object Api {
     val secured = interp.toRoutes(
       List(Me.serverEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
-        ++ Assets.serverEndpoints(auth, xa) ++ Valuations.serverEndpoints(auth, xa)
+        ++ Assets.serverEndpoints(auth, xa, store) ++ Valuations.serverEndpoints(auth, xa)
         ++ AssetEvents.serverEndpoints(auth, xa) ++ Provenance.serverEndpoints(auth, xa)
         ++ Templates.serverEndpoints(auth, xa) ++ Documents.serverEndpoints(auth, xa, store)
         ++ People.serverEndpoints(auth, xa) ++ Vendors.serverEndpoints(auth, xa)

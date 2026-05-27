@@ -5,6 +5,7 @@ import com.kanzen.api.Assets.CreateReq
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import com.kanzen.s3.ObjectStore
 import doobie.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.Json
@@ -32,11 +33,12 @@ object AssetsApiIT extends IOSuite {
 
   test("AC6 — staff cannot read the registry (403); principal/manager can") { xa =>
     for {
+      store <- ObjectStore.inMemory
       cat <- AssetRepo.createCategory("Watches", None).transact(xa)
       _ <- Assets.create(xa, principal("principal"), req("Royal Oak", cat, "unique", 1))
-      staff <- Assets.list(xa, principal("staff"), None, None)
-      mgr <- Assets.list(xa, principal("manager"), None, None)
-      prin <- Assets.list(xa, principal("principal"), None, None)
+      staff <- Assets.list(xa, principal("staff"), store, None, None)
+      mgr <- Assets.list(xa, principal("manager"), store, None, None)
+      prin <- Assets.list(xa, principal("principal"), store, None, None)
     } yield expect(staff.left.exists(_._1.code == 403)) and
       expect(mgr.isRight) and expect(prin.toOption.exists(_.nonEmpty))
   }
@@ -78,18 +80,20 @@ object AssetsApiIT extends IOSuite {
 
   test("AC2 (partial) — filtering by a parent category includes descendants") { xa =>
     for {
+      store <- ObjectStore.inMemory
       art <- AssetRepo.createCategory("Art", None).transact(xa)
       painting <- AssetRepo.createCategory("Painting", Some(art)).transact(xa)
       _ <- Assets.create(xa, principal("principal"), req("Abstract No.4", painting, "unique", 1))
-      byParent <- Assets.list(xa, principal("principal"), Some(art), None).map(_.toOption.get)
-      byChild <- Assets.list(xa, principal("principal"), Some(painting), None).map(_.toOption.get)
+      byParent <- Assets.list(xa, principal("principal"), store, Some(art), None).map(_.toOption.get)
+      byChild <- Assets.list(xa, principal("principal"), store, Some(painting), None).map(_.toOption.get)
     } yield expect(byParent.exists(_.title == "Abstract No.4")) and // parent filter includes child category
       expect(byChild.exists(_.title == "Abstract No.4"))
   }
 
   test("the seeded registry is visible to the principal; categories list (Staff 403)") { xa =>
     for {
-      assets <- Assets.list(xa, principal("principal"), None, None).map(_.toOption.get)
+      store <- ObjectStore.inMemory
+      assets <- Assets.list(xa, principal("principal"), store, None, None).map(_.toOption.get)
       cats <- Assets.categories(xa, principal("principal")).map(_.toOption.get)
       staffCat <- Assets.categories(xa, principal("staff"))
     } yield expect(assets.exists(_.title == "Royal Oak 15500ST")) and
@@ -101,8 +105,9 @@ object AssetsApiIT extends IOSuite {
   test("the vertical filter scopes the registry — Vehicles = the 'vehicle' vertical (generic, not a bespoke module)") {
     xa =>
       for {
-        vehicles <- Assets.list(xa, principal("principal"), None, None, Some("vehicle")).map(_.toOption.get)
-        all <- Assets.list(xa, principal("principal"), None, None).map(_.toOption.get)
+        store <- ObjectStore.inMemory
+        vehicles <- Assets.list(xa, principal("principal"), store, None, None, Some("vehicle")).map(_.toOption.get)
+        all <- Assets.list(xa, principal("principal"), store, None, None).map(_.toOption.get)
       } yield expect(vehicles.exists(_.title == "Range Rover Autobiography")) and
         expect(vehicles.forall(_.title == "Range Rover Autobiography")) and // only vehicles
         expect(!vehicles.exists(_.title == "Royal Oak 15500ST")) and expect(all.size > vehicles.size)

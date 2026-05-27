@@ -18,6 +18,7 @@ import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz, Scope}
 import com.kanzen.docs.DocumentRepo
 import com.kanzen.property.PropertyRepo
+import com.kanzen.s3.ObjectStore
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -62,7 +63,8 @@ object Assets {
       ownershipStatus: String,
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
-      propertyId: Option[UUID]
+      propertyId: Option[UUID],
+      heroUrl: Option[String] = None // F04: signed blob URL of the hero photo (for the grid card thumbnail)
   )
   final case class AssetDetail(
       id: UUID,
@@ -126,8 +128,7 @@ object Assets {
   )
   final case class EditReq(title: String, maker: Option[String], categoryId: UUID, ownershipStatus: String)
 
-  private def view(card: (Asset, Option[UUID])): AssetView = {
-    val a = card._1
+  private def view(a: Asset, propertyId: Option[UUID], heroUrl: Option[String]): AssetView =
     AssetView(
       a.id,
       a.title,
@@ -138,9 +139,9 @@ object Assets {
       a.ownershipStatus,
       a.acquisitionCostMinor,
       a.acquisitionCurrency,
-      card._2
+      propertyId,
+      heroUrl
     )
-  }
   private def detailOf(a: Asset): AssetDetail =
     AssetDetail(
       a.id,
@@ -169,37 +170,51 @@ object Assets {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such asset."))
   private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
 
+  private val HERO_TTL = 3600 // grid thumbnails — long enough to outlast a browsing session
+
   def list(
       xa: Transactor[IO],
       p: Principal,
+      store: ObjectStore,
       category: Option[UUID],
       q: Option[String],
       vertical: Option[String] = None,
       property: Option[UUID] = None,
       collection: Option[UUID] = None,
-      status: Option[String] = None
+      status: Option[String] = None,
+      tag: Option[UUID] = None
   ): IO[Out[List[AssetView]]] = {
-    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
+    type Rows = List[(Asset, Option[UUID], Option[String])]
+    val tx: ConnectionIO[Out[Rows]] = Authz.forUser(p.userId, p.role).flatMap { authz =>
       // Own-scope (F02 v2): a grant scoped to records I created restricts the list to my own assets.
       val owner = if (authz.scopeFor(viewA) == Scope.Own) Some(p.userId) else None
       def run(cats: Option[NonEmptyList[UUID]]) =
-        AssetRepo
-          .list(cats, q, vertical, property, collection, status, owner)
-          .map(as => Right(as.map(view)): Out[List[AssetView]])
-      if (!authz.can(viewA)) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
+        AssetRepo.list(cats, q, vertical, property, collection, status, owner, tag).map(Right(_): Out[Rows])
+      if (!authz.can(viewA)) (Left(forbidden): Out[Rows]).pure[ConnectionIO]
       else
         category match {
           case None => run(None)
           case Some(cid) =>
             AssetRepo.categoryDescendants(cid).flatMap { ds =>
               NonEmptyList.fromList(ds) match {
-                case None => (Right(List.empty[AssetView]): Out[List[AssetView]]).pure[ConnectionIO]
+                case None => (Right(List.empty[(Asset, Option[UUID], Option[String])]): Out[Rows]).pure[ConnectionIO]
                 case Some(nel) => run(Some(nel))
               }
             }
         }
     }
-    tx.transact(xa)
+    // Presign each hero key into a browser-fetchable blob URL (one signature per card; assets without a hero stay None).
+    tx.transact(xa).flatMap {
+      case Left(e) => IO.pure(Left(e))
+      case Right(rows) =>
+        rows
+          .traverse { case (a, propId, heroKey) =>
+            heroKey
+              .fold(IO.pure(Option.empty[String]))(k => store.presignGet(k, HERO_TTL).map(Some(_)))
+              .map(view(a, propId, _))
+          }
+          .map(vs => Right(vs): Out[List[AssetView]])
+    }
   }
 
   def categories(xa: Transactor[IO], p: Principal): IO[Out[List[CategoryView]]] = {
@@ -446,10 +461,9 @@ object Assets {
         Option[String],
         Option[String],
         Option[UUID],
-        Option[
-          UUID
-        ],
-        Option[String]
+        Option[UUID],
+        Option[String],
+        Option[UUID]
     ),
     (StatusCode, ApiError),
     List[AssetView],
@@ -464,9 +478,10 @@ object Assets {
       .in(query[Option[UUID]]("property"))
       .in(query[Option[UUID]]("collection"))
       .in(query[Option[String]]("status"))
+      .in(query[Option[UUID]]("tag"))
       .errorOut(err)
       .out(jsonBody[List[AssetView]])
-      .summary("List assets (Principal-private; faceted by category/q/vertical/property/collection/status)")
+      .summary("List assets (Principal-private; faceted by category/q/vertical/property/collection/status/tag)")
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), AssetDetail, Any] =
     sttp.tapir.endpoint.get
@@ -537,10 +552,12 @@ object Assets {
       .out(jsonBody[HistoryView])
       .summary("Location + custody history for an asset (newest first)")
 
-  def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
+  def serverEndpoints(a: Auth, xa: Transactor[IO], store: ObjectStore): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (cat, q, vert, prop, coll, st) => list(xa, p, cat, q, vert, prop, coll, st) }),
+      .serverLogic(p => { case (cat, q, vert, prop, coll, st, tag) =>
+        list(xa, p, store, cat, q, vert, prop, coll, st, tag)
+      }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     patchEndpoint

@@ -22,20 +22,23 @@ const v = (o: Partial<AssetView> & Pick<AssetView, "id" | "title" | "categoryId"
   acquisitionCostMinor: null, acquisitionCurrency: null, propertyId: null, ...o,
 });
 const ALL: AssetView[] = [
-  v({ id: "a1", title: "Royal Oak 15500ST", maker: "Audemars Piguet", categoryId: WATCHES, acquisitionCostMinor: 1850000, acquisitionCurrency: "GBP" }),
+  v({ id: "a1", title: "Royal Oak 15500ST", maker: "Audemars Piguet", categoryId: WATCHES, acquisitionCostMinor: 1850000, acquisitionCurrency: "GBP", heroUrl: "blob://hero-a1" }),
   v({ id: "a2", title: "1959 Les Paul Standard", maker: "Gibson", categoryId: "guitars" }),
   v({ id: "a3", title: "Crystal Tumblers", maker: "Cumbria", categoryId: "glass", trackingMode: "grouped_quantity", quantity: 6 }),
 ];
+const TAGGED: Record<string, string[]> = { t1: ["a1"] }; // tag t1 ("Heirloom") is on a1 only
 
 vi.mock("../services/assets", () => ({
   // honour the faceted params (options object) so the rail/search behave like the real API
-  listAssets: vi.fn(async (_t: string | null, f: { category?: string | null; q?: string | null } = {}) => {
+  listAssets: vi.fn(async (_t: string | null, f: { category?: string | null; q?: string | null; tag?: string | null } = {}) => {
     let r = ALL;
     if (f.category) r = r.filter((a) => a.categoryId === f.category);
+    if (f.tag) r = r.filter((a) => TAGGED[f.tag!]?.includes(a.id));
     if (f.q) r = r.filter((a) => `${a.title} ${a.maker ?? ""}`.toLowerCase().includes(f.q!.toLowerCase()));
     return r;
   }),
 }));
+vi.mock("../services/tags", () => ({ listTags: vi.fn(async () => [{ id: "t1", name: "Heirloom" }]) }));
 vi.mock("../services/categories", () => ({
   listCategories: vi.fn(async () => [
     { id: WATCHES, name: "Watches", parentId: null },
@@ -111,5 +114,22 @@ describe("Inventory", () => {
     fireEvent.change(screen.getByLabelText("Search inventory"), { target: { value: "Gibson" } });
     expect(await screen.findByText("1959 Les Paul Standard")).toBeInTheDocument();
     expect(screen.queryByText("Royal Oak 15500ST")).not.toBeInTheDocument();
+  });
+
+  it("filters by a tag from the rail", async () => {
+    renderInv();
+    await screen.findAllByTestId("asset-card");
+    fireEvent.click(await screen.findByRole("button", { name: "Tag" })); // expand the (collapsed) Tag group
+    fireEvent.click(await screen.findByRole("button", { name: "Heirloom" }));
+    expect(await screen.findByText("Royal Oak 15500ST")).toBeInTheDocument();
+    expect(screen.queryByText("1959 Les Paul Standard")).not.toBeInTheDocument();
+    expect(listAssets).toHaveBeenCalledWith("t", expect.objectContaining({ tag: "t1" }));
+  });
+
+  it("renders the hero photo on a card that has one", async () => {
+    renderInv();
+    await screen.findAllByTestId("asset-card");
+    const photos = await screen.findAllByTestId("asset-photo");
+    expect(photos.some((img) => img.getAttribute("src") === "blob://hero-a1")).toBe(true);
   });
 });

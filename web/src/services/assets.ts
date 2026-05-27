@@ -13,6 +13,7 @@ export const AssetViewSchema = z.object({
   acquisitionCostMinor: z.number().nullable(),
   acquisitionCurrency: z.string().nullable(),
   propertyId: z.string().nullable().optional(), // list-card only (resolved via location); absent on the detail view
+  heroUrl: z.string().nullable().optional(), // F04 — signed blob URL of the hero photo (grid-card thumbnail)
 });
 export type AssetView = z.infer<typeof AssetViewSchema>;
 
@@ -59,6 +60,7 @@ export type AssetFilters = {
   property?: string | null;
   collection?: string | null;
   status?: string | null;
+  tag?: string | null;
 };
 
 export function listAssets(token: string | null, filters: AssetFilters = {}): Promise<AssetView[]> {

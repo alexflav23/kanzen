@@ -12,6 +12,7 @@ import { getRegistryHealth } from "../services/insights";
 import { listProperties } from "../services/properties";
 import { listLocations } from "../services/locations";
 import { listCollections, addMember } from "../services/collections";
+import { listTags } from "../services/tags";
 import { searchBrands, recordBrand } from "../services/brands";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
@@ -54,7 +55,11 @@ const styles = stylex.create({
   chipClear: { display: "inline-flex", alignItems: "center", gap: "6px" },
   chipX: { border: 0, background: "transparent", color: "inherit", cursor: "pointer", display: "inline-flex", padding: 0 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" },
-  acard: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, padding: "16px", textAlign: "left", cursor: "pointer", color: colors.ink, display: "flex", flexDirection: "column", gap: "8px" },
+  acard: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, padding: "12px", textAlign: "left", cursor: "pointer", color: colors.ink, display: "flex", flexDirection: "column", gap: "8px" },
+  aphoto: { width: "100%", aspectRatio: "4 / 3", borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.bgSunken, display: "block" },
+  aphotoImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  aphotoEmpty: { width: "100%", height: "100%", display: "grid", placeItems: "center", color: colors.ink4, fontSize: "22px", fontWeight: 600 },
+  abody: { display: "flex", flexDirection: "column", gap: "6px", padding: "0 4px 2px" },
   amaker: { fontSize: "11.5px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3 },
   atitle: { fontSize: "15px", fontWeight: 600, letterSpacing: "-0.01em" },
   arow: { display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" },
@@ -289,15 +294,17 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
   const [status, setStatus] = useState<string | null>(null);
   const [property, setProperty] = useState<string | null>(null);
   const [collection, setCollection] = useState<string | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const assetsQ = useQuery({
-    queryKey: ["assets", { category, q: search, vertical: vertical ?? null, property, collection, status }, token],
-    queryFn: () => listAssets(token, { category, q: search, vertical, property, collection, status }),
+    queryKey: ["assets", { category, q: search, vertical: vertical ?? null, property, collection, status, tag }, token],
+    queryFn: () => listAssets(token, { category, q: search, vertical, property, collection, status, tag }),
   });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token) });
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
   const collsQ = useQuery({ queryKey: ["collections", token], queryFn: () => listCollections(token) });
+  const tagsQ = useQuery({ queryKey: ["tags", token], queryFn: () => listTags(token) });
   // F23 registry health — available to anyone who can read the registry (this page's gate).
   const healthQ = useQuery({ queryKey: ["registry-health", token], queryFn: () => getRegistryHealth(token) });
   const h = healthQ.data;
@@ -310,6 +317,7 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
   }, [categories]);
   const propName = (id: string | null) => propsQ.data?.find((p) => p.id === id)?.name ?? "—";
   const collName = (id: string | null) => collsQ.data?.find((c) => c.id === id)?.name ?? "—";
+  const tagName = (id: string | null) => tagsQ.data?.find((t) => t.id === id)?.name ?? "—";
 
   const all = assetsQ.data ?? [];
   const shown = all; // the server applies every facet (category/status/property/collection/q/vertical)
@@ -319,8 +327,8 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
     return m;
   }, {});
   const valueLabel = Object.entries(valueByCcy).map(([c, v]) => fmtMoney(v, c)).join(" · ") || "—";
-  const active = [category, status, search, property, collection].filter(Boolean).length;
-  const clearAll = () => { setCategory(null); setStatus(null); setSearch(""); setProperty(null); setCollection(null); };
+  const active = [category, status, search, property, collection, tag].filter(Boolean).length;
+  const clearAll = () => { setCategory(null); setStatus(null); setSearch(""); setProperty(null); setCollection(null); setTag(null); };
   const topCats = categories.filter((c) => !c.parentId);
 
   return (
@@ -384,6 +392,13 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
                 <FilterRow key={c.id} active={collection === c.id} onClick={() => setCollection(collection === c.id ? null : c.id)}>{c.name}</FilterRow>
               ))}
             </FilterGroup>
+            {(tagsQ.data ?? []).length > 0 && (
+              <FilterGroup label="Tag">
+                {(tagsQ.data ?? []).map((t) => (
+                  <FilterRow key={t.id} active={tag === t.id} onClick={() => setTag(tag === t.id ? null : t.id)}>{t.name}</FilterRow>
+                ))}
+              </FilterGroup>
+            )}
           </Card>
 
           {h && (
@@ -417,6 +432,7 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
               {category && <FilterChip onClear={() => setCategory(null)}>Category · {categoryName(category)}</FilterChip>}
               {property && <FilterChip onClear={() => setProperty(null)}>Property · {propName(property)}</FilterChip>}
               {collection && <FilterChip onClear={() => setCollection(null)}>Collection · {collName(collection)}</FilterChip>}
+              {tag && <FilterChip onClear={() => setTag(null)}>Tag · {tagName(tag)}</FilterChip>}
               {status && <FilterChip onClear={() => setStatus(null)}>Status · {status}</FilterChip>}
               {search && <FilterChip onClear={() => setSearch("")}>Search · "{search}"</FilterChip>}
             </div>
@@ -429,15 +445,22 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
               <div {...stylex.props(styles.grid)} data-testid="asset-grid">
                 {shown.map((a) => (
                   <button key={a.id} type="button" data-testid="asset-card" onClick={() => navigate(`/inventory/${a.id}`)} {...stylex.props(styles.acard)}>
-                    {a.maker && <div {...stylex.props(styles.amaker)}>{a.maker}</div>}
-                    <div {...stylex.props(styles.atitle)}>{a.title}</div>
-                    <div {...stylex.props(styles.arow)}>
-                      <Pill>{categoryName(a.categoryId)}</Pill>
-                      {modeBadge(a) && <Pill tone="accent">{modeBadge(a)}</Pill>}
-                    </div>
-                    <div {...stylex.props(styles.afoot)}>
-                      <span {...stylex.props(styles.avalue)}>{a.acquisitionCostMinor != null ? fmtMoney(a.acquisitionCostMinor, a.acquisitionCurrency ?? "GBP") : "—"}</span>
-                      {a.propertyId && <span {...stylex.props(styles.aloc)}>{propName(a.propertyId)}</span>}
+                    <span {...stylex.props(styles.aphoto)} data-testid="asset-photo-cell">
+                      {a.heroUrl
+                        ? <img {...stylex.props(styles.aphotoImg)} src={a.heroUrl} alt="" loading="lazy" data-testid="asset-photo" />
+                        : <span {...stylex.props(styles.aphotoEmpty)} aria-hidden="true">{a.title.charAt(0).toUpperCase()}</span>}
+                    </span>
+                    <div {...stylex.props(styles.abody)}>
+                      {a.maker && <div {...stylex.props(styles.amaker)}>{a.maker}</div>}
+                      <div {...stylex.props(styles.atitle)}>{a.title}</div>
+                      <div {...stylex.props(styles.arow)}>
+                        <Pill>{categoryName(a.categoryId)}</Pill>
+                        {modeBadge(a) && <Pill tone="accent">{modeBadge(a)}</Pill>}
+                      </div>
+                      <div {...stylex.props(styles.afoot)}>
+                        <span {...stylex.props(styles.avalue)}>{a.acquisitionCostMinor != null ? fmtMoney(a.acquisitionCostMinor, a.acquisitionCurrency ?? "GBP") : "—"}</span>
+                        {a.propertyId && <span {...stylex.props(styles.aloc)}>{propName(a.propertyId)}</span>}
+                      </div>
                     </div>
                   </button>
                 ))}

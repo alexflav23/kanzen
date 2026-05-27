@@ -35,6 +35,27 @@ test("search narrows by maker", async ({ page }) => {
   await expect(page.getByText("Royal Oak 15500ST")).toHaveCount(0);
 });
 
+// F04 — Tag facet (seeded tags via V2_73). "On display" tags only the painting + the tumblers.
+test("the Tag rail facet narrows the registry", async ({ page }) => {
+  await page.goto("/inventory");
+  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
+  await page.getByRole("button", { name: "Tag", exact: true }).click(); // expand the collapsed Tag group
+  await page.getByRole("button", { name: "On display", exact: true }).click();
+  await expect(page.getByText("Untitled (Abstract)")).toBeVisible();
+  await expect(page.getByText("Cumbria Crystal Tumblers")).toBeVisible();
+  await expect(page.getByText("Royal Oak 15500ST")).toHaveCount(0); // not on display → filtered out
+  await expect(page.getByText("Tag · On display")).toBeVisible(); // active-filter chip
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
+});
+
+// F04 — every grid card has a photo cell (hero thumbnail when photographed, else a placeholder).
+test("asset cards render a photo cell", async ({ page }) => {
+  await page.goto("/inventory");
+  await expect(page.getByText("Royal Oak 15500ST")).toBeVisible();
+  expect(await page.getByTestId("asset-photo-cell").count()).toBeGreaterThanOrEqual(5);
+});
+
 test("the list view renders rows", async ({ page }) => {
   await page.goto("/inventory");
   await page.getByRole("button", { name: "List", exact: true }).click();
