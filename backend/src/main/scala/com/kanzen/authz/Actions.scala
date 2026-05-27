@@ -27,6 +27,7 @@ object Actions {
     // ── Registry (F04) ──
     crud("asset") ++ List(
       Action("asset", "move", Write),
+      Action("asset", "custody", Write),
       Action("asset", "set_hero", Write),
       Action("asset", "log_event", Write),
       Action("asset", "restructure", Write),

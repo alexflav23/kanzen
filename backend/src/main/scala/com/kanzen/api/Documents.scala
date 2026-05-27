@@ -3,7 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.docs.{Document, DocumentRepo}
 import com.kanzen.property.PropertyRepo
 import com.kanzen.s3.ObjectStore
@@ -27,6 +27,13 @@ import scala.util.Try
 object Documents {
   private type Out[A] = Either[(StatusCode, ApiError), A]
   private val PRESIGN_TTL = 300 // seconds
+
+  // F02 v2 — catalogue actions for the evidence store. Bridge-equivalent to the old document-level checks (view/
+  // download = Read, upload/edit = Write), but separately grantable: e.g. download-only access without upload.
+  private val viewA = Actions.byKey("document:view")
+  private val uploadA = Actions.byKey("document:upload")
+  private val downloadA = Actions.byKey("document:download")
+  private val editA = Actions.byKey("document:edit")
 
   final case class DocumentView(
       id: UUID,
@@ -110,7 +117,7 @@ object Documents {
           scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
           dup <- DocumentRepo.findBySha256(sha)
         } yield {
-          if (!authz.can(Level.Write, "document")) Left(forbidden)
+          if (!authz.can(uploadA)) Left(forbidden)
           else if (visibility == "principal_private" && p.role != "principal") Left(forbidden)
           else if (req.propertyId.exists(pid => !scoped.contains(pid))) Left(notFound)
           else
@@ -154,21 +161,28 @@ object Documents {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
-      docs <- if (authz.canRead("document")) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
+      docs <- if (authz.can(viewA)) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
     } yield
-      if (!authz.canRead("document")) Left(forbidden)
+      if (!authz.can(viewA)) Left(forbidden)
       else Right(docs.filter(d => visibleTo(p, d, scoped)).map(view))
     tx.transact(xa)
   }
 
-  /** Load + authorize a single document for a read op; Right(doc) or the right error. */
-  private def readable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
+  /** Load + authorize a single document for a read op; Right(doc) or the right error. The required read action defaults
+    * to `document:view`; `download` passes `document:download` so the two can be granted independently.
+    */
+  private def readable(
+      xa: Transactor[IO],
+      p: Principal,
+      id: UUID,
+      action: com.kanzen.authz.Action = viewA
+  ): IO[Out[Document]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       doc <- DocumentRepo.find(id)
     } yield
-      if (!authz.canRead("document")) Left(forbidden)
+      if (!authz.can(action)) Left(forbidden)
       else doc.filter(d => visibleTo(p, d, scoped)).toRight(notFound)
     tx.transact(xa)
   }
@@ -177,7 +191,7 @@ object Documents {
     readable(xa, p, id).map(_.map(view))
 
   def download(store: ObjectStore, xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PresignResult]] =
-    readable(xa, p, id).flatMap {
+    readable(xa, p, id, downloadA).flatMap {
       case Left(e) => IO.pure(Left(e))
       case Right(doc) =>
         doc.s3Key match {
@@ -194,7 +208,7 @@ object Documents {
       doc <- DocumentRepo.find(id)
     } yield doc.filter(d => visibleTo(p, d, scoped)) match {
       case None => Left(notFound)
-      case Some(d) => if (authz.can(Level.Write, "document")) Right(d) else Left(forbidden)
+      case Some(d) => if (authz.can(editA)) Right(d) else Left(forbidden)
     }
     tx.transact(xa)
   }
@@ -224,10 +238,10 @@ object Documents {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       docs <-
-        if (authz.canRead("document")) DocumentRepo.documentsFor(targetType, targetId)
+        if (authz.can(viewA)) DocumentRepo.documentsFor(targetType, targetId)
         else List.empty[Document].pure[ConnectionIO]
     } yield
-      if (!authz.canRead("document")) Left(forbidden)
+      if (!authz.can(viewA)) Left(forbidden)
       else Right(docs.filter(d => visibleTo(p, d, scoped)))
     tx.transact(xa).flatMap {
       case Left(e) => IO.pure(Left(e))

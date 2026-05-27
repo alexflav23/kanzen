@@ -15,7 +15,7 @@ import com.kanzen.asset.{
 }
 import com.kanzen.audit.AuditRepo
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Authz, Level}
+import com.kanzen.authz.{Actions, Authz, Scope}
 import com.kanzen.docs.DocumentRepo
 import com.kanzen.property.PropertyRepo
 import doobie.ConnectionIO
@@ -39,6 +39,15 @@ import java.util.UUID
   */
 object Assets {
   private type Out[A] = Either[(StatusCode, ApiError), A]
+
+  // F02 v2 — the catalogue actions this domain gates on. `can(action)` falls back to the legacy level (asset:view=Read,
+  // the rest=Write) for un-granted roles, so this is behaviour-preserving while enabling per-action set grants + scope.
+  private val viewA = Actions.byKey("asset:view")
+  private val createA = Actions.byKey("asset:create")
+  private val editA = Actions.byKey("asset:edit")
+  private val moveA = Actions.byKey("asset:move")
+  private val custodyA = Actions.byKey("asset:custody")
+  private val heroA = Actions.byKey("asset:set_hero")
 
   private val MODES = Set("unique", "grouped_quantity", "structured_set")
   private val STATUSES = Set("owned", "sold", "gifted", "lost", "stolen", "archived")
@@ -170,12 +179,14 @@ object Assets {
       collection: Option[UUID] = None,
       status: Option[String] = None
   ): IO[Out[List[AssetView]]] = {
-    def run(cats: Option[NonEmptyList[UUID]]) =
-      AssetRepo
-        .list(cats, q, vertical, property, collection, status)
-        .map(as => Right(as.map(view)): Out[List[AssetView]])
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
+      // Own-scope (F02 v2): a grant scoped to records I created restricts the list to my own assets.
+      val owner = if (authz.scopeFor(viewA) == Scope.Own) Some(p.userId) else None
+      def run(cats: Option[NonEmptyList[UUID]]) =
+        AssetRepo
+          .list(cats, q, vertical, property, collection, status, owner)
+          .map(as => Right(as.map(view)): Out[List[AssetView]])
+      if (!authz.can(viewA)) (Left(forbidden): Out[List[AssetView]]).pure[ConnectionIO]
       else
         category match {
           case None => run(None)
@@ -193,7 +204,7 @@ object Assets {
 
   def categories(xa: Transactor[IO], p: Principal): IO[Out[List[CategoryView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[List[CategoryView]]).pure[ConnectionIO]
+      if (!authz.can(viewA)) (Left(forbidden): Out[List[CategoryView]]).pure[ConnectionIO]
       else
         AssetRepo.listCategories.map(cs =>
           Right(cs.map(c => CategoryView(c.id, c.name, c.parentId))): Out[List[CategoryView]]
@@ -205,30 +216,38 @@ object Assets {
   /** Build the field-filtered detail (valuation stripping + resolved location label) for a principal. */
   private def loadDetail(p: Principal, id: UUID): ConnectionIO[Out[AssetDetail]] =
     Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
+      if (!authz.can(viewA)) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
       else
         AssetRepo.get(id).flatMap {
           case None => (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
           case Some(a) =>
-            // Field-level stripping (F02/F04 AC5): valuation is read only if the role may
-            // read the field — Manager is denied (asset.market_value/insured_value = none).
-            val mkt =
-              if (authz.canRead("asset", Some("market_value"))) ValuationRepo.latest(a.id, "market")
-              else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
-            val ins =
-              if (authz.canRead("asset", Some("insured_value"))) ValuationRepo.latest(a.id, "insured")
-              else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
-            val lbl = a.locationId
-              .fold(Option.empty[com.kanzen.asset.LocationLabel].pure[ConnectionIO])(AssetRepo.locationLabel)
-            for { m <- mkt; i <- ins; l <- lbl } yield Right(
-              detailOf(a).copy(
-                locationName = l.map(_.locationName),
-                propertyName = l.map(_.propertyName),
-                marketValueMinor = m.map(_.amountMinor),
-                insuredValueMinor = i.map(_.amountMinor),
-                valuationCurrency = m.map(_.currency).orElse(i.map(_.currency))
-              )
-            ): Out[AssetDetail]
+            // Own-scope (F02 v2): a view grant scoped to records I created hides others (no leak → 404).
+            val ownerOk =
+              if (authz.scopeFor(viewA) == Scope.Own) AssetRepo.ownerOf(id).map(_.contains(p.userId))
+              else true.pure[ConnectionIO]
+            ownerOk.flatMap {
+              case false => (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
+              case true =>
+                // Field-level stripping (F02/F04 AC5): valuation is read only if the role may
+                // read the field — Manager is denied (asset.market_value/insured_value = none).
+                val mkt =
+                  if (authz.canRead("asset", Some("market_value"))) ValuationRepo.latest(a.id, "market")
+                  else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
+                val ins =
+                  if (authz.canRead("asset", Some("insured_value"))) ValuationRepo.latest(a.id, "insured")
+                  else Option.empty[com.kanzen.asset.Valuation].pure[ConnectionIO]
+                val lbl = a.locationId
+                  .fold(Option.empty[com.kanzen.asset.LocationLabel].pure[ConnectionIO])(AssetRepo.locationLabel)
+                for { m <- mkt; i <- ins; l <- lbl } yield Right(
+                  detailOf(a).copy(
+                    locationName = l.map(_.locationName),
+                    propertyName = l.map(_.propertyName),
+                    marketValueMinor = m.map(_.amountMinor),
+                    insuredValueMinor = i.map(_.amountMinor),
+                    valuationCurrency = m.map(_.currency).orElse(i.map(_.currency))
+                  )
+                ): Out[AssetDetail]
+            }
         }
     }
 
@@ -253,7 +272,7 @@ object Assets {
             .map(_.fold(List.empty[String])(s => TemplateService.validate(attrs, TemplateService.parseSchema(s))))
         )
         res <-
-          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
+          if (!authz.can(createA)) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
           else if (!catOk) (Left(badReq("category not found")): Out[AssetDetail]).pure[ConnectionIO]
           else if (!parentOk) (Left(badReq("parent asset not found")): Out[AssetDetail]).pure[ConnectionIO]
           else if (tplErrors.nonEmpty)
@@ -292,7 +311,7 @@ object Assets {
         exists <- AssetRepo.exists(id)
         catOk <- AssetRepo.categoryExists(req.categoryId)
         res <-
-          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
+          if (!authz.can(editA)) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
           else if (!catOk) (Left(badReq("category not found")): Out[AssetDetail]).pure[ConnectionIO]
           else
@@ -314,7 +333,7 @@ object Assets {
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       targetProp <- req.locationId.fold(Option.empty[UUID].pure[ConnectionIO])(AssetRepo.propertyOfLocation)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        if (!authz.can(moveA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
         else if (req.locationId.isDefined && targetProp.isEmpty)
           (Left(badReq("location not found")): Out[Unit]).pure[ConnectionIO]
@@ -347,7 +366,7 @@ object Assets {
         authz <- Authz.forUser(p.userId, p.role)
         exists <- AssetRepo.exists(id)
         res <-
-          if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+          if (!authz.can(custodyA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
           else
             (AssetRepo.changeCustody(id, req.custodyStatus, p.userId, req.note) *>
@@ -374,7 +393,7 @@ object Assets {
       exists <- AssetRepo.exists(id)
       doc <- DocumentRepo.find(req.documentId)
       res <-
-        if (!authz.can(Level.Write, "asset")) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+        if (!authz.can(heroA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
         else if (doc.isEmpty) (Left(badReq("document not found")): Out[Unit]).pure[ConnectionIO]
         else
@@ -398,7 +417,7 @@ object Assets {
   /** Location + custody history (newest first) — Manager+ read. */
   def history(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[HistoryView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
-      if (!authz.canRead("asset")) (Left(forbidden): Out[HistoryView]).pure[ConnectionIO]
+      if (!authz.can(viewA)) (Left(forbidden): Out[HistoryView]).pure[ConnectionIO]
       else
         for {
           loc <- AssetRepo.locationHistory(id)

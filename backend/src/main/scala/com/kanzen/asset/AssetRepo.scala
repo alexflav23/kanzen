@@ -155,7 +155,8 @@ object AssetRepo {
       vertical: Option[String] = None,
       propertyId: Option[UUID] = None,
       collectionId: Option[UUID] = None,
-      status: Option[String] = None
+      status: Option[String] = None,
+      ownerId: Option[UUID] = None // F02 v2: Own-scope restriction (records I created)
   ): ConnectionIO[List[(Asset, Option[UUID])]] = {
     val join =
       collectionId.map(_ => fr"join collection_members cm on cm.asset_id = a.id").getOrElse(Fragment.empty)
@@ -166,12 +167,17 @@ object AssetRepo {
       propertyId.map(pid => fr"loc.property_id = $pid"),
       collectionId.map(cid => fr"cm.collection_id = $cid"),
       status.map(s => fr"a.ownership_status = $s"),
+      ownerId.map(oid => fr"a.owner_id = $oid"),
       q.map(s => fr"(a.title ilike ${"%" + s + "%"} or a.maker ilike ${"%" + s + "%"})")
     ).flatten
     val where = conds.reduce((x, y) => x ++ fr"and" ++ y)
     (fr"select" ++ cardCols ++ fr"from assets a left join locations loc on loc.id = a.location_id" ++ join ++
       fr"where" ++ where ++ fr"order by a.title").query[(Asset, Option[UUID])].to[List]
   }
+
+  /** The creator of an asset (for F02 v2 Own-scope checks on the detail/single-record path). */
+  def ownerOf(id: UUID): ConnectionIO[Option[UUID]] =
+    sql"select owner_id from assets where id = $id and deleted_at is null".query[Option[UUID]].option.map(_.flatten)
 
   // ---- move / custody / hero (W1.4) ------------------------------------------------------------
   /** The property a location belongs to (for scope checks on a target location). */
