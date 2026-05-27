@@ -10,6 +10,7 @@ import { MediaGallery } from "../components/MediaGallery";
 import { TagChips } from "../components/TagChips";
 import { AssetGroups } from "../components/AssetGroups";
 import { Timeline } from "../components/Timeline";
+import { ActivityFeed } from "../features/audit/ActivityFeed";
 import {
   changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
   logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
@@ -92,7 +93,11 @@ function LogEventModal({ id, token, onClose }: { id: string; token: string | nul
         currency: cost.trim() ? "GBP" : null,
         note: note.trim() || null,
       }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["asset-timeline", id] }); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["asset-timeline", id] });
+      qc.invalidateQueries({ queryKey: ["activity", "asset", id] });
+      onClose();
+    },
   });
   return (
     <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
@@ -203,6 +208,7 @@ function MoveModal({ asset, token, onClose }: { asset: AssetDetailT; token: stri
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["asset", asset.id] });
       qc.invalidateQueries({ queryKey: ["asset-history", asset.id] });
+      qc.invalidateQueries({ queryKey: ["activity", "asset", asset.id] }); // refresh the Activity feed
       onClose();
     },
   });
@@ -243,6 +249,7 @@ function CustodyModal({ asset, token, onClose }: { asset: AssetDetailT; token: s
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["asset", asset.id] });
       qc.invalidateQueries({ queryKey: ["asset-history", asset.id] });
+      qc.invalidateQueries({ queryKey: ["activity", "asset", asset.id] }); // refresh the Activity feed
       onClose();
     },
   });
@@ -288,7 +295,7 @@ export function AssetDetail() {
   // shares the gallery's cache key — the hero is whichever linked photo matches heroDocumentId
   const photosQ = useQuery({ queryKey: ["docs-for", "asset", id, token], queryFn: () => documentsFor("asset", id, token), enabled: assetQ.isSuccess });
   const historyQ = useQuery({ queryKey: ["asset-history", id, token], queryFn: () => getAssetHistory(id, token), enabled: assetQ.isSuccess });
-  const setHero = useMutation({ mutationFn: (docId: string) => setHeroPhoto(id, token, docId), onSuccess: () => qc.invalidateQueries({ queryKey: ["asset", id] }) });
+  const setHero = useMutation({ mutationFn: (docId: string) => setHeroPhoto(id, token, docId), onSuccess: () => { qc.invalidateQueries({ queryKey: ["asset", id] }); qc.invalidateQueries({ queryKey: ["activity", "asset", id] }); } });
   const isPrincipal = can("*", "admin");
   const canWrite = can("asset", "write");
 
@@ -429,6 +436,13 @@ export function AssetDetail() {
                 <div {...stylex.props(styles.lifetime)}><span>Lifetime cost</span><span>{money(timelineQ.data.lifetimeCostMinor, "GBP")}</span></div>
               </>
             )}
+        </Card>
+      </div>
+
+      <div {...stylex.props(styles.section)}>
+        <Card>
+          <CardHeader><CardTitle>Activity</CardTitle></CardHeader>
+          <ActivityFeed targetType="asset" targetId={id} />
         </Card>
       </div>
 

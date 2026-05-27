@@ -80,6 +80,41 @@ object Audit {
   def actions(xa: Transactor[IO], p: Principal): IO[Out[List[String]]] =
     adminOnly(p)(AuditRepo.distinctActions.map(as => Right(as): Out[List[String]])).transact(xa)
 
+  // A target's activity feed is visible to anyone who can read that entity's resource — map the audit target_type to
+  // its catalogue resource; unknown types fall back to admin-only.
+  private val resourceForTarget: Map[String, String] = Map(
+    "asset" -> "asset",
+    "asset_group" -> "asset",
+    "collection" -> "asset",
+    "asset_event" -> "asset",
+    "document" -> "document",
+    "property" -> "property",
+    "location" -> "property",
+    "defect" -> "defect",
+    "vendor" -> "vendor",
+    "person" -> "person",
+    "list" -> "list",
+    "task" -> "task",
+    "calendar" -> "calendar",
+    "maintenance" -> "maintenance",
+    "bill" -> "bill",
+    "expense" -> "expense",
+    "receipt" -> "receipt"
+  )
+
+  /** The activity feed (audit trail) for one entity — gated on the viewer being able to read that entity's resource. */
+  def activity(xa: Transactor[IO], p: Principal, targetType: String, targetId: UUID): IO[Out[List[AuditEntryDto]]] = {
+    val notForbidden = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to this record's activity"))
+    Authz
+      .forUser(p.userId, p.role)
+      .flatMap { authz =>
+        val allowed = resourceForTarget.get(targetType).fold(authz.can(Level.Admin, "*"))(r => authz.canRead(r))
+        if (!allowed) (Left(notForbidden): Out[List[AuditEntryDto]]).pure[ConnectionIO]
+        else AuditRepo.forTarget(targetType, targetId, 50).map(rows => Right(rows.map(dto)): Out[List[AuditEntryDto]])
+      }
+      .transact(xa)
+  }
+
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
@@ -102,14 +137,24 @@ object Audit {
     .out(jsonBody[List[String]])
     .summary("Distinct action keys (for the audit-log filter)")
 
+  val activityEndpoint = endpoint.get
+    .securityIn(bearer)
+    .in("api" / "activity" / path[String]("targetType") / path[UUID]("targetId"))
+    .errorOut(err)
+    .out(jsonBody[List[AuditEntryDto]])
+    .summary("An entity's activity feed (its audit trail) — gated on reading that entity")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     actionsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => actions(xa, p)),
     listEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (limit, before, actor, action, target) =>
         list(xa, p, limit, before, actor, action, target)
-      })
+      }),
+    activityEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (targetType, targetId) => activity(xa, p, targetType, targetId) })
   )
 
-  val endpoints: List[AnyEndpoint] = List(actionsEndpoint, listEndpoint)
+  val endpoints: List[AnyEndpoint] = List(actionsEndpoint, listEndpoint, activityEndpoint)
 }

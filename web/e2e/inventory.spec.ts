@@ -161,6 +161,10 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await expect(page.getByTestId("asset-hero")).toBeVisible();
   await page.getByRole("button", { name: "Delete photo hero.png" }).click();
   await expect(page.getByTestId("asset-hero")).toHaveCount(0); // hero clears once its photo is gone
+
+  // F19/W2 — those audited actions surface in the asset's Activity feed (the per-entity audit trail)
+  await page.getByText("Activity").scrollIntoViewIfNeeded();
+  await expect(page.getByText("asset move").first()).toBeVisible(); // audit action, humanised (distinct from the "moved" lifecycle event)
 });
 
 // F04 (W1.5) — asset groups: peer groupings (create-or-reuse by name + kind) on the asset detail.

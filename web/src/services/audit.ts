@@ -26,3 +26,7 @@ export const listAudit = (token: string | null, f: AuditFilters = {}) => {
 
 export const listAuditActions = (token: string | null) =>
   api("/api/admin/audit/actions", z.array(z.string()), { token });
+
+/** An entity's activity feed (its audit trail) — gated server-side on reading that entity. */
+export const getActivity = (token: string | null, targetType: string, targetId: string) =>
+  api(`/api/activity/${targetType}/${targetId}`, z.array(AuditEntrySchema), { token });

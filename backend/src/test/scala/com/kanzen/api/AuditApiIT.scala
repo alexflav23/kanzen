@@ -58,6 +58,19 @@ object AuditApiIT extends IOSuite {
     }
   }
 
+  test("an entity's activity feed is gated on reading that entity (asset: Manager yes, Staff 403)") { xa =>
+    val s = sfx; val asset = UUID.randomUUID()
+    val mgr = Principal(UUID.randomUUID(), "m", "m@k.local", "manager")
+    for {
+      _ <- AuditRepo
+        .write("user", Some(seededUser), s"asset.move_$s", Some("asset"), Some(asset), Json.obj(), None)
+        .transact(xa)
+      mgrRes <- Audit.activity(xa, mgr, "asset", asset)
+      staffRes <- Audit.activity(xa, staff, "asset", asset)
+    } yield expect(mgrRes.toOption.exists(_.exists(_.action == s"asset.move_$s"))) and // Manager reads the registry
+      expect(staffRes.left.exists(_._1.code == 403)) // Staff cannot read assets → no activity
+  }
+
   test("forTarget returns only that entity's audit trail, newest first") { xa =>
     val s = sfx; val tgt = UUID.randomUUID(); val other = UUID.randomUUID()
     (for {

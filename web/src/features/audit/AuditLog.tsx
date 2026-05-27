@@ -3,23 +3,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { colors, radius } from "../../styles/tokens.stylex";
 import { Card } from "../../components/Card";
-import { Timeline, type TimelineItem, type TimelineTone } from "../../components/Timeline";
+import { Timeline, type TimelineItem } from "../../components/Timeline";
 import { Loading, ErrorState, EmptyState } from "../../components/states";
 import { useAuth } from "../../state/AuthContext";
 import { listAudit, listAuditActions } from "../../services/audit";
+import { toneForAction } from "./auditTone";
 
 /** F19/W2 — the platform action log: every audited write across the platform (who · what · when · to what),
  *  rendered through the reusable <Timeline>. Admin-only (server-gated). Filterable by action. */
-
-// Map an audit action key → a timeline tone (state carried by tone + label, never colour alone).
-function toneFor(action: string): TimelineTone {
-  if (/(delete|remove|untag|decline|reject)/.test(action)) return "danger";
-  if (/(approve|pay|value|valuation|reconcile|restore|complete)/.test(action)) return "positive";
-  if (/(move|custody|hero|order|schedule)/.test(action)) return "violet";
-  if (/^(permission|role|rbac|impersonate|team|backup|user)/.test(action)) return "muted";
-  if (/(create|add|upload|propose|new|\.set)/.test(action)) return "accent";
-  return "info";
-}
 
 const styles = stylex.create({
   bar: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px", flexWrap: "wrap" },
@@ -43,7 +34,7 @@ export function AuditLog() {
     at: e.at,
     title: e.action.replace(/[._]/g, " "),
     subtitle: [e.actorName ?? e.actorType, e.targetType].filter(Boolean).join(" · ") || null,
-    tone: toneFor(e.action),
+    tone: toneForAction(e.action),
   }));
 
   return (
