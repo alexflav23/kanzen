@@ -45,7 +45,8 @@ object Lists {
       note: Option[String],
       estPriceMinor: Option[Long],
       currency: Option[String],
-      addedBy: Option[String]
+      addedBy: Option[String],
+      substituteFor: Option[UUID]
   )
   final case class CreateListReq(name: String, vendor: Option[String], propertyId: Option[UUID])
   final case class EditListReq(
@@ -63,7 +64,8 @@ object Lists {
       url: Option[String],
       category: Option[String] = None,
       note: Option[String] = None,
-      estPriceMinor: Option[Long] = None
+      estPriceMinor: Option[Long] = None,
+      substituteFor: Option[UUID] = None
   )
 
   private def lv(l: ShoppingList): ListView =
@@ -80,7 +82,8 @@ object Lists {
       i.note,
       i.estPriceMinor,
       i.currency,
-      i.addedBy
+      i.addedBy,
+      i.substituteFor
     )
 
   private val forbidden: (StatusCode, ApiError) =
@@ -141,7 +144,8 @@ object Lists {
           r.note,
           r.estPriceMinor,
           Some(p.userId),
-          p.role == "staff"
+          p.role == "staff",
+          r.substituteFor
         )
         .map(iv)
     ).transact(xa)

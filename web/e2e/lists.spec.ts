@@ -42,6 +42,31 @@ test("adding an item to a list makes it appear", async ({ page }) => {
   await expect(page.getByText(item)).toBeVisible();
 });
 
+// Substitutions ("sub items") — an alternative to buy if the primary is out of stock.
+// Add a confirmed item, then attach a substitute to it; it nests under the item, not as its own row.
+test("an item can carry a substitute that nests beneath it", async ({ page }) => {
+  const stamp = Date.now();
+  const item = `Primary ${stamp}`;
+  const sub = `Alt brand ${stamp}`;
+  await page.goto("/lists");
+  await page.getByRole("button", { name: /Grocery — Wardian/ }).click();
+  await page.getByLabel("Add to Grocery — Wardian").fill(item);
+  await page.getByRole("button", { name: "Add" }).first().click();
+
+  const row = page.getByTestId("list-item-row").filter({ hasText: item });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Add substitute" }).click();
+  await row.getByLabel(`Substitute for ${item}`).fill(sub);
+  await row.getByRole("button", { name: "Add", exact: true }).click();
+
+  // The substitute renders nested under its item as a sub-item ("or <name>").
+  const subItem = page.getByTestId("sub-item").filter({ hasText: sub });
+  await expect(subItem).toBeVisible();
+  await expect(subItem).toContainText("or");
+  // It is part of the parent's row group, not a stand-alone top-level item row.
+  await expect(row.getByTestId("sub-item").filter({ hasText: sub })).toBeVisible();
+});
+
 // Self-seeding + idempotent: impersonate Marcia (Staff) to PROPOSE a unique item (lands as
 // needs_approval), stop impersonating, then approve it as Principal and watch it leave the queue.
 // Doubles as an end-to-end check of the token-derived identity (the propose path runs as Staff).

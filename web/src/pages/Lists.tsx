@@ -58,6 +58,12 @@ const styles = stylex.create({
   rowName: { fontSize: "14px", fontWeight: 500, color: colors.ink },
   rowMeta: { fontSize: "12px", color: colors.ink3, marginTop: "2px" },
   note: { fontSize: "12.5px", color: colors.ink2, fontStyle: "italic", marginTop: "4px" },
+  subRow: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 18px 4px 52px", fontSize: "12.5px", color: colors.ink2 },
+  subOr: { fontSize: "10px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink4, fontWeight: 600, flexShrink: 0 },
+  subName: { flex: 1, minWidth: 0 },
+  addSub: { display: "inline-flex", alignItems: "center", gap: "5px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12px", padding: "2px 18px 8px 52px" },
+  subInputRow: { display: "flex", alignItems: "center", gap: "8px", padding: "2px 18px 8px 52px" },
+  subInput: { flex: 1, padding: "5px 9px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "12.5px" },
   addCard: { display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px" },
   addInput: { flex: 1, border: 0, backgroundColor: "transparent", color: colors.ink, fontSize: "14px", outline: { default: "none", ":focus": "none" } },
   catHeader: { padding: "12px 18px 8px", backgroundColor: colors.bg, borderBottom: `1px solid ${colors.line}` },
@@ -83,6 +89,61 @@ const daysUntil = (iso: string) => {
   return Math.round(d / 86_400_000);
 };
 
+/** A confirmed item plus its substitutes ("sub items" — alternatives if the primary is out of stock). */
+function ItemRow({ item, subs, on, onToggle, onRemove, onAddSub }: {
+  item: ListItem;
+  subs: ListItem[];
+  on: boolean;
+  onToggle: () => void;
+  onRemove: (id: string) => void;
+  onAddSub: (name: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [sub, setSub] = useState("");
+  const submit = () => {
+    const v = sub.trim();
+    if (v) { onAddSub(v); setSub(""); setAdding(false); }
+  };
+  return (
+    <div data-testid="list-item-row">
+      <div {...stylex.props(styles.row)}>
+        <button type="button" {...stylex.props(styles.checkbox, on && styles.checkboxOn)} aria-label={`Tick ${item.name}`} aria-pressed={on} onClick={onToggle}>
+          {on && <Check size={12} />}
+        </button>
+        <div {...stylex.props(styles.rowGrow, on && styles.struck)}>
+          <div {...stylex.props(styles.rowName, on && styles.struck)}>{item.name}{item.qty > 1 ? ` · ×${item.qty}` : ""}</div>
+          <div {...stylex.props(styles.rowMeta)}>{[item.addedBy && `added by ${item.addedBy}`, item.recurring && "recurring"].filter(Boolean).join(" · ") || " "}</div>
+        </div>
+        {item.recurring && <Pill tone="accent">staple</Pill>}
+        <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Remove ${item.name}`} onClick={() => onRemove(item.id)}><X size={14} /></button>
+      </div>
+      {subs.map((s) => (
+        <div {...stylex.props(styles.subRow)} key={s.id} data-testid="sub-item">
+          <span {...stylex.props(styles.subOr)}>or</span>
+          <span {...stylex.props(styles.subName)}>{s.name}{s.qty > 1 ? ` · ×${s.qty}` : ""}</span>
+          <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Remove substitute ${s.name}`} onClick={() => onRemove(s.id)}><X size={12} /></button>
+        </div>
+      ))}
+      {adding ? (
+        <div {...stylex.props(styles.subInputRow)}>
+          <input
+            {...stylex.props(styles.subInput)}
+            aria-label={`Substitute for ${item.name}`}
+            placeholder="e.g. another brand if out of stock…"
+            autoFocus
+            value={sub}
+            onChange={(e) => setSub(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") { setAdding(false); setSub(""); } }}
+          />
+          <button type="button" {...stylex.props(styles.btn, styles.btnSm)} disabled={!sub.trim()} onClick={submit}>Add</button>
+        </div>
+      ) : (
+        <button type="button" {...stylex.props(styles.addSub)} onClick={() => setAdding(true)}><Plus size={11} /> Add substitute</button>
+      )}
+    </div>
+  );
+}
+
 function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propName?: string; canDecide: boolean }) {
   const { token } = useAuth();
   const qc = useQueryClient();
@@ -95,14 +156,17 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["list-items", list.id] });
   const add = useMutation({ mutationFn: () => addItem(list.id, { name: name.trim() }, token), onSuccess: () => { setName(""); invalidate(); } });
+  const addSub = useMutation({ mutationFn: (v: { parent: string; name: string }) => addItem(list.id, { name: v.name.trim(), substituteFor: v.parent }, token), onSuccess: invalidate });
   const approve = useMutation({ mutationFn: (id: string) => approveItem(id, token), onSuccess: invalidate });
   const decline = useMutation({ mutationFn: (id: string) => declineItem(id, token), onSuccess: invalidate });
   const order = useMutation({ mutationFn: () => placeOrder(list.id, token), onSuccess: () => qc.invalidateQueries({ queryKey: ["lists"] }) });
 
   const items = itemsQ.data ?? [];
   const live = items.filter((i) => i.status !== "declined");
-  const needsApproval = live.filter((i) => i.status === "needs_approval");
-  const confirmed = live.filter((i) => i.status === "added");
+  const topLevel = live.filter((i) => !i.substituteFor);
+  const subsOf = (id: string) => live.filter((i) => i.substituteFor === id);
+  const needsApproval = topLevel.filter((i) => i.status === "needs_approval");
+  const confirmed = topLevel.filter((i) => i.status === "added");
   const recurringCount = confirmed.filter((i) => i.recurring).length;
 
   const grouped = useMemo(() => {
@@ -215,22 +279,17 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
               {grouped.map(([cat, catItems]) => (
                 <div key={cat}>
                   <div {...stylex.props(styles.catHeader)}><span {...stylex.props(styles.eyebrow)}>{cat} · {catItems.length}</span></div>
-                  {catItems.map((i) => {
-                    const on = !!checked[i.id];
-                    return (
-                      <div {...stylex.props(styles.row)} key={i.id} data-testid="list-item-row">
-                        <button type="button" {...stylex.props(styles.checkbox, on && styles.checkboxOn)} aria-label={`Tick ${i.name}`} aria-pressed={on} onClick={() => setChecked((c) => ({ ...c, [i.id]: !c[i.id] }))}>
-                          {on && <Check size={12} />}
-                        </button>
-                        <div {...stylex.props(styles.rowGrow, on && styles.struck)}>
-                          <div {...stylex.props(styles.rowName, on && styles.struck)}>{i.name}{i.qty > 1 ? ` · ×${i.qty}` : ""}</div>
-                          <div {...stylex.props(styles.rowMeta)}>{[i.addedBy && `added by ${i.addedBy}`, i.recurring && "recurring"].filter(Boolean).join(" · ") || " "}</div>
-                        </div>
-                        {i.recurring && <Pill tone="accent">staple</Pill>}
-                        <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Remove ${i.name}`} onClick={() => decline.mutate(i.id)}><X size={14} /></button>
-                      </div>
-                    );
-                  })}
+                  {catItems.map((i) => (
+                    <ItemRow
+                      key={i.id}
+                      item={i}
+                      subs={subsOf(i.id)}
+                      on={!!checked[i.id]}
+                      onToggle={() => setChecked((c) => ({ ...c, [i.id]: !c[i.id] }))}
+                      onRemove={(id) => decline.mutate(id)}
+                      onAddSub={(nm) => addSub.mutate({ parent: i.id, name: nm })}
+                    />
+                  ))}
                 </div>
               ))}
             </Card>

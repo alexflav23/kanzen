@@ -25,6 +25,7 @@ export const ItemSchema = z.object({
   estPriceMinor: z.number().nullable(),
   currency: z.string().nullable(),
   addedBy: z.string().nullable(),
+  substituteFor: z.string().nullable(), // a substitute ("sub item") points at its parent item
 });
 export type ListItem = z.infer<typeof ItemSchema>;
 
@@ -36,6 +37,7 @@ export type NewItem = {
   category?: string | null;
   note?: string | null;
   estPriceMinor?: number | null;
+  substituteFor?: string | null;
 };
 
 export const listLists = (token: string | null) => api("/api/lists", z.array(ListSchema), { token });
@@ -53,6 +55,7 @@ export const addItem = (listId: string, item: NewItem, token: string | null) =>
       category: item.category ?? null,
       note: item.note ?? null,
       estPriceMinor: item.estPriceMinor ?? null,
+      substituteFor: item.substituteFor ?? null,
     },
     token,
   });

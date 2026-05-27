@@ -18,7 +18,8 @@ final case class ListItem(
     note: Option[String],
     estPriceMinor: Option[Long],
     currency: Option[String],
-    addedBy: Option[String]
+    addedBy: Option[String],
+    substituteFor: Option[UUID]
 )
 final case class ShoppingList(
     id: UUID,
@@ -77,12 +78,14 @@ object ListRepo {
       note: Option[String],
       estPriceMinor: Option[Long],
       addedBy: Option[UUID],
-      proposedByStaff: Boolean
+      proposedByStaff: Boolean,
+      substituteFor: Option[UUID] = None
   ): ConnectionIO[ListItem] = {
-    val status = ListService.initialStatus(recurring, proposedByStaff)
-    sql"""insert into list_items (list_id, name, qty, recurring, url, category, note, est_price_minor, added_by, status)
-          values ($listId, $name, $qty, $recurring, $url, $category, $note, $estPriceMinor, $addedBy, $status)
-          returning id, name, qty, status, recurring, url, category, note, est_price_minor, currency, null"""
+    // a substitute is an alternative for an already-listed item — it doesn't route to approval
+    val status = if (substituteFor.isDefined) "added" else ListService.initialStatus(recurring, proposedByStaff)
+    sql"""insert into list_items (list_id, name, qty, recurring, url, category, note, est_price_minor, added_by, status, substitute_for)
+          values ($listId, $name, $qty, $recurring, $url, $category, $note, $estPriceMinor, $addedBy, $status, $substituteFor)
+          returning id, name, qty, status, recurring, url, category, note, est_price_minor, currency, null, substitute_for"""
       .query[ListItem]
       .unique
   }
@@ -92,7 +95,7 @@ object ListRepo {
 
   def items(listId: UUID): ConnectionIO[List[ListItem]] =
     sql"""select i.id, i.name, i.qty, i.status, i.recurring, i.url, i.category, i.note, i.est_price_minor, i.currency,
-            u.display_name
+            u.display_name, i.substitute_for
           from list_items i left join users u on u.id = i.added_by
           where i.list_id = $listId order by i.category nulls last, i.created_at"""
       .query[ListItem]

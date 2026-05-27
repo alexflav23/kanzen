@@ -17,8 +17,9 @@ const list = {
 vi.mock("../services/lists", () => ({
   listLists: vi.fn(async () => [list]),
   listItems: vi.fn(async () => [
-    { id: "i1", name: "Whole milk", qty: 2, status: "added", recurring: true, url: null, category: "Dairy", note: null, estPriceMinor: null, currency: null, addedBy: "Marcia" },
-    { id: "i2", name: "Truffle (fresh)", qty: 1, status: "needs_approval", recurring: false, url: null, category: "Produce", note: "For the weekend", estPriceMinor: 9500, currency: "GBP", addedBy: "Marcia" },
+    { id: "i1", name: "Whole milk", qty: 2, status: "added", recurring: true, url: null, category: "Dairy", note: null, estPriceMinor: null, currency: null, addedBy: "Marcia", substituteFor: null },
+    { id: "i2", name: "Truffle (fresh)", qty: 1, status: "needs_approval", recurring: false, url: null, category: "Produce", note: "For the weekend", estPriceMinor: 9500, currency: "GBP", addedBy: "Marcia", substituteFor: null },
+    { id: "i3", name: "Oat milk (Oatly)", qty: 1, status: "added", recurring: false, url: null, category: "Dairy", note: null, estPriceMinor: null, currency: null, addedBy: "Marcia", substituteFor: "i1" },
   ]),
   addItem: vi.fn(),
   approveItem: vi.fn(),
@@ -62,5 +63,18 @@ describe("Lists", () => {
     // Principal can approve + place the order.
     expect(screen.getByRole("button", { name: "Approve Truffle (fresh)" })).toBeInTheDocument();
     expect(screen.getByTestId("place-order")).toBeInTheDocument();
+  });
+
+  it("nests substitutes under their item and offers an add-substitute affordance", async () => {
+    renderLists();
+    // The substitute "Oat milk" renders as a nested sub-item — not as its own top-level row.
+    const sub = await screen.findByTestId("sub-item");
+    expect(sub).toHaveTextContent("Oat milk (Oatly)");
+    expect(sub).toHaveTextContent(/or/i);
+    // It is not a stand-alone confirmed row, and Whole milk still owns one top-level row.
+    expect(screen.getAllByTestId("list-item-row")).toHaveLength(1);
+    expect(screen.getByTestId("list-item-row")).toHaveTextContent("Whole milk");
+    // Each item offers an inline "Add substitute" control.
+    expect(screen.getByRole("button", { name: /Add substitute/ })).toBeInTheDocument();
   });
 });
