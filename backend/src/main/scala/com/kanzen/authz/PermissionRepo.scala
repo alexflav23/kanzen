@@ -1,7 +1,12 @@
 package com.kanzen.authz
 
+import cats.data.NonEmptyList
+import cats.syntax.all._
 import doobie._
 import doobie.implicits._
+import doobie.postgres.implicits._
+
+import java.util.UUID
 
 /** F02 — load a role's permission rules from the DB to build an Authorizer, and (admin only) read/edit the whole
   * permission matrix. `field` is nullable and the unique key `(role_name, resource, field)` is NULLS-DISTINCT, so a
@@ -16,6 +21,59 @@ object PermissionRepo {
       .query[(String, Option[String], String)]
       .to[List]
       .map(_.map { case (r, f, l) => Rule(r, f, Level.parse(l)) })
+
+  // ── F02 v2 composition (specs/F02v2-enterprise-rbac.md) ──────────────────────────────────────────
+  /** The full effective role set for a user: primary `users.role` + `user_roles` + roles from every team they're in
+    * **including ancestor teams** (nesting), each expanded through its `parent_role` chain.
+    */
+  def effectiveRoleNames(userId: UUID, primaryRole: String): ConnectionIO[List[String]] =
+    sql"""
+      with recursive
+      my_teams as (
+        select t.id, t.parent_team_id from teams t join team_members m on m.team_id = t.id
+          where m.user_id = $userId and t.deleted_at is null
+        union
+        select p.id, p.parent_team_id from teams p join my_teams c on p.id = c.parent_team_id
+          where p.deleted_at is null
+      ),
+      base_roles(name) as (
+        select $primaryRole
+        union select role_name from user_roles where user_id = $userId
+        union select role_name from team_roles where team_id in (select id from my_teams)
+      ),
+      all_roles(name) as (
+        select name from base_roles
+        union
+        select r.parent_role from roles r join all_roles a on r.name = a.name where r.parent_role is not null
+      )
+      select distinct name from all_roles where name is not null
+    """.query[String].to[List]
+
+  /** Each role's rules, grouped per role (for `Authorizer.compose`'s max-across-roles merge). */
+  def rulesForRolesGrouped(roles: List[String]): ConnectionIO[List[List[Rule]]] =
+    NonEmptyList.fromList(roles) match {
+      case None => List.empty[List[Rule]].pure[ConnectionIO]
+      case Some(nel) =>
+        (fr"select role_name, resource, field, level from permission_rules where" ++ Fragments.in(fr"role_name", nel))
+          .query[(String, String, Option[String], String)]
+          .to[List]
+          .map(_.groupBy(_._1).values.toList.map(_.map { case (_, res, f, l) => Rule(res, f, Level.parse(l)) }))
+    }
+
+  /** Action grants from the permission sets attached to any of these roles. */
+  def setGrantsForRoles(roles: List[String]): ConnectionIO[List[Grant]] =
+    NonEmptyList.fromList(roles) match {
+      case None => List.empty[Grant].pure[ConnectionIO]
+      case Some(nel) =>
+        (fr"""select g.resource, g.action, g.effect, g.scope
+              from permission_set_grants g
+              join role_sets rs on rs.set_id = g.set_id
+              join permission_sets s on s.id = g.set_id
+              where s.deleted_at is null and""" ++ Fragments.in(fr"rs.role_name", nel))
+          .query[(String, String, String, String)]
+          .to[List]
+          .map(_.map { case (res, act, eff, sc) => Grant(res, act, eff == "allow", Scope.parse(sc)) })
+    }
 
   def roles: ConnectionIO[List[RoleRow]] =
     sql"select name, description, is_system from roles order by is_system desc, name"
