@@ -37,6 +37,13 @@ vi.mock("../services/assets", () => ({
     if (f.q) r = r.filter((a) => `${a.title} ${a.maker ?? ""}`.toLowerCase().includes(f.q!.toLowerCase()));
     return r;
   }),
+  createAsset: vi.fn(async () => ({ id: "new1" })),
+  // F22 — vehicle vertical's typed template
+  getTemplate: vi.fn(async () => [
+    { key: "make", fieldType: "string", required: false },
+    { key: "registration", fieldType: "string", required: false },
+    { key: "mileage", fieldType: "number", required: false },
+  ]),
 }));
 vi.mock("../services/tags", () => ({ listTags: vi.fn(async () => [{ id: "t1", name: "Heirloom" }]) }));
 vi.mock("../services/categories", () => ({
@@ -54,7 +61,7 @@ vi.mock("../services/insights", () => ({
 }));
 
 import { Inventory } from "../pages/Inventory";
-import { listAssets } from "../services/assets";
+import { listAssets, createAsset } from "../services/assets";
 
 const renderInv = (props: { vertical?: string; label?: string } = {}) =>
   render(
@@ -131,5 +138,25 @@ describe("Inventory", () => {
     await screen.findAllByTestId("asset-card");
     const photos = await screen.findAllByTestId("asset-photo");
     expect(photos.some((img) => img.getAttribute("src") === "blob://hero-a1")).toBe(true);
+  });
+
+  it("F22 — the New asset form renders typed spec fields from the vertical's template and captures them", async () => {
+    renderInv({ vertical: "vehicle", label: "Vehicles" });
+    await screen.findAllByTestId("asset-card");
+    fireEvent.click(screen.getByRole("button", { name: "New vehicle" }));
+    await screen.findByTestId("new-asset");
+    // typed fields from the vehicle template appear under a Specifications heading
+    await screen.findByTestId("spec-fields");
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Range Rover" } });
+    fireEvent.change(screen.getByLabelText("Registration"), { target: { value: "KAN 1Z" } });
+    fireEvent.change(screen.getByLabelText("Mileage"), { target: { value: "12000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add asset" }));
+    // the number field is coerced; empty fields are dropped
+    await waitFor(() =>
+      expect(createAsset).toHaveBeenCalledWith(
+        expect.objectContaining({ vertical: "vehicle", attributes: { registration: "KAN 1Z", mileage: 12000 } }),
+        "t",
+      ),
+    );
   });
 });

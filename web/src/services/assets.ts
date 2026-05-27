@@ -111,6 +111,12 @@ export const ValuationSchema = z.object({ id: z.string(), assetId: z.string(), k
 export type Valuation = z.infer<typeof ValuationSchema>;
 export type RecordValuationReq = { kind: string; amountMinor: number; currency: string; source: string | null };
 
+/** F22 — typed attribute schema for a vertical (mirrors api.Templates.FieldView). */
+export const TemplateFieldSchema = z.object({ key: z.string(), fieldType: z.string(), required: z.boolean() });
+export type TemplateField = z.infer<typeof TemplateFieldSchema>;
+export const getTemplate = (vertical: string, token: string | null) =>
+  api(`/api/templates/${vertical}`, z.array(TemplateFieldSchema), { token });
+
 /** F21 — provenance party-roles on an asset. */
 export const PartySchema = z.object({ id: z.string(), role: z.string(), name: z.string(), note: z.string().nullable() });
 export type AssetPartyRole = z.infer<typeof PartySchema>;

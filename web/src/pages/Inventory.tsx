@@ -6,7 +6,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Pill } from "../components/Pill";
 import { Card } from "../components/Card";
 import { Plus, Search, Filter, ChevronDown, X, Shield } from "../components/icons";
-import { createAsset, listAssets, type AssetView } from "../services/assets";
+import { createAsset, getTemplate, listAssets, type AssetView } from "../services/assets";
 import { listCategories, type Category } from "../services/categories";
 import { getRegistryHealth } from "../services/insights";
 import { listProperties } from "../services/properties";
@@ -74,6 +74,7 @@ const styles = stylex.create({
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
   modal: { width: "460px", maxHeight: "88vh", overflowY: "auto", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  specHead: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, margin: "18px 0 10px", paddingTop: "14px", borderTop: `1px solid ${colors.line}` },
   field: { display: "block", marginBottom: "12px" },
   two: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   sectionLabel: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, margin: "18px 0 8px" },
@@ -148,6 +149,10 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
   const [acqDate, setAcqDate] = useState("");
   // Collection
   const [collectionId, setCollectionId] = useState("");
+  // F22 — typed specifications from the vertical's template (when launched within a vertical)
+  const [attrs, setAttrs] = useState<Record<string, string>>({});
+  const templateQ = useQuery({ queryKey: ["template", vertical, token], queryFn: () => getTemplate(vertical!, token), enabled: !!vertical });
+  const specFields = templateQ.data ?? [];
 
   const selectedCategoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
   // Debounce the maker text so the catalogue search doesn't fire on every keystroke.
@@ -178,7 +183,14 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
         acquisitionCurrency: cost.trim() ? currency : null,
         acquisitionDate: acqDate || null,
         locationId: locationId || null,
-        attributes: null,
+        attributes: specFields.length
+          ? Object.fromEntries(
+              specFields.flatMap((f) => {
+                const v = (attrs[f.key] ?? "").trim();
+                return v ? [[f.key, f.fieldType === "number" ? Number(v) : v]] : [];
+              }),
+            )
+          : null,
       }, token);
       if (collectionId) await addMember(token, collectionId, asset.id);
       // grow the global brand catalogue + this account's hot cache from real usage (non-fatal)
@@ -265,6 +277,24 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
             {(collsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></label>
 
+        {specFields.length > 0 && (
+          <>
+            <div {...stylex.props(styles.specHead)} data-testid="spec-fields">Specifications</div>
+            {specFields.map((f) => (
+              <label key={f.key} {...stylex.props(styles.field)}>
+                <span {...stylex.props(styles.label)}>{specLabel(f.key)}{f.required ? " *" : ""}</span>
+                <input
+                  {...stylex.props(styles.control)}
+                  aria-label={specLabel(f.key)}
+                  type={f.fieldType === "number" ? "number" : "text"}
+                  value={attrs[f.key] ?? ""}
+                  onChange={(e) => setAttrs({ ...attrs, [f.key]: e.target.value })}
+                />
+              </label>
+            ))}
+          </>
+        )}
+
         {mutation.isError && <div {...stylex.props(styles.label)} role="alert">Couldn't create the asset.</div>}
         <div {...stylex.props(styles.actions)}>
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
@@ -275,6 +305,12 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
       </form>
     </div>
   );
+}
+
+/** Humanise a template field key for its label (e.g. case_mm → "Case mm", vin → "Vin"). */
+function specLabel(key: string): string {
+  const s = key.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function modeBadge(a: AssetView): string | null {
