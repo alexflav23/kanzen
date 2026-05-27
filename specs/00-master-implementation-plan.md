@@ -185,7 +185,7 @@ The Inventory create is unique-only (title/maker/category); filters are Category
 
 ### W2 · Asset timeline & lifecycle (F19 + F20/F21 — the provenance heart) — design: `asset-detail.jsx` (TimelineTab + EventDot)
 Current AssetDetail has a basic event log; the spec is a typed, side-effecting timeline. Per F19 §5/§6.
-- [ ] **F19** **Full timeline** — typed colour-coded event dots (acquired=accent · valuation=green · service/clean=cyan · move/custody=purple · damage=red · doc=grey), cost/party/value-delta pills, chronological (retroactive) insert; upgrade the Lifecycle card to this.
+- [x] **F19** **Full timeline** (2026-05-27) — reusable `<Timeline>` component (design EventDot): typed colour-coded dots (acquired=accent · valuation=green · service/clean=**info** cyan · move/custody=**violet** purple · loss/damage=red · note/sold=muted), date · icon · title/subtitle/party · cost pill. Added `info`/`violet` tokens (light+dark). Built generic (accepts an explicit `tone`) so the **platform audit log** reuses it. Tests: `Timeline.test.tsx` + inventory e2e (a logged service event lands as an info-tone row); a11y-clean both themes. Deferred to W2.2: value-delta pill + retroactive-insert correctness (data already sorts by `occurred_at`).
 - [ ] **F19** **Rich log-event** — type · date · **cost** · **vendor party** (F09) · **documents** · condition delta · location/custody · valuation delta; with side-effects: `moved`→location history, cost→lifetime cost (→F17/F18), `sold/gifted/lost`→closes asset + ownership status.
 - [ ] **F20/F21** Asset detail — **aggregate valuation** summary (history chart) + **provenance party-roles** section (maker/restorer/appraiser/prior-owner); insurance Principal-only (built).
 
