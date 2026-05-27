@@ -14,13 +14,13 @@ test("the Customization page exposes the three editors and creates a tag", async
   await page.getByRole("button", { name: "Add tag" }).click();
   await expect(page.getByText(name)).toBeVisible();
 
-  // add a custom field on assets
-  const key = `e2e_field_${Date.now() % 100000}`;
-  await page.getByLabel("Key").fill(key);
-  await page.getByLabel("Label").fill("E2E Field");
+  // add a custom field on assets (unique label so it doesn't collide with prior runs in the dev DB)
+  const stamp = Date.now() % 100000;
+  await page.getByLabel("Key").fill(`e2e_field_${stamp}`);
+  await page.getByLabel("Label").fill(`E2E Field ${stamp}`);
   await page.getByLabel("Type", { exact: true }).selectOption("number");
   await page.getByRole("button", { name: "Add field" }).click();
-  await expect(page.getByTestId("field-row").filter({ hasText: "E2E Field" })).toBeVisible();
+  await expect(page.getByTestId("field-row").filter({ hasText: `E2E Field ${stamp}` })).toBeVisible();
 });
 
 // Customization is in the nav for the principal (custom_field read).

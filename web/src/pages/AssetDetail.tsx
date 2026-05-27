@@ -14,10 +14,11 @@ import { Bar } from "../components/Bar";
 import { ActivityFeed } from "../features/audit/ActivityFeed";
 import { ProvenanceParties } from "../components/ProvenanceParties";
 import {
-  changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listWarranties,
-  logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
+  changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listAssets,
+  listWarranties, logAssetEvent, moveAsset, recordValuation, setHeroPhoto, CUSTODY_STATUSES,
   type AssetDetail as AssetDetailT,
 } from "../services/assets";
+import { mergeAssets, splitAsset, reverseRestructure } from "../services/restructure";
 import { listCategories } from "../services/categories";
 import { collectionsForAsset } from "../services/collections";
 import { documentsFor } from "../services/documents";
@@ -60,6 +61,7 @@ const styles = stylex.create({
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
   modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  subhead: { fontSize: "13px", fontWeight: 600, color: colors.ink, margin: "14px 0 8px", paddingTop: "12px", borderTop: `1px solid ${colors.line}` },
   field: { display: "block", marginBottom: "12px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
   control: { width: "100%", padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
@@ -285,6 +287,57 @@ function CustodyModal({ asset, token, onClose }: { asset: AssetDetailT; token: s
   );
 }
 
+function RestructureModal({ asset, token, onClose, navigate }: { asset: AssetDetailT; token: string | null; onClose: () => void; navigate: (to: string) => void }) {
+  const qc = useQueryClient();
+  const [count, setCount] = useState(2);
+  const [survivorId, setSurvivorId] = useState("");
+  const [result, setResult] = useState<{ opId: string; text: string; survivor?: string } | null>(null);
+  const others = useQuery({ queryKey: ["assets-all", token], queryFn: () => listAssets(token, {}) });
+  const inv = () => { qc.invalidateQueries({ queryKey: ["assets"] }); qc.invalidateQueries({ queryKey: ["asset", asset.id] }); };
+  const splitMut = useMutation({ mutationFn: () => splitAsset(token, asset.id, count), onSuccess: (r) => { setResult({ opId: r.opId, text: `Split into ${r.childIds.length} new asset(s); acquisition cost allocated across them.` }); inv(); } });
+  const mergeMut = useMutation({ mutationFn: () => mergeAssets(token, survivorId, asset.id), onSuccess: (r) => { setResult({ opId: r.opId, text: "Merged into the survivor — this asset was absorbed (lineage + cost preserved).", survivor: r.survivorId }); inv(); } });
+  const undoMut = useMutation({ mutationFn: (opId: string) => reverseRestructure(token, opId), onSuccess: () => { setResult(null); inv(); } });
+  const targets = (others.data ?? []).filter((x) => x.id !== asset.id);
+
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <div {...stylex.props(styles.modal)} data-testid="restructure" onClick={(e) => e.stopPropagation()}>
+        <div {...stylex.props(styles.modalTitle)}>Restructure</div>
+        {result ? (
+          <div>
+            <div {...stylex.props(styles.note)} data-testid="restructure-result">{result.text}</div>
+            <div {...stylex.props(styles.actions)}>
+              {result.survivor && <button type="button" {...stylex.props(styles.ghost)} onClick={() => navigate(`/inventory/${result.survivor}`)}>Open survivor</button>}
+              <button type="button" {...stylex.props(styles.ghost)} disabled={undoMut.isPending} onClick={() => undoMut.mutate(result.opId)}>Undo</button>
+              <button type="button" {...stylex.props(styles.primary)} onClick={onClose}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div {...stylex.props(styles.subhead)}>Split</div>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Split into N assets (cost allocated)</span>
+              <input {...stylex.props(styles.control)} aria-label="Split count" type="number" min={2} value={count} onChange={(e) => setCount(Math.max(2, Number(e.target.value)))} /></label>
+            <div {...stylex.props(styles.actions)}>
+              <button type="button" {...stylex.props(styles.primary)} data-testid="split-go" disabled={splitMut.isPending} onClick={() => splitMut.mutate()}>Split</button>
+            </div>
+
+            <div {...stylex.props(styles.subhead)}>Merge</div>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Merge this asset into another (this one is absorbed)</span>
+              <select {...stylex.props(styles.control)} aria-label="Survivor" value={survivorId} onChange={(e) => setSurvivorId(e.target.value)}>
+                <option value="">Choose the survivor…</option>
+                {targets.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              </select></label>
+            <div {...stylex.props(styles.actions)}>
+              <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+              <button type="button" {...stylex.props(styles.primary)} data-testid="merge-go" disabled={!survivorId || mergeMut.isPending} onClick={() => mergeMut.mutate()}>Merge</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AssetDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -294,6 +347,7 @@ export function AssetDetail() {
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [changingCustody, setChangingCustody] = useState(false);
+  const [restructuring, setRestructuring] = useState(false);
   const qc = useQueryClient();
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
@@ -330,6 +384,7 @@ export function AssetDetail() {
       {editing && <EditAssetModal asset={assetQ.data} categories={catsQ.data ?? []} token={token} onClose={() => setEditing(false)} />}
       {moving && <MoveModal asset={a} token={token} onClose={() => setMoving(false)} />}
       {changingCustody && <CustodyModal asset={a} token={token} onClose={() => setChangingCustody(false)} />}
+      {restructuring && <RestructureModal asset={a} token={token} onClose={() => setRestructuring(false)} navigate={navigate} />}
       {heroUrl && (
         <div {...stylex.props(styles.heroWrap)} data-testid="asset-hero">
           <img {...stylex.props(styles.heroImg)} src={heroUrl} alt={`${a.title} — hero photo`} />
@@ -378,6 +433,7 @@ export function AssetDetail() {
           <CardHeader>
             <CardTitle>Key facts</CardTitle>
             {can("asset", "write") && <button type="button" onClick={() => setEditing(true)} {...stylex.props(styles.action)}>Edit</button>}
+            {can("asset", "write") && <button type="button" data-testid="restructure-btn" onClick={() => setRestructuring(true)} {...stylex.props(styles.action)}>Restructure</button>}
           </CardHeader>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Category</span><span {...stylex.props(styles.kvV)}>{categoryName}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tracking</span><span {...stylex.props(styles.kvV)}>{modeLabel}</span></div>
