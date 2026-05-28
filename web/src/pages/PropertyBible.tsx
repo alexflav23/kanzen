@@ -6,7 +6,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
 import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash } from "../components/icons";
-import { getProperty } from "../services/properties";
+import { getProperty, patchProperty, archiveProperty, type PropertyDetail } from "../services/properties";
 import { listLocations, createLocation, patchLocation, moveLocation, deleteLocation, type Location } from "../services/locations";
 import { type AssetView } from "../services/assets";
 import { listDefects, raiseDefect, setDefectStatus, type Defect } from "../services/defects";
@@ -80,6 +80,7 @@ const styles = stylex.create({
   expander: { width: "20px", height: "20px", flexShrink: 0, display: "grid", placeItems: "center", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", padding: 0 },
   expanderSpacer: { width: "20px", flexShrink: 0 },
   errorNote: { padding: "10px 12px", borderRadius: radius.sm, backgroundColor: colors.dangerSoft, color: colors.ink, fontSize: "12.5px", marginBottom: "12px" },
+  adminRow: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "18px" },
   headBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
   // modal
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
@@ -333,6 +334,48 @@ function LinkVal({ v }: { v: string | null }) {
   return v ? <span {...stylex.props(styles.linkVal)}>{v}</span> : <span {...stylex.props(styles.linkMuted)}>Not linked</span>;
 }
 
+/** Edit a property's particulars (Manager+). Server rejects edits to an archived property (409). */
+function EditPropertyModal({ p, token, onClose }: { p: PropertyDetail; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(p.name);
+  const [address, setAddress] = useState(p.address ?? "");
+  const [jurisdiction, setJurisdiction] = useState(p.jurisdiction ?? "");
+  const [propType, setPropType] = useState(p.propType ?? "");
+  const [ownership, setOwnership] = useState(p.ownership ?? "");
+  const types = Array.from(new Set([p.propType, "apartment", "house", "villa", "townhouse", "land", "other"].filter(Boolean) as string[]));
+  const owns = Array.from(new Set([p.ownership, "owned", "rented", "leased", "managed"].filter(Boolean) as string[]));
+  const mut = useMutation({
+    mutationFn: () => patchProperty(p.id, { name: name.trim(), address: address.trim() || null, jurisdiction: jurisdiction.trim() || null, propType: propType || null, ownership: ownership || null }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["property", p.id] }); qc.invalidateQueries({ queryKey: ["properties"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="edit-property" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (name.trim()) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Edit property</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Name</span>
+          <input {...stylex.props(styles.control)} aria-label="Property name" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Address</span>
+          <input {...stylex.props(styles.control)} aria-label="Address" value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Jurisdiction</span>
+          <input {...stylex.props(styles.control)} aria-label="Jurisdiction" value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} placeholder="e.g. GB" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Type</span>
+          <select {...stylex.props(styles.control)} aria-label="Type" value={propType} onChange={(e) => setPropType(e.target.value)}>
+            {types.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Ownership</span>
+          <select {...stylex.props(styles.control)} aria-label="Ownership" value={ownership} onChange={(e) => setOwnership(e.target.value)}>
+            {owns.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select></label>
+        {mut.isError && <div {...stylex.props(styles.errorNote)}>{mut.error instanceof Error ? mut.error.message : "Could not save"}</div>}
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!name.trim() || mut.isPending}>{mut.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function PropertyBible() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -341,7 +384,13 @@ export function PropertyBible() {
   const [tab, setTab] = useState<Tab>("overview");
   const [showReport, setShowReport] = useState(false);
   const [showAddRoom, setShowAddRoom] = useState(false);
-  const canManage = role != null && role !== "staff"; // status changes + add room are Manager+
+  const [showEditProp, setShowEditProp] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const canManage = role != null && role !== "staff"; // status changes + add room + property admin are Manager+
+  const archiveMut = useMutation({
+    mutationFn: () => archiveProperty(id, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["properties"] }); navigate("/properties"); },
+  });
 
   const detail = useQuery({ queryKey: ["property", id, token], queryFn: () => getProperty(id, token) });
   const rooms = useQuery({ queryKey: ["locations", id, token], queryFn: () => listLocations(id, token), enabled: detail.isSuccess });
@@ -393,6 +442,21 @@ export function PropertyBible() {
       </div>
 
       {tab === "overview" && (
+        <>
+        {canManage && (
+          <div {...stylex.props(styles.adminRow)}>
+            <button type="button" {...stylex.props(styles.miniBtn)} onClick={() => setShowEditProp(true)}>Edit property</button>
+            {p.status === "archived"
+              ? <span {...stylex.props(styles.sub)}>Archived — read-only</span>
+              : confirmArchive
+                ? <>
+                    <span {...stylex.props(styles.sub)}>Archive this property?</span>
+                    <button type="button" {...stylex.props(styles.miniBtnDanger)} aria-label="Confirm archive" disabled={archiveMut.isPending} onClick={() => archiveMut.mutate()}>Confirm archive</button>
+                    <button type="button" {...stylex.props(styles.miniBtn)} onClick={() => setConfirmArchive(false)}>Cancel</button>
+                  </>
+                : <button type="button" {...stylex.props(styles.miniBtn)} onClick={() => setConfirmArchive(true)}>Archive</button>}
+          </div>
+        )}
         <div {...stylex.props(styles.two)}>
           <Card style={styles.pad}>
             <div {...stylex.props(styles.eyebrow)}>Particulars</div>
@@ -432,6 +496,7 @@ export function PropertyBible() {
             </div>
           </Card>
         </div>
+        </>
       )}
 
       {tab === "assets" && (
@@ -545,6 +610,7 @@ export function PropertyBible() {
 
       {showReport && <ReportDefectModal propertyId={p.id} rooms={roomList} token={token} onClose={() => setShowReport(false)} />}
       {showAddRoom && <AddRoomModal propertyId={p.id} rooms={roomList} token={token} onClose={() => setShowAddRoom(false)} />}
+      {showEditProp && <EditPropertyModal p={p} token={token} onClose={() => setShowEditProp(false)} />}
     </div>
   );
 }

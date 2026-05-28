@@ -175,6 +175,43 @@ test("a room can be added to the property (Manager+)", async ({ page }) => {
   await expect(page.getByText(name)).toBeVisible();
 });
 
+// W4 (F03) — property admin: edit particulars + archive. Operate on a freshly-created property so we never
+// mutate the shared Wardian seed other tests assert against.
+test("a property's particulars can be edited (Manager+)", async ({ page }) => {
+  const name = `EditProp ${Date.now()}`;
+  const renamed = `${name} (renamed)`;
+  await page.goto("/properties");
+  await page.getByRole("button", { name: "Add property" }).click();
+  await page.getByTestId("add-property").getByPlaceholder("e.g. Wardian — Apt 5206").fill(name);
+  await page.getByTestId("add-property").getByRole("button", { name: "Add property" }).click();
+  await page.getByText(name).click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit property" }).click();
+  const modal = page.getByTestId("edit-property");
+  await modal.getByLabel("Property name").fill(renamed);
+  await modal.getByLabel("Address").fill("1 Test Street, London");
+  await modal.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("edit-property")).toHaveCount(0);
+  await expect(page.getByText(renamed)).toBeVisible(); // cover name updates from the refetch
+  await expect(page.getByText("1 Test Street, London")).toBeVisible(); // particulars updated
+});
+
+test("a property can be archived — hidden from the default list, records preserved (Manager+)", async ({ page }) => {
+  const name = `ArchiveMe ${Date.now()}`;
+  await page.goto("/properties");
+  await page.getByRole("button", { name: "Add property" }).click();
+  await page.getByTestId("add-property").getByPlaceholder("e.g. Wardian — Apt 5206").fill(name);
+  await page.getByTestId("add-property").getByRole("button", { name: "Add property" }).click();
+  await page.getByText(name).click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+
+  await page.getByRole("button", { name: "Archive" }).click();
+  await page.getByRole("button", { name: "Confirm archive" }).click();
+  await expect(page).toHaveURL(/\/properties$/); // returned to the list
+  await expect(page.getByText(name)).toHaveCount(0); // archived → hidden from the default list
+});
+
 test("Add property creates a property that appears in the list", async ({ page }) => {
   const name = `E2E House ${Date.now()}`;
   await page.goto("/properties");

@@ -59,3 +59,15 @@ export function getProperty(id: string, token: string | null): Promise<PropertyD
 export function createProperty(req: CreatePropertyReq, token: string | null): Promise<Property> {
   return api("/api/properties", PropertySchema, { method: "POST", body: req, token });
 }
+
+export type PatchPropertyReq = { name: string; address: string | null; jurisdiction: string | null; propType: string | null; ownership: string | null };
+
+/** Edit a property's particulars (Manager+; 409 if archived). */
+export function patchProperty(id: string, req: PatchPropertyReq, token: string | null): Promise<Property> {
+  return api(`/api/properties/${id}`, PropertySchema, { method: "PATCH", body: req, token });
+}
+
+/** Archive a property (Manager+) — hidden from default lists, records preserved. */
+export function archiveProperty(id: string, token: string | null): Promise<Property> {
+  return api(`/api/properties/${id}/archive`, PropertySchema, { method: "POST", token });
+}

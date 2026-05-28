@@ -12,6 +12,7 @@ vi.mock("../services/properties", () => ({
     buildingManagement: "Ballymore — Wardian Estate Management",
     linked: { taskProject: "Wardian — Household", googleCalendar: "wardian.5206@group.calendar.google.com", driveFolder: "Kanzen / Properties / Wardian", onepasswordVault: "Wardian Vault" },
   })),
+  patchProperty: vi.fn(), archiveProperty: vi.fn(),
 }));
 vi.mock("../services/locations", () => ({
   listLocations: vi.fn(async () => [
