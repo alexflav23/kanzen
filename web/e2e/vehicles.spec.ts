@@ -5,7 +5,12 @@ import { expect, test } from "./fixtures";
 test("Vehicles shows the seeded vehicle and only vehicles (the registry's 'vehicle' vertical)", async ({ page }) => {
   await page.goto("/vehicles");
   await expect(page.getByRole("heading", { name: "Vehicles" })).toBeVisible();
-  await expect(page.getByText("Range Rover Autobiography")).toBeVisible();
+  // bespoke vehicle card: reg plate + MOT/Tax/Insurance meta (seeded on the Range Rover)
+  const rr = page.getByTestId("vehicle-card").filter({ hasText: "Range Rover Autobiography" });
+  await expect(rr).toBeVisible();
+  await expect(rr.getByTestId("reg-plate")).toHaveText("KA21 NZN");
+  await expect(rr.getByText("MOT")).toBeVisible();
+  await expect(rr.getByText("Insurance")).toBeVisible();
   // other verticals (watches) are filtered out — proving it's vertical-scoped, not the whole registry
   await expect(page.getByText("Royal Oak 15500ST")).toHaveCount(0);
 });

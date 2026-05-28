@@ -3,7 +3,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
-import { Pill } from "../components/Pill";
+import { Pill, type PillTone } from "../components/Pill";
 import { Card } from "../components/Card";
 import { Plus, Search, Filter, ChevronDown, X, Shield } from "../components/icons";
 import { createAsset, getTemplate, listAssets, type AssetView } from "../services/assets";
@@ -66,6 +66,13 @@ const styles = stylex.create({
   afoot: { display: "flex", alignItems: "baseline", gap: "8px", marginTop: "6px" },
   avalue: { fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: colors.ink },
   aloc: { fontSize: "11.5px", color: colors.ink3, marginLeft: "auto" },
+  // F24/Vehicles — bespoke vehicle card
+  vcard: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, padding: "16px", textAlign: "left", cursor: "pointer", color: colors.ink, display: "flex", flexDirection: "column", gap: "6px" },
+  vsub: { fontSize: "12.5px", color: colors.ink3 },
+  vplate: { alignSelf: "flex-start", marginTop: "6px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontWeight: 700, fontSize: "15px", letterSpacing: "0.12em", color: colors.ink, backgroundColor: colors.bgSunken, border: `1px solid ${colors.lineStrong}`, borderRadius: radius.sm, padding: "4px 10px" },
+  vmeta: { display: "flex", flexDirection: "column", gap: "5px", marginTop: "10px", paddingTop: "10px", borderTop: `1px solid ${colors.line}` },
+  vmetaRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
+  vmetaK: { fontSize: "12px", color: colors.ink3 },
   table: { width: "100%", borderCollapse: "collapse" },
   th: { textAlign: "left", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3, padding: "12px 16px", borderBottom: `1px solid ${colors.line}` },
   td: { padding: "12px 16px", borderBottom: `1px solid ${colors.line}`, fontSize: "13.5px", cursor: "pointer" },
@@ -286,7 +293,7 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
                 <input
                   {...stylex.props(styles.control)}
                   aria-label={specLabel(f.key)}
-                  type={f.fieldType === "number" ? "number" : "text"}
+                  type={f.fieldType === "number" ? "number" : f.fieldType === "date" ? "date" : "text"}
                   value={attrs[f.key] ?? ""}
                   onChange={(e) => setAttrs({ ...attrs, [f.key]: e.target.value })}
                 />
@@ -304,6 +311,45 @@ function NewAssetModal({ token, categories, vertical, onClose }: { token: string
         </div>
       </form>
     </div>
+  );
+}
+
+/** Due-date status for a vehicle's MOT/Tax/Insurance → a coloured pill (overdue=danger, ≤30d=warn, else neutral). */
+function vDue(raw: unknown): { tone: PillTone; text: string } | null {
+  if (typeof raw !== "string" || !raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.floor((d.getTime() - Date.now()) / 86_400_000);
+  const text = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+  if (days < 0) return { tone: "danger", text: `${text} · overdue` };
+  if (days <= 30) return { tone: "warn", text: `${text} · soon` };
+  return { tone: "default", text };
+}
+
+/** F24/Vehicles — a bespoke vehicle card (maker · model/colour · reg plate + MOT/Tax/Insurance due pills). */
+function VehicleCard({ a, onOpen }: { a: AssetView; onOpen: () => void }) {
+  const at = (a.attributes ?? {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof at[k] === "string" ? (at[k] as string) : null);
+  const reg = str("registration");
+  const sub = [str("colour"), str("model")].filter(Boolean).join(" · ");
+  const meta: [string, ReturnType<typeof vDue>][] = [["MOT", vDue(at.mot_due)], ["Tax", vDue(at.tax_due)], ["Insurance", vDue(at.insurance_due)]];
+  return (
+    <button type="button" data-testid="vehicle-card" onClick={onOpen} {...stylex.props(styles.vcard)}>
+      <div {...stylex.props(styles.amaker)}>{a.maker ?? "Vehicle"}</div>
+      <div {...stylex.props(styles.atitle)}>{a.title}</div>
+      {sub && <div {...stylex.props(styles.vsub)}>{sub}</div>}
+      {reg && <span {...stylex.props(styles.vplate)} data-testid="reg-plate">{reg}</span>}
+      {meta.some(([, d]) => d) && (
+        <div {...stylex.props(styles.vmeta)}>
+          {meta.filter((m): m is [string, NonNullable<ReturnType<typeof vDue>>] => m[1] !== null).map(([label, d]) => (
+            <div key={label} {...stylex.props(styles.vmetaRow)}>
+              <span {...stylex.props(styles.vmetaK)}>{label}</span>
+              <Pill tone={d.tone}>{d.text}</Pill>
+            </div>
+          ))}
+        </div>
+      )}
+    </button>
   );
 }
 
@@ -479,7 +525,9 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
             : shown.length === 0 ? <EmptyState title="No assets">Nothing matches — try clearing a filter, or add an asset.</EmptyState>
             : view === "grid" ? (
               <div {...stylex.props(styles.grid)} data-testid="asset-grid">
-                {shown.map((a) => (
+                {vertical === "vehicle"
+                  ? shown.map((a) => <VehicleCard key={a.id} a={a} onOpen={() => navigate(`/inventory/${a.id}`)} />)
+                  : shown.map((a) => (
                   <button key={a.id} type="button" data-testid="asset-card" onClick={() => navigate(`/inventory/${a.id}`)} {...stylex.props(styles.acard)}>
                     <span {...stylex.props(styles.aphoto)} data-testid="asset-photo-cell">
                       {a.heroUrl

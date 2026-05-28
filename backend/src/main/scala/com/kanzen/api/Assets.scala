@@ -64,7 +64,9 @@ object Assets {
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
       propertyId: Option[UUID],
-      heroUrl: Option[String] = None // F04: signed blob URL of the hero photo (for the grid card thumbnail)
+      heroUrl: Option[String] = None, // F04: signed blob URL of the hero photo (for the grid card thumbnail)
+      attributes: Json =
+        Json.obj() // F22/F24: typed vertical attributes (e.g. vehicle reg/colour/MOT) for bespoke cards
   )
   final case class AssetDetail(
       id: UUID,
@@ -140,7 +142,8 @@ object Assets {
       a.acquisitionCostMinor,
       a.acquisitionCurrency,
       propertyId,
-      heroUrl
+      heroUrl,
+      a.attributes
     )
   private def detailOf(a: Asset): AssetDetail =
     AssetDetail(

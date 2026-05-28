@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 import type { AssetView } from "../services/assets";
 
@@ -19,7 +19,7 @@ const { searchBrands, recordBrand } = vi.hoisted(() => ({
 vi.mock("../services/brands", () => ({ searchBrands, recordBrand }));
 const v = (o: Partial<AssetView> & Pick<AssetView, "id" | "title" | "categoryId">): AssetView => ({
   maker: null, trackingMode: "unique", quantity: 1, ownershipStatus: "owned",
-  acquisitionCostMinor: null, acquisitionCurrency: null, propertyId: null, ...o,
+  acquisitionCostMinor: null, acquisitionCurrency: null, propertyId: null, attributes: {}, ...o,
 });
 const ALL: AssetView[] = [
   v({ id: "a1", title: "Royal Oak 15500ST", maker: "Audemars Piguet", categoryId: WATCHES, acquisitionCostMinor: 1850000, acquisitionCurrency: "GBP", heroUrl: "blob://hero-a1" }),
@@ -78,16 +78,27 @@ describe("Inventory", () => {
     expect(await screen.findAllByTestId("asset-card")).toHaveLength(3);
   });
 
+  it("renders bespoke vehicle cards with a reg plate + MOT/Tax/Insurance due pills", async () => {
+    (listAssets as Mock).mockResolvedValueOnce([
+      v({ id: "veh1", title: "Range Rover", maker: "Land Rover", categoryId: VEHICLES,
+        attributes: { registration: "KA21 NZN", colour: "Black", mot_due: "2020-01-01", insurance_due: "2099-01-01" } }),
+    ]);
+    renderInv({ vertical: "vehicle", label: "Vehicles" });
+    const card = await screen.findByTestId("vehicle-card");
+    expect(within(card).getByTestId("reg-plate")).toHaveTextContent("KA21 NZN");
+    expect(within(card).getByText(/overdue/)).toBeInTheDocument(); // MOT 2020 → overdue (danger pill)
+  });
+
   it("a vertical narrows the same generic surface (Vehicles = 'vehicle' vertical)", async () => {
     renderInv({ vertical: "vehicle", label: "Vehicles" });
     expect(await screen.findByRole("heading", { name: "Vehicles" })).toBeInTheDocument();
-    await screen.findAllByTestId("asset-card");
+    await screen.findAllByTestId("vehicle-card"); // vehicles render bespoke cards
     expect(listAssets).toHaveBeenCalledWith("t", expect.objectContaining({ vertical: "vehicle" }));
   });
 
   it("launching create from Vehicles presets the category + a vehicle-keyed brand autocomplete", async () => {
     renderInv({ vertical: "vehicle", label: "Vehicles" });
-    await screen.findAllByTestId("asset-card");
+    await screen.findAllByTestId("vehicle-card");
     fireEvent.click(screen.getByRole("button", { name: "New vehicle" }));
     const modal = await screen.findByTestId("new-asset");
     // category is preset to the vertical's category (not the first/Watches)
@@ -142,7 +153,7 @@ describe("Inventory", () => {
 
   it("F22 — the New asset form renders typed spec fields from the vertical's template and captures them", async () => {
     renderInv({ vertical: "vehicle", label: "Vehicles" });
-    await screen.findAllByTestId("asset-card");
+    await screen.findAllByTestId("vehicle-card");
     fireEvent.click(screen.getByRole("button", { name: "New vehicle" }));
     await screen.findByTestId("new-asset");
     // typed fields from the vehicle template appear under a Specifications heading
