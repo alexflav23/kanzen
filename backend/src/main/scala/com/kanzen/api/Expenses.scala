@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
-import com.kanzen.finance.{Expense, ExpenseRepo, ExpenseService}
+import com.kanzen.finance.{BudgetRepo, BudgetRow, Expense, ExpenseRepo, ExpenseService}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -53,6 +53,7 @@ object Expenses {
   private val needsPrincipal: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "approval_threshold", "over-threshold approval requires the Principal"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such expense."))
+  private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
 
   def submit(xa: Transactor[IO], p: Principal, req: SubmitReq): IO[Out[ExpenseView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
@@ -110,6 +111,71 @@ object Expenses {
   def approve(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] = decide(xa, p, id, ExpenseRepo.approve)
   def reject(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] = decide(xa, p, id, ExpenseRepo.reject)
 
+  // ---- budgets (F17) ----
+  final case class BudgetView(
+      id: UUID,
+      propertyId: Option[UUID],
+      propertyName: Option[String],
+      categoryId: Option[UUID],
+      categoryName: Option[String],
+      period: String,
+      amountMinor: Long,
+      actualMinor: Long,
+      currency: String
+  )
+  final case class CreateBudgetReq(
+      propertyId: Option[UUID],
+      categoryId: Option[UUID],
+      period: String,
+      amountMinor: Long,
+      currency: String
+  )
+  final case class DeletedResp(deleted: UUID)
+
+  private def bView(b: BudgetRow): BudgetView =
+    BudgetView(
+      b.id,
+      b.propertyId,
+      b.propertyName,
+      b.categoryId,
+      b.categoryName,
+      b.period,
+      b.amountMinor,
+      b.actualMinor,
+      b.currency
+    )
+
+  def listBudgets(xa: Transactor[IO], p: Principal): IO[Out[List[BudgetView]]] = {
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
+      if (!authz.can(Actions.byKey("expense:view"))) (Left(forbidden): Out[List[BudgetView]]).pure[ConnectionIO]
+      else BudgetRepo.list.map(bs => Right(bs.map(bView)): Out[List[BudgetView]])
+    }
+    tx.transact(xa)
+  }
+
+  def createBudget(xa: Transactor[IO], p: Principal, req: CreateBudgetReq): IO[Out[BudgetView]] = {
+    if (!BudgetRepo.validPeriod(req.period)) IO.pure(Left(badReq("period must be monthly, quarterly or annually")))
+    else if (req.amountMinor <= 0) IO.pure(Left(badReq("budget amount must be positive")))
+    else {
+      val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
+        if (!authz.can(Actions.byKey("expense:create"))) (Left(forbidden): Out[BudgetView]).pure[ConnectionIO]
+        else
+          BudgetRepo
+            .create(p.userId, req.propertyId, req.categoryId, req.period, req.amountMinor, req.currency)
+            .flatMap(id => BudgetRepo.find(id).map(_.map(bView).toRight(notFound)))
+      }
+      tx.transact(xa)
+    }
+  }
+
+  def deleteBudget(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[DeletedResp]] = {
+    val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
+      if (!authz.can(Actions.byKey("expense:create"))) (Left(forbidden): Out[DeletedResp]).pure[ConnectionIO]
+      else BudgetRepo.softDelete(id).map(n => if (n > 0) Right(DeletedResp(id)) else Left(notFound))
+    }
+    tx.transact(xa)
+  }
+
   private val err = statusCode.and(jsonBody[ApiError])
 
   val submitEndpoint: Endpoint[String, SubmitReq, (StatusCode, ApiError), ExpenseView, Any] =
@@ -146,12 +212,51 @@ object Expenses {
       .out(jsonBody[ExpenseView])
       .summary("Reject (over-threshold → Principal)")
 
+  val budgetsEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[BudgetView], Any] =
+    sttp.tapir.endpoint.get
+      .securityIn(auth.bearer[String]())
+      .in("api" / "budgets")
+      .errorOut(err)
+      .out(jsonBody[List[BudgetView]])
+      .summary("Budgets with budget-vs-actual (approved expenses in the period)")
+
+  val createBudgetEndpoint: Endpoint[String, CreateBudgetReq, (StatusCode, ApiError), BudgetView, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "budgets")
+      .in(jsonBody[CreateBudgetReq])
+      .errorOut(err)
+      .out(jsonBody[BudgetView])
+      .summary("Add a budget (Manager+)")
+
+  val deleteBudgetEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), DeletedResp, Any] =
+    sttp.tapir.endpoint.delete
+      .securityIn(auth.bearer[String]())
+      .in("api" / "budgets" / path[UUID]("id"))
+      .errorOut(err)
+      .out(jsonBody[DeletedResp])
+      .summary("Delete a budget (Manager+)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     submitEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: SubmitReq) => submit(xa, p, r)),
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (s: Option[String]) => list(xa, p, s)),
     approveEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => approve(xa, p, id)),
-    rejectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => reject(xa, p, id))
+    rejectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => reject(xa, p, id)),
+    budgetsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => listBudgets(xa, p)),
+    createBudgetEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => (r: CreateBudgetReq) => createBudget(xa, p, r)),
+    deleteBudgetEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => deleteBudget(xa, p, id))
   )
 
-  val endpoints: List[AnyEndpoint] = List(submitEndpoint, listEndpoint, approveEndpoint, rejectEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(
+      submitEndpoint,
+      listEndpoint,
+      approveEndpoint,
+      rejectEndpoint,
+      budgetsEndpoint,
+      createBudgetEndpoint,
+      deleteBudgetEndpoint
+    )
 }

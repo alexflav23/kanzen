@@ -64,6 +64,25 @@ export const submitExpense = (req: SubmitExpenseReq, token: string | null) =>
 // Per-jurisdiction approval thresholds (minor units; mirrors backend ExpenseService) — for the UI hint only.
 export const EXPENSE_THRESHOLDS: Record<string, number> = { GBP: 150000, SGD: 250000 };
 
+/** F17 — a budget with its computed actual (approved expenses in the period). */
+export const BudgetSchema = z.object({
+  id: z.string(),
+  propertyId: z.string().nullable(),
+  propertyName: z.string().nullable(),
+  categoryId: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  period: z.string(),
+  amountMinor: z.number(),
+  actualMinor: z.number(),
+  currency: z.string(),
+});
+export type Budget = z.infer<typeof BudgetSchema>;
+export type CreateBudgetReq = { propertyId: string | null; categoryId: string | null; period: string; amountMinor: number; currency: string };
+
+export const listBudgets = (token: string | null) => api("/api/budgets", z.array(BudgetSchema), { token });
+export const createBudget = (req: CreateBudgetReq, token: string | null) => api("/api/budgets", BudgetSchema, { method: "POST", body: req, token });
+export const deleteBudget = (id: string, token: string | null) => api(`/api/budgets/${id}`, z.object({ deleted: z.string() }), { method: "DELETE", token });
+
 export const listBills = (token: string | null) => api("/api/bills", z.array(BillSchema), { token });
 export const createBill = (req: CreateBillReq, token: string | null) => api("/api/bills", BillSchema, { method: "POST", body: req, token });
 export const listPayments = (token: string | null) => api("/api/payments", z.array(PaymentSchema), { token });

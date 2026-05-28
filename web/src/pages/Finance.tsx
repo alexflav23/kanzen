@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { Check, X, Plus } from "../components/icons";
+import { Bar } from "../components/Bar";
+import { Check, X, Plus, Trash } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listMethods, createMethod, schedulePayment, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listBudgets, createBudget, deleteBudget, listExpenses, listMethods, createMethod, schedulePayment, listPayments, markPaid, rejectExpense } from "../services/finance";
 import { listProperties } from "../services/properties";
 import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
 import { getReceipt, listReceipts } from "../services/receipts";
@@ -52,6 +53,11 @@ const styles = stylex.create({
   flabel: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
   control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
   checkRow: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: colors.ink2, marginBottom: "12px" },
+  budgetRow: { padding: "16px 18px", borderBottom: `1px solid ${colors.line}` },
+  budgetTop: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" },
+  budgetTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink, textTransform: "capitalize" },
+  budgetAmt: { marginLeft: "auto", fontSize: "13px", color: colors.ink2, fontVariantNumeric: "tabular-nums" },
+  iconBtn: { border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", padding: "4px", display: "inline-flex" },
   modalActions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
   ghost: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
   primary: { padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
@@ -255,6 +261,50 @@ function SchedulePaymentModal({ token, bills, methods, onClose }: { token: strin
   );
 }
 
+const BUDGET_PERIODS = ["monthly", "quarterly", "annually"];
+
+/** F17 — add a per-property budget for a period. Budget-vs-actual is computed server-side from approved expenses. */
+function AddBudgetModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const props = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const [propertyId, setPropertyId] = useState("");
+  const [period, setPeriod] = useState("monthly");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const amountMinor = Math.round((parseFloat(amount) || 0) * 100);
+  const mut = useMutation({
+    mutationFn: () => createBudget({ propertyId: propertyId || null, categoryId: null, period, amountMinor, currency }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["budgets"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="add-budget" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (amountMinor > 0) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Add a budget</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Property (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">— all properties</option>
+            {(props.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Period</span>
+          <select {...stylex.props(styles.control)} aria-label="Period" value={period} onChange={(e) => setPeriod(e.target.value)}>
+            {BUDGET_PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Amount</span>
+          <input {...stylex.props(styles.control)} aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 2000.00" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Currency</span>
+          <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.note)}>Actual is the sum of approved expenses for this scope in the period — Kanzen tracks the spend, it doesn't move money.</div>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={amountMinor <= 0 || mut.isPending}>{mut.isPending ? "Adding…" : "Add budget"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Finance() {
   const { token } = useAuth();
   const qc = useQueryClient();
@@ -263,10 +313,13 @@ export function Finance() {
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddMethod, setShowAddMethod] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showAddBudget, setShowAddBudget] = useState(false);
 
   const bills    = useQuery({ queryKey: ["bills", token], queryFn: () => listBills(token) });
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
   const methods  = useQuery({ queryKey: ["methods", token], queryFn: () => listMethods(token), enabled: tab === "pay" });
+  const budgets  = useQuery({ queryKey: ["budgets", token], queryFn: () => listBudgets(token), enabled: tab === "budgets" });
+  const delBudget = useMutation({ mutationFn: (id: string) => deleteBudget(id, token), onSuccess: () => qc.invalidateQueries({ queryKey: ["budgets"] }) });
   const pending  = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval") });
   const allExp   = useQuery({ queryKey: ["expenses", "all", token], queryFn: () => listExpenses(token, null) });
   const accounts = useQuery({ queryKey: ["bank", "accounts", token], queryFn: () => listAccounts(token) });
@@ -572,7 +625,31 @@ export function Finance() {
       )}
 
       {tab === "budgets" && (
-        <Card><div {...stylex.props(styles.note)}>Per-property budgets arrive with the F17 budgets slice. Approvals + variance are live above.</div></Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Budgets · {budgets.data?.length ?? 0}</CardTitle>
+            <button type="button" {...stylex.props(styles.headBtn)} onClick={() => setShowAddBudget(true)}><Plus size={14} /> Add budget</button>
+          </CardHeader>
+          {budgets.isPending ? <Loading /> : budgets.isError ? <ErrorState error={budgets.error} />
+            : budgets.data.length === 0 ? <EmptyState title="No budgets">Set a per-property budget and track it against approved expenses.</EmptyState>
+            : budgets.data.map((b) => {
+                const pct = b.amountMinor > 0 ? Math.round((b.actualMinor / b.amountMinor) * 100) : 0;
+                const over = b.actualMinor > b.amountMinor;
+                const remaining = b.amountMinor - b.actualMinor;
+                return (
+                  <div key={b.id} {...stylex.props(styles.budgetRow)} data-testid="budget-row">
+                    <div {...stylex.props(styles.budgetTop)}>
+                      <span {...stylex.props(styles.budgetTitle)}>{[b.propertyName ?? "All properties", b.categoryName, b.period].filter(Boolean).join(" · ")}</span>
+                      <Pill tone={over ? "danger" : "default"}>{over ? `over by ${fmtMoney(b.actualMinor - b.amountMinor, b.currency)}` : `${fmtMoney(remaining, b.currency)} left`}</Pill>
+                      <span {...stylex.props(styles.budgetAmt)}>{fmtMoney(b.actualMinor, b.currency)} of {fmtMoney(b.amountMinor, b.currency)} · {pct}%</span>
+                      <button type="button" {...stylex.props(styles.iconBtn)} aria-label={`Delete budget ${b.propertyName ?? "all"} ${b.period}`} onClick={() => delBudget.mutate(b.id)}><Trash size={13} /></button>
+                    </div>
+                    <Bar pct={pct} />
+                  </div>
+                );
+              })}
+          {showAddBudget && <AddBudgetModal token={token} onClose={() => setShowAddBudget(false)} />}
+        </Card>
       )}
     </div>
   );

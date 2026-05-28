@@ -120,8 +120,20 @@ test("the tax tab estimates UK income tax and shows the deductible report (F38)"
   await expect(page.getByTestId("estimate")).toBeVisible();
 });
 
-test("the budgets tab notes the deferral", async ({ page }) => {
+// W5.4 (F17) — budgets: budget-vs-actual against approved expenses + add a budget.
+test("the budgets tab shows budget-vs-actual and a budget can be added", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Budgets" }).click();
-  await expect(page.getByText(/Per-property budgets arrive/)).toBeVisible();
+  // the seeded Wardian monthly budget (£2,000) with its actual bar
+  await expect(page.getByTestId("budget-row").filter({ hasText: "monthly" }).first()).toBeVisible();
+  await expect(page.getByText(/of £2,000/).first()).toBeVisible(); // £650 of £2,000
+
+  // add a budget
+  await page.getByRole("button", { name: "Add budget" }).click();
+  const modal = page.getByTestId("add-budget");
+  await modal.getByLabel("Period").selectOption("quarterly");
+  await modal.getByLabel("Amount").fill("9000.00");
+  await modal.getByRole("button", { name: "Add budget" }).click();
+  await expect(page.getByTestId("add-budget")).toHaveCount(0);
+  await expect(page.getByTestId("budget-row").filter({ hasText: "quarterly" }).first()).toBeVisible();
 });

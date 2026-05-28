@@ -16,6 +16,11 @@ vi.mock("../services/finance", () => ({
   createBill: vi.fn(async (req: { payee: string; amountMinor: number; currency: string; propertyId: string | null; category: string | null }) => ({ id: "bNew", payee: req.payee, amountMinor: req.amountMinor, currency: req.currency, varianceFlag: false, propertyId: req.propertyId, category: req.category })),
   listPayments: async () => [],
   markPaid: vi.fn(),
+  listBudgets: async () => [
+    { id: "bud1", propertyId: "p1", propertyName: "Wardian — Apt 5206", categoryId: null, categoryName: null, period: "monthly", amountMinor: 200000, actualMinor: 65000, currency: "GBP" },
+  ],
+  createBudget: vi.fn(async (req: { period: string; amountMinor: number }) => ({ id: "budNew", propertyId: null, propertyName: null, categoryId: null, categoryName: null, period: req.period, amountMinor: req.amountMinor, actualMinor: 0, currency: "GBP" })),
+  deleteBudget: vi.fn(async (id: string) => ({ deleted: id })),
   listMethods: async () => [{ id: "m1", displayName: "Coutts current", last4: "1234" }],
   createMethod: vi.fn(async (req: { displayName: string; last4: string | null }) => ({ id: "mNew", displayName: req.displayName, last4: req.last4 })),
   schedulePayment: vi.fn(async (req: { mode: string }) => ({ id: "pNew", mode: req.mode, state: "scheduled" })),
@@ -62,7 +67,7 @@ vi.mock("../services/receipts", () => ({
 }));
 
 import { Finance } from "../pages/Finance";
-import { createBill, submitExpense, createMethod, schedulePayment } from "../services/finance";
+import { createBill, submitExpense, createMethod, schedulePayment, createBudget } from "../services/finance";
 
 const renderFinance = () =>
   render(
@@ -125,6 +130,20 @@ describe("Finance", () => {
     fireEvent.change(within(s).getByLabelText("Amount"), { target: { value: "220.00" } });
     fireEvent.click(within(s).getByRole("button", { name: "Schedule" }));
     await waitFor(() => expect(schedulePayment).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 22000, mode: "manual" }), "t"));
+  });
+
+  it("shows budget-vs-actual and adds a budget", async () => {
+    renderFinance();
+    fireEvent.click(screen.getByRole("button", { name: "Budgets" }));
+    // the seeded monthly budget: £650 of £2,000
+    expect(await screen.findByTestId("budget-row")).toBeInTheDocument();
+    expect(screen.getByText(/£650 of £2,000/)).toBeInTheDocument();
+    // add one
+    fireEvent.click(screen.getByRole("button", { name: "Add budget" }));
+    const modal = await screen.findByTestId("add-budget");
+    fireEvent.change(within(modal).getByLabelText("Amount"), { target: { value: "9000" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add budget" }));
+    await waitFor(() => expect(createBudget).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 900000, period: "monthly" }), "t"));
   });
 
   it("shows the recurring schedule by default", async () => {
