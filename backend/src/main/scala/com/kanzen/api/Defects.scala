@@ -5,6 +5,8 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Authz, Level}
 import com.kanzen.property.{Defect, DefectRepo, PropertyRepo}
+import com.kanzen.tasks.TaskRepo
+import com.kanzen.vendor.VendorRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -32,7 +34,11 @@ object Defects {
       description: Option[String],
       severity: String,
       status: String,
-      reportedBy: Option[UUID]
+      reportedBy: Option[UUID],
+      // W4: the vendor responsible (resolved to its name) + whether a fix-task has been spawned
+      assignedVendorId: Option[UUID] = None,
+      assignedVendorName: Option[String] = None,
+      hasTask: Boolean = false
   )
   final case class RaiseReq(
       propertyId: UUID,
@@ -43,12 +49,26 @@ object Defects {
   )
   final case class PatchReq(title: String, description: Option[String], severity: String)
   final case class StatusReq(status: String)
+  final case class AssignReq(vendorId: Option[UUID])
 
   private val STATUSES = Set("open", "in_progress", "resolved", "wont_fix")
   private val SEVERITIES = Set("low", "medium", "high")
 
-  private def view(d: Defect): DefectView =
-    DefectView(d.id, d.propertyId, d.locationId, d.title, d.description, d.severity, d.status, d.reportedBy)
+  private def view(d: Defect, vendorName: Option[String] = None): DefectView =
+    DefectView(
+      d.id,
+      d.propertyId,
+      d.locationId,
+      d.title,
+      d.description,
+      d.severity,
+      d.status,
+      d.reportedBy,
+      d.assignedVendorId,
+      vendorName,
+      d.taskId.isDefined
+    )
+  private def viewT(t: (Defect, Option[String])): DefectView = view(t._1, t._2)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "not permitted on defect"))
@@ -75,7 +95,8 @@ object Defects {
   def list(xa: Transactor[IO], p: Principal, propertyId: UUID, status: Option[String]): IO[Out[List[DefectView]]] = {
     val tx = authorize(p, propertyId, Level.Read, None).flatMap {
       case Left(e) => (Left(e): Out[List[DefectView]]).pure[ConnectionIO]
-      case Right(_) => DefectRepo.list(propertyId, status).map(ds => Right(ds.map(view)): Out[List[DefectView]])
+      case Right(_) =>
+        DefectRepo.listWithVendor(propertyId, status).map(ds => Right(ds.map(viewT)): Out[List[DefectView]])
     }
     tx.transact(xa)
   }
@@ -103,7 +124,8 @@ object Defects {
         case Some(d) =>
           authorize(p, d.propertyId, Level.Write, Some("status")).flatMap {
             case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
-            case Right(_) => DefectRepo.setStatus(id, status) *> DefectRepo.find(id).map(_.map(view).toRight(notFound))
+            case Right(_) =>
+              DefectRepo.setStatus(id, status) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
           }
       }
       tx.transact(xa)
@@ -121,12 +143,59 @@ object Defects {
             case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
             case Right(_) =>
               DefectRepo.patch(id, req.title, req.description, req.severity) *> DefectRepo
-                .find(id)
-                .map(_.map(view).toRight(notFound))
+                .findWithVendor(id)
+                .map(_.map(viewT).toRight(notFound))
           }
       }
       tx.transact(xa)
     }
+  }
+
+  /** Assign (or clear) the vendor responsible for a defect (Manager+; F09). */
+  def assign(xa: Transactor[IO], p: Principal, id: UUID, req: AssignReq): IO[Out[DefectView]] = {
+    val tx = DefectRepo.find(id).flatMap {
+      case None => (Left(notFound): Out[DefectView]).pure[ConnectionIO]
+      case Some(d) =>
+        authorize(p, d.propertyId, Level.Write, None).flatMap {
+          case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
+          case Right(_) =>
+            def doAssign(v: Option[UUID]) =
+              DefectRepo.assignVendor(id, v) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
+            req.vendorId match {
+              case None => doAssign(None) // clear the assignment
+              case Some(vid) =>
+                // F09 scope: only a vendor approved for this property + currently insured may be assigned
+                VendorRepo.selectableFor(d.propertyId).flatMap { sel =>
+                  if (sel.exists(_.id == vid)) doAssign(Some(vid))
+                  else
+                    (Left(badReq("vendor is not approved + insured for this property")): Out[DefectView])
+                      .pure[ConnectionIO]
+                }
+            }
+        }
+    }
+    tx.transact(xa)
+  }
+
+  /** Spawn a "fix" task into the property's native task project (F06) and link it to the defect (Manager+). */
+  def spawnTask(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[DefectView]] = {
+    val tx = DefectRepo.find(id).flatMap {
+      case None => (Left(notFound): Out[DefectView]).pure[ConnectionIO]
+      case Some(d) =>
+        authorize(p, d.propertyId, Level.Write, None).flatMap {
+          case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
+          case Right(_) =>
+            PropertyRepo.taskProjectId(d.propertyId).flatMap {
+              case None =>
+                (Left(badReq("this property has no linked task project")): Out[DefectView]).pure[ConnectionIO]
+              case Some(projectId) =>
+                TaskRepo.createTask(projectId, s"Fix: ${d.title}", None, None).flatMap { t =>
+                  DefectRepo.setTask(id, t.id) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
+                }
+            }
+        }
+    }
+    tx.transact(xa)
   }
 
   // ---- endpoints ----
@@ -168,14 +237,34 @@ object Defects {
       .out(jsonBody[DefectView])
       .summary("Transition a defect's status (Manager+)")
 
+  val assignEndpoint: Endpoint[String, (UUID, AssignReq), (StatusCode, ApiError), DefectView, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "defects" / path[UUID]("id") / "vendor")
+      .in(jsonBody[AssignReq])
+      .errorOut(err)
+      .out(jsonBody[DefectView])
+      .summary("Assign (or clear) the vendor responsible for a defect (Manager+; F09)")
+
+  val taskEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), DefectView, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "defects" / path[UUID]("id") / "task")
+      .errorOut(err)
+      .out(jsonBody[DefectView])
+      .summary("Spawn a fix-task into the property's task project and link it (Manager+; F06)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, st) => list(xa, p, id, st) }),
     raiseEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: RaiseReq) => raise(xa, p, r)),
     patchEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => patch(xa, p, id, r) }),
     statusEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (id, r) => transition(xa, p, id, r.status) })
+      .serverLogic(p => { case (id, r) => transition(xa, p, id, r.status) }),
+    assignEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => assign(xa, p, id, r) }),
+    taskEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => spawnTask(xa, p, id))
   )
 
-  val endpoints: List[AnyEndpoint] = List(listEndpoint, raiseEndpoint, patchEndpoint, statusEndpoint)
+  val endpoints: List[AnyEndpoint] =
+    List(listEndpoint, raiseEndpoint, patchEndpoint, statusEndpoint, assignEndpoint, taskEndpoint)
 }

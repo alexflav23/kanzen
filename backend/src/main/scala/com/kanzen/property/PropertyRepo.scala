@@ -202,6 +202,10 @@ object PropertyRepo {
   def assetCountAtLocation(id: UUID): ConnectionIO[Int] =
     sql"select count(*) from assets where location_id = $id and deleted_at is null".query[Int].unique
 
+  /** The property's linked native task project (F06) — where a defect spawns its "fix" task. */
+  def taskProjectId(propertyId: UUID): ConnectionIO[Option[UUID]] =
+    sql"select task_project_id from properties where id = $propertyId".query[Option[UUID]].option.map(_.flatten)
+
   def softDeleteLocation(id: UUID): ConnectionIO[Int] =
     sql"update locations set deleted_at = now() where id = $id and deleted_at is null".update.run
 }

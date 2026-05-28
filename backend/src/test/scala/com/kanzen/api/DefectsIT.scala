@@ -72,4 +72,30 @@ object DefectsIT extends IOSuite {
       edited <- Defects.patch(xa, manager, raised.toOption.get.id, PatchReq("Fixed title", Some("more detail"), "high"))
     } yield expect(edited.toOption.exists(v => v.title == "Fixed title" && v.severity == "high"))
   }
+
+  // Thames Plumbing — approved for Wardian + insured (V2_29); the seeded selectable plumber.
+  private val plumber = UUID.fromString("60000000-0000-0000-0000-000000000001")
+
+  test("manager assigns an approved+insured vendor; an out-of-scope vendor is rejected (F09)") { xa =>
+    for {
+      raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "Tap drips", None, "low"))
+      id = raised.toOption.get.id
+      ok <- Defects.assign(xa, manager, id, Defects.AssignReq(Some(plumber)))
+      bad <- Defects.assign(xa, manager, id, Defects.AssignReq(Some(UUID.randomUUID())))
+      cleared <- Defects.assign(xa, manager, id, Defects.AssignReq(None))
+    } yield expect(
+      ok.toOption.exists(v => v.assignedVendorId.contains(plumber) && v.assignedVendorName.exists(_.contains("Thames")))
+    ) and
+      expect(bad.left.exists(_._1.code == 400)) and // not approved/insured for this property
+      expect(cleared.toOption.exists(_.assignedVendorId.isEmpty))
+  }
+
+  test("spawning a fix-task links a task to the defect (F06)") { xa =>
+    for {
+      raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "Boiler noise", None, "medium"))
+      id = raised.toOption.get.id
+      before = raised.toOption.get.hasTask
+      spawned <- Defects.spawnTask(xa, manager, id)
+    } yield expect(!before) and expect(spawned.toOption.exists(_.hasTask)) // Wardian has a task project (V2_77)
+  }
 }

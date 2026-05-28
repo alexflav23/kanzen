@@ -23,9 +23,11 @@ vi.mock("../services/locations", () => ({
 }));
 vi.mock("../services/defects", () => ({
   listDefects: vi.fn(async () => [
-    { id: "d1", propertyId: "p1", locationId: null, title: "Leaking tap", description: "drips", severity: "medium", status: "open", reportedBy: null },
+    { id: "d1", propertyId: "p1", locationId: null, title: "Leaking tap", description: "drips", severity: "medium", status: "open", reportedBy: null, assignedVendorId: null, assignedVendorName: null, hasTask: false },
   ]),
+  raiseDefect: vi.fn(), setDefectStatus: vi.fn(), patchDefect: vi.fn(), assignDefectVendor: vi.fn(), spawnDefectTask: vi.fn(),
 }));
+vi.mock("../services/vendors", () => ({ selectableVendors: vi.fn(async () => []) }));
 // Assets are server-scoped via ?property=; maintenance + documents come back whole and the Bible
 // filters them to this property — so the mocks return a mix to prove the client-side scoping.
 vi.mock("../services/assets", () => ({

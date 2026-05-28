@@ -55,7 +55,9 @@ Per `properties.jsx` + App. E.4:
 >
 > - **Location-tree depth**: the Rooms tab is the full nested tree — **richer kinds** (room/area/cabinet/shelf/case/garage/storage in create+edit), **per-node item lists** (count badge + expand → items located there, via the assets `?location=` facet + `AssetView.locationId`), **rename/edit** (PATCH), **move/reparent** (modal excludes self+descendants; server guards cycles + cross-property), and an **asset-aware delete-guard** ("move N item(s) and M sub-location(s) first"). Seed: a `cabinet` "Watch Cabinet" under the Walk-in Wardrobe holding the watches (V2_78).
 >
-> **Remaining W4:** **Utilities (bills)** tab → W5/Finance (needs `Bill.propertyId`); **property admin** (assign-vendor/spawn-task from a defect, edit particulars, archive a property).
+ - **Defect ops + property admin**: a defect can be assigned a **vendor** (F09 — server validates the vendor is approved + insured for the property; `defects.assigned_vendor_id`), **spawn a fix-task** (F06 — "Fix: <title>" into the property's task project, linked via `defects.task_id`, shown as "Task created") and have its particulars **edited**. The Overview offers (Manager+) **Edit property** (PATCH) and **Archive** (two-step confirm → hidden from default lists, records preserved; an archived property is read-only and rejects edits with 409).
+>
+> **W4 is complete.** Remaining for F03: **Utilities (bills)** tab → W5/Finance (needs `Bill.propertyId`); mobile companion → F31.
 
 ## 6. Business rules & validation
 - **Location tree integrity**: a node's `parent_id` must belong to the same `property_id`; no cycles (reparent validates); depth unbounded but typed.

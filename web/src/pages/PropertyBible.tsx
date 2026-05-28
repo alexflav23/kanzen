@@ -5,11 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
-import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash } from "../components/icons";
+import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash, Tasks } from "../components/icons";
 import { getProperty, patchProperty, archiveProperty, type PropertyDetail } from "../services/properties";
 import { listLocations, createLocation, patchLocation, moveLocation, deleteLocation, type Location } from "../services/locations";
 import { type AssetView } from "../services/assets";
-import { listDefects, raiseDefect, setDefectStatus, type Defect } from "../services/defects";
+import { listDefects, raiseDefect, setDefectStatus, patchDefect, assignDefectVendor, spawnDefectTask, type Defect } from "../services/defects";
+import { selectableVendors, type Vendor } from "../services/vendors";
 import { listAssets } from "../services/assets";
 import { listPlans } from "../services/maintenance";
 import { listDocuments } from "../services/documents";
@@ -74,6 +75,10 @@ const styles = stylex.create({
   rowTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink },
   desc: { fontSize: "12px", color: colors.ink3, marginTop: "2px" },
   defectMeta: { display: "flex", gap: "8px", alignItems: "center" },
+  defectOps: { display: "flex", alignItems: "center", gap: "10px", padding: "0 0 14px 0", marginTop: "-4px", flexWrap: "wrap" },
+  vendorPick: { display: "inline-flex", alignItems: "center", gap: "8px" },
+  opsLabel: { fontSize: "12px", color: colors.ink3 },
+  vendorSelect: { padding: "5px 9px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "12.5px" },
   actions: { display: "flex", gap: "6px", marginLeft: "10px" },
   miniBtn: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 9px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   miniBtnDanger: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 9px", borderRadius: radius.sm, border: 0, backgroundColor: colors.danger, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
@@ -334,6 +339,94 @@ function LinkVal({ v }: { v: string | null }) {
   return v ? <span {...stylex.props(styles.linkVal)}>{v}</span> : <span {...stylex.props(styles.linkMuted)}>Not linked</span>;
 }
 
+/** Edit a defect's particulars (Manager+). */
+function EditDefectModal({ d, propertyId, token, onClose }: { d: Defect; propertyId: string; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(d.title);
+  const [description, setDescription] = useState(d.description ?? "");
+  const [severity, setSeverity] = useState(d.severity);
+  const mut = useMutation({
+    mutationFn: () => patchDefect(d.id, { title: title.trim(), description: description.trim() || null, severity }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["defects", propertyId] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="edit-defect" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (title.trim()) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Edit defect</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>What's wrong</span>
+          <input {...stylex.props(styles.control)} aria-label="Defect title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Details (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Details" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Severity</span>
+          <select {...stylex.props(styles.control)} aria-label="Severity" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+            {["low", "medium", "high"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!title.trim() || mut.isPending}>{mut.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** One defect: lifecycle transitions + (Manager+) edit, vendor assignment (F09), and spawn-a-fix-task (F06). */
+function DefectRow({ d, propertyId, canManage, vendors, token }: { d: Defect; propertyId: string; canManage: boolean; vendors: Vendor[]; token: string | null }) {
+  const qc = useQueryClient();
+  const [showEdit, setShowEdit] = useState(false);
+  const inv = () => qc.invalidateQueries({ queryKey: ["defects", propertyId] });
+  const setStatus = useMutation({ mutationFn: (status: string) => setDefectStatus(d.id, status, token), onSuccess: inv });
+  const assign = useMutation({ mutationFn: (vendorId: string | null) => assignDefectVendor(d.id, vendorId, token), onSuccess: inv });
+  const spawn = useMutation({ mutationFn: () => spawnDefectTask(d.id, token), onSuccess: inv });
+  // keep the current assignment selectable even if its insurance has since lapsed (so the picker shows it)
+  const opts = d.assignedVendorId && d.assignedVendorName && !vendors.some((v) => v.id === d.assignedVendorId)
+    ? [{ id: d.assignedVendorId, name: d.assignedVendorName } as Vendor, ...vendors]
+    : vendors;
+  return (
+    <div>
+      <CardRow testId="defect-row">
+        <div {...stylex.props(styles.grow)}>
+          <div {...stylex.props(styles.rowTitle)}>{d.title}</div>
+          {d.description && <div {...stylex.props(styles.desc)}>{d.description}</div>}
+        </div>
+        <div {...stylex.props(styles.defectMeta)}>
+          <Pill tone={severityTone[d.severity] ?? "default"}>{d.severity}</Pill>
+          <Pill tone={statusTone[d.status] ?? "default"}>{d.status.replace("_", " ")}</Pill>
+        </div>
+        {canManage && (
+          <span {...stylex.props(styles.actions)}>
+            {(NEXT[d.status] ?? []).map((t) => (
+              <button key={t.status} type="button" {...stylex.props(styles.miniBtn)} aria-label={`${t.label} ${d.title}`} disabled={setStatus.isPending}
+                onClick={() => setStatus.mutate(t.status)}>
+                {t.status === "resolved" ? <Check size={12} /> : t.status === "wont_fix" ? <X size={12} /> : null} {t.label}
+              </button>
+            ))}
+            <button type="button" {...stylex.props(styles.miniBtn)} aria-label={`Edit ${d.title}`} onClick={() => setShowEdit(true)}>Edit</button>
+          </span>
+        )}
+      </CardRow>
+      <div {...stylex.props(styles.defectOps)}>
+        {canManage ? (
+          <label {...stylex.props(styles.vendorPick)}>
+            <span {...stylex.props(styles.opsLabel)}>Vendor</span>
+            <select {...stylex.props(styles.vendorSelect)} aria-label={`Assign vendor for ${d.title}`} value={d.assignedVendorId ?? ""} disabled={assign.isPending}
+              onChange={(e) => assign.mutate(e.target.value || null)}>
+              <option value="">Unassigned</option>
+              {opts.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          </label>
+        ) : (
+          <span {...stylex.props(styles.opsLabel)}>Vendor: {d.assignedVendorName ?? "Unassigned"}</span>
+        )}
+        {d.hasTask
+          ? <Pill tone="accent">Task created</Pill>
+          : canManage && <button type="button" {...stylex.props(styles.miniBtn)} aria-label={`Create task for ${d.title}`} disabled={spawn.isPending} onClick={() => spawn.mutate()}><Tasks size={12} /> Create task</button>}
+      </div>
+      {showEdit && <EditDefectModal d={d} propertyId={propertyId} token={token} onClose={() => setShowEdit(false)} />}
+    </div>
+  );
+}
+
 /** Edit a property's particulars (Manager+). Server rejects edits to an archived property (409). */
 function EditPropertyModal({ p, token, onClose }: { p: PropertyDetail; token: string | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -400,6 +493,8 @@ export function PropertyBible() {
   const assets = useQuery({ queryKey: ["bible-assets", id, token], queryFn: () => listAssets(token, { property: id }), enabled: detail.isSuccess && (tab === "assets" || tab === "rooms") });
   const plans = useQuery({ queryKey: ["maintenance", token], queryFn: () => listPlans(token), enabled: detail.isSuccess && tab === "maintenance" });
   const docs = useQuery({ queryKey: ["documents", token], queryFn: () => listDocuments(token), enabled: detail.isSuccess && tab === "documents" });
+  // assignable vendors for this property (approved + insured) — feeds the defect vendor picker
+  const vendorsQ = useQuery({ queryKey: ["selectable-vendors", id, token], queryFn: () => selectableVendors(id, token), enabled: detail.isSuccess && tab === "defects" && role != null && role !== "staff" });
   const propPlans = (plans.data ?? []).filter((pl) => pl.propertyId === id);
   const propDocs = (docs.data ?? []).filter((d) => d.propertyId === id);
   // group the property's assets by their current node — feeds the per-node item lists + count badges
@@ -408,11 +503,6 @@ export function PropertyBible() {
     for (const a of assets.data ?? []) if (a.locationId) { const arr = m.get(a.locationId) ?? []; arr.push(a); m.set(a.locationId, arr); }
     return m;
   }, [assets.data]);
-  const setStatus = useMutation({
-    mutationFn: ({ defectId, status }: { defectId: string; status: string }) => setDefectStatus(defectId, status, token),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["defects", id] }),
-  });
-
   const openDefects = (defects.data ?? []).filter((d) => d.status === "open" || d.status === "in_progress").length;
 
   const back = <button type="button" onClick={() => navigate("/properties")} {...stylex.props(styles.back)}>← All properties</button>;
@@ -584,26 +674,7 @@ export function PropertyBible() {
             : defects.isError ? <ErrorState error={defects.error} />
             : defects.data.length === 0 ? <EmptyState title="No defects">Nothing reported for this property.</EmptyState>
             : defects.data.map((d: Defect) => (
-                <CardRow key={d.id} testId="defect-row">
-                  <div {...stylex.props(styles.grow)}>
-                    <div {...stylex.props(styles.rowTitle)}>{d.title}</div>
-                    {d.description && <div {...stylex.props(styles.desc)}>{d.description}</div>}
-                  </div>
-                  <div {...stylex.props(styles.defectMeta)}>
-                    <Pill tone={severityTone[d.severity] ?? "default"}>{d.severity}</Pill>
-                    <Pill tone={statusTone[d.status] ?? "default"}>{d.status.replace("_", " ")}</Pill>
-                  </div>
-                  {canManage && (
-                    <span {...stylex.props(styles.actions)}>
-                      {(NEXT[d.status] ?? []).map((t) => (
-                        <button key={t.status} type="button" {...stylex.props(styles.miniBtn)} aria-label={`${t.label} ${d.title}`} disabled={setStatus.isPending}
-                          onClick={() => setStatus.mutate({ defectId: d.id, status: t.status })}>
-                          {t.status === "resolved" ? <Check size={12} /> : t.status === "wont_fix" ? <X size={12} /> : null} {t.label}
-                        </button>
-                      ))}
-                    </span>
-                  )}
-                </CardRow>
+                <DefectRow key={d.id} d={d} propertyId={p.id} canManage={canManage} vendors={vendorsQ.data ?? []} token={token} />
               ))}
         </Card>
       )}

@@ -143,6 +143,46 @@ test("a node can be renamed, moved, and (when empty) deleted (Manager+)", async 
   await expect(page.getByText(renamed)).toHaveCount(0); // empty node removed
 });
 
+// W4 (F03) — defect ops: assign a vendor (F09), spawn a fix-task (F06), edit particulars.
+test("a defect shows its assigned vendor (seeded)", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Defects" }).click();
+  // the dishwasher defect is seeded assigned to Thames Plumbing (V2_79)
+  const picker = page.getByLabel("Assign vendor for Dishwasher not draining fully");
+  await expect(picker.locator("option:checked")).toHaveText("Thames Plumbing");
+});
+
+test("a defect can be assigned a vendor, spawn a fix-task, and be edited (Manager+)", async ({ page }) => {
+  const title = `E2E defect ${Date.now()}`;
+  const edited = `${title} (edited)`;
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Defects" }).click();
+
+  // raise an isolated defect (don't mutate the seeded ones)
+  await page.getByRole("button", { name: "Report defect" }).click();
+  await page.getByTestId("report-defect").getByLabel("Defect title").fill(title);
+  await page.getByTestId("report-defect").getByRole("button", { name: "Report defect" }).click();
+  await expect(page.getByText(title)).toBeVisible();
+
+  // assign the approved+insured plumber
+  await page.getByLabel(`Assign vendor for ${title}`).selectOption({ label: "Thames Plumbing" });
+  await expect(page.getByLabel(`Assign vendor for ${title}`).locator("option:checked")).toHaveText("Thames Plumbing");
+
+  // spawn a fix-task into the property's task project (button → "Task created")
+  await page.getByRole("button", { name: `Create task for ${title}` }).click();
+  await expect(page.getByRole("button", { name: `Create task for ${title}` })).toHaveCount(0);
+
+  // edit the particulars
+  await page.getByRole("button", { name: `Edit ${title}` }).click();
+  await page.getByTestId("edit-defect").getByLabel("Defect title").fill(edited);
+  await page.getByTestId("edit-defect").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(edited)).toBeVisible();
+});
+
 test("a defect can be reported and moved through its lifecycle (Manager+)", async ({ page }) => {
   const title = `Leaky tap ${Date.now()}`;
   await page.goto("/properties");
