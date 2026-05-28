@@ -68,10 +68,10 @@ object PropertiesApiIT extends IOSuite {
 
   test("detail: principal reads the Wardian Bible aggregate (real rooms/assets/bills/vendors counts)") { xa =>
     Properties.detail(xa, principal("principal"), wardianId).map {
-      // V2_63 (seed_property_bible) seeds Wardian's rooms; seeded assets carry no location yet (assets = 0);
-      // the seed gives Wardian 2 bills + 2 vendor links.
+      // V2_63 seeds Wardian's 9 rooms; V2_76 places 5 household items into them (so the Bible's Assets tab +
+      // the aggregate have a body); the seed gives Wardian 2 bills + 2 vendor links.
       case Right(d) =>
-        expect(d.name == "Wardian — Apt 5206") and expect(d.rooms == 9) and expect(d.assets == 0) and
+        expect(d.name == "Wardian — Apt 5206") and expect(d.rooms == 9) and expect(d.assets == 5) and
           expect(d.bills == 2) and expect(d.vendors == 2)
       case Left((sc, _)) => failure(s"expected 200, got $sc")
     }

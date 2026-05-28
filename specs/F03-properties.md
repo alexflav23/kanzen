@@ -49,6 +49,8 @@ Per `properties.jsx` + App. E.4:
   - **Defects**: list (severity bar, status pill, vendor, reported-by); raise-defect form; status transitions; "create task" action (F06).
 - **States**: empty (no rooms/defects), loading, error; scoped-empty (a Singapore-scoped user opening Wardian → not found/forbidden).
 
+> **Status (2026-05-28):** Overview · Rooms · Defects live (incl. Report-defect lifecycle + Add-room). **W4 added Assets · Maintenance · Documents** tabs — all property-scoped: Assets via `GET /api/assets?property=` (resolves location → property; rows deep-link to the registry detail + "Open in registry →"), Maintenance via the plans list filtered on `PlanView.propertyId`, Documents via the docs list filtered on `propertyId` (immutable originals badged; `principal_private` papers stripped server-side — verified a Manager cannot see the Title Register). Seed body in **V2_76** (5 items placed in Wardian rooms + EPC/Insurance/Title/Singapore-tenancy docs). **Utilities (bills)** deferred to W5/Finance (needs `Bill.propertyId`). **Overview depth** (full Particulars + Linked-systems card), **location-tree depth** (richer kinds, per-node assets, move/reparent, delete-guard) and **property admin** (assign-vendor/spawn-task/edit/archive) are the remaining W4 slices.
+
 ## 6. Business rules & validation
 - **Location tree integrity**: a node's `parent_id` must belong to the same `property_id`; no cycles (reparent validates); depth unbounded but typed.
 - **Delete guards**: deleting a location with child locations or attached assets is blocked (must move/empty first) — soft-delete only when empty.

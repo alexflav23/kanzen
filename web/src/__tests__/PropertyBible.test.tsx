@@ -21,6 +21,25 @@ vi.mock("../services/defects", () => ({
     { id: "d1", propertyId: "p1", locationId: null, title: "Leaking tap", description: "drips", severity: "medium", status: "open", reportedBy: null },
   ]),
 }));
+// Assets are server-scoped via ?property=; maintenance + documents come back whole and the Bible
+// filters them to this property — so the mocks return a mix to prove the client-side scoping.
+vi.mock("../services/assets", () => ({
+  listAssets: vi.fn(async () => [
+    { id: "a1", title: "Eames Lounge Chair", maker: "Herman Miller", categoryId: null, trackingMode: "unique", quantity: 1, ownershipStatus: "owned", acquisitionCostMinor: 750000, acquisitionCurrency: "GBP", propertyId: "p1", attributes: {} },
+  ]),
+}));
+vi.mock("../services/maintenance", () => ({
+  listPlans: vi.fn(async () => [
+    { id: "m1", title: "HVAC service", frequency: "annual", nextDue: "2026-09-01", vendor: "AirCo", dueSoon: false, propertyId: "p1" },
+    { id: "m2", title: "Pool clean (Singapore)", frequency: "monthly", nextDue: "2026-06-01", vendor: null, dueSoon: true, propertyId: "other" },
+  ]),
+}));
+vi.mock("../services/documents", () => ({
+  listDocuments: vi.fn(async () => [
+    { id: "doc1", name: "Lease agreement.pdf", category: "legal", contentType: "application/pdf", sizeBytes: 248000, sha256: null, visibility: "private", source: "upload", propertyId: "p1", immutable: true },
+    { id: "doc2", name: "Unrelated.pdf", category: "legal", contentType: "application/pdf", sizeBytes: 1000, sha256: null, visibility: "private", source: "upload", propertyId: "other", immutable: false },
+  ]),
+}));
 
 import { PropertyBible } from "../pages/PropertyBible";
 
@@ -57,5 +76,30 @@ describe("PropertyBible", () => {
     await screen.findByText("Wardian — Apt 5206");
     fireEvent.click(screen.getByRole("button", { name: "Defects" }));
     expect(await screen.findByText("Leaking tap")).toBeInTheDocument();
+  });
+
+  it("lists the property's assets (server-scoped) under the Assets tab", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    fireEvent.click(screen.getByRole("button", { name: "Assets" }));
+    expect(await screen.findByText("Eames Lounge Chair")).toBeInTheDocument();
+    expect(screen.getByText("£7,500")).toBeInTheDocument(); // acquisition cost, tabular money
+  });
+
+  it("scopes maintenance plans to this property under the Maintenance tab", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    fireEvent.click(screen.getByRole("button", { name: "Maintenance" }));
+    expect(await screen.findByText("HVAC service")).toBeInTheDocument();
+    expect(screen.queryByText("Pool clean (Singapore)")).not.toBeInTheDocument(); // other property filtered out
+  });
+
+  it("scopes documents to this property under the Documents tab", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    fireEvent.click(screen.getByRole("button", { name: "Documents" }));
+    expect(await screen.findByText("Lease agreement.pdf")).toBeInTheDocument();
+    expect(screen.getByText("original")).toBeInTheDocument(); // immutable-original badge
+    expect(screen.queryByText("Unrelated.pdf")).not.toBeInTheDocument();
   });
 });

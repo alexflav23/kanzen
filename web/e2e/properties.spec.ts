@@ -37,6 +37,40 @@ test("opening a property shows its Bible (overview, currency, rooms, defects) fr
   await expect(page.getByTestId("defect-row").filter({ hasText: "Dishwasher not draining" })).toBeVisible();
 });
 
+// W4 (F03) — the Bible is the full property record: what's in it (Assets, server-scoped via ?property=),
+// what keeps it running (Maintenance), and its papers (Documents) — each scoped to this property.
+test("the Bible's Assets tab lists items located in this property", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Assets" }).click();
+  // a placed household item (seeded into a Wardian room) + its acquisition value
+  const row = page.getByTestId("bible-asset-row").filter({ hasText: "Royal Oak 15500ST" });
+  await expect(row).toBeVisible();
+  // clicking through opens the asset's registry detail
+  await row.click();
+  await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+});
+
+test("the Bible's Maintenance tab is scoped to this property's plans", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Maintenance" }).click();
+  await expect(page.getByTestId("bible-plan-row").filter({ hasText: "Boiler service" })).toBeVisible();
+});
+
+test("the Bible's Documents tab shows property papers, marks originals, and scopes by property", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Documents" }).click();
+  await expect(page.getByTestId("bible-doc-row").filter({ hasText: "EPC Certificate.pdf" })).toBeVisible();
+  await expect(page.getByText("original").first()).toBeVisible(); // immutable source document
+  // the Singapore tenancy agreement (other property) is not here
+  await expect(page.getByText("Tenancy Agreement — Singapore.pdf")).toHaveCount(0);
+});
+
 test("a defect can be reported and moved through its lifecycle (Manager+)", async ({ page }) => {
   const title = `Leaky tap ${Date.now()}`;
   await page.goto("/properties");

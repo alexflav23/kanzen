@@ -30,7 +30,8 @@ object Maintenance {
       frequency: String,
       nextDue: Option[LocalDate],
       vendor: Option[String],
-      dueSoon: Boolean
+      dueSoon: Boolean,
+      propertyId: Option[UUID]
   )
   final case class CreateReq(
       title: String,
@@ -50,7 +51,8 @@ object Maintenance {
       p.frequency,
       p.nextDue,
       p.vendor,
-      p.nextDue.exists(d => MaintenanceService.dueSoon(d, today, p.leadDays))
+      p.nextDue.exists(d => MaintenanceService.dueSoon(d, today, p.leadDays)),
+      p.propertyId
     )
 
   private val forbidden: (StatusCode, ApiError) =

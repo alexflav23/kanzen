@@ -5,14 +5,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
-import { Box, Plus, Check, X, Alert } from "../components/icons";
+import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon } from "../components/icons";
 import { getProperty } from "../services/properties";
 import { listLocations, createLocation, type Location } from "../services/locations";
 import { listDefects, raiseDefect, setDefectStatus, type Defect } from "../services/defects";
+import { listAssets } from "../services/assets";
+import { listPlans } from "../services/maintenance";
+import { listDocuments } from "../services/documents";
+import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
-type Tab = "overview" | "rooms" | "defects";
+type Tab = "overview" | "assets" | "rooms" | "maintenance" | "documents" | "defects";
+const TABS: Tab[] = ["overview", "assets", "rooms", "maintenance", "documents", "defects"];
+
+/** Bytes → compact human size for the Documents tab. */
+function humanSize(bytes: number | null): string {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 const COVERS = ["linear-gradient(135deg,#1B1F2E,#3B3F55)", "linear-gradient(135deg,#243B47,#3D6B7D)"];
 
 const severityTone: Record<string, PillTone> = { high: "danger", medium: "warn", low: "default" };
@@ -47,7 +60,9 @@ const styles = stylex.create({
   glanceL: { fontSize: "12px", color: colors.ink3 },
   glanceN: { fontSize: "22px", fontWeight: 600, letterSpacing: "-0.018em", marginTop: "4px", fontVariantNumeric: "tabular-nums" },
   full: { gridColumn: "1 / -1" },
-  roomIco: { width: "34px", height: "34px", backgroundColor: colors.bgSunken, borderRadius: "10px", display: "grid", placeItems: "center", color: colors.ink2 },
+  roomIco: { width: "34px", height: "34px", backgroundColor: colors.bgSunken, borderRadius: "10px", display: "grid", placeItems: "center", color: colors.ink2, overflow: "hidden" },
+  thumb: { width: "34px", height: "34px", objectFit: "cover" },
+  money: { fontSize: "13.5px", fontVariantNumeric: "tabular-nums", color: colors.ink2, marginLeft: "10px" },
   grow: { flex: 1, minWidth: 0 },
   sub: { fontSize: "12px", color: colors.ink3, textTransform: "capitalize" },
   rowTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink },
@@ -180,6 +195,13 @@ export function PropertyBible() {
   const detail = useQuery({ queryKey: ["property", id, token], queryFn: () => getProperty(id, token) });
   const rooms = useQuery({ queryKey: ["locations", id, token], queryFn: () => listLocations(id, token), enabled: detail.isSuccess });
   const defects = useQuery({ queryKey: ["defects", id, token], queryFn: () => listDefects(id, token), enabled: detail.isSuccess });
+  // The property record: what's IN it (assets, server-scoped via the ?property= facet), what keeps it
+  // running (maintenance plans), and its papers (documents) — the last two filtered to this property.
+  const assets = useQuery({ queryKey: ["bible-assets", id, token], queryFn: () => listAssets(token, { property: id }), enabled: detail.isSuccess && tab === "assets" });
+  const plans = useQuery({ queryKey: ["maintenance", token], queryFn: () => listPlans(token), enabled: detail.isSuccess && tab === "maintenance" });
+  const docs = useQuery({ queryKey: ["documents", token], queryFn: () => listDocuments(token), enabled: detail.isSuccess && tab === "documents" });
+  const propPlans = (plans.data ?? []).filter((pl) => pl.propertyId === id);
+  const propDocs = (docs.data ?? []).filter((d) => d.propertyId === id);
   const setStatus = useMutation({
     mutationFn: ({ defectId, status }: { defectId: string; status: string }) => setDefectStatus(defectId, status, token),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["defects", id] }),
@@ -206,7 +228,7 @@ export function PropertyBible() {
       </div>
 
       <div {...stylex.props(styles.tabs)} aria-label="Property sections">
-        {(["overview", "rooms", "defects"] as const).map((t) => (
+        {TABS.map((t) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} {...stylex.props(styles.tab, tab === t && styles.tabActive)}>
             {t[0].toUpperCase() + t.slice(1)}
           </button>
@@ -240,6 +262,30 @@ export function PropertyBible() {
         </div>
       )}
 
+      {tab === "assets" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Assets · {assets.data?.length ?? 0}</CardTitle>
+            <button type="button" {...stylex.props(styles.miniBtn)} onClick={() => navigate(`/inventory?property=${p.id}`)}>Open in registry →</button>
+          </CardHeader>
+          {assets.isPending ? <Loading label="Loading assets…" />
+            : assets.isError ? <ErrorState error={assets.error} />
+            : assets.data.length === 0 ? <EmptyState title="No assets here">Items located in this property will appear here.</EmptyState>
+            : assets.data.map((a) => (
+                <CardRow key={a.id} testId="bible-asset-row" onClick={() => navigate(`/inventory/${a.id}`)}>
+                  <div {...stylex.props(styles.roomIco)}>{a.heroUrl ? <img src={a.heroUrl} alt="" {...stylex.props(styles.thumb)} /> : <Box size={16} />}</div>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.rowTitle)}>{a.title}</div>
+                    <div {...stylex.props(styles.sub)}>{a.maker ?? "—"}</div>
+                  </div>
+                  {a.acquisitionCostMinor != null && a.acquisitionCurrency && (
+                    <span {...stylex.props(styles.money)}>{fmtMoney(a.acquisitionCostMinor, a.acquisitionCurrency)}</span>
+                  )}
+                </CardRow>
+              ))}
+        </Card>
+      )}
+
       {tab === "rooms" && (
         <Card>
           <CardHeader>
@@ -250,6 +296,44 @@ export function PropertyBible() {
             : rooms.isError ? <ErrorState error={rooms.error} />
             : roomList.length === 0 ? <EmptyState title="No rooms yet">Add rooms and sub-locations to map this property.</EmptyState>
             : <RoomNodes nodes={roomList} parentId={null} depth={0} />}
+        </Card>
+      )}
+
+      {tab === "maintenance" && (
+        <Card>
+          <CardHeader><CardTitle>Maintenance · {propPlans.length}</CardTitle></CardHeader>
+          {plans.isPending ? <Loading label="Loading maintenance…" />
+            : plans.isError ? <ErrorState error={plans.error} />
+            : propPlans.length === 0 ? <EmptyState title="No maintenance plans">Recurring upkeep for this property will appear here.</EmptyState>
+            : propPlans.map((pl) => (
+                <CardRow key={pl.id} testId="bible-plan-row">
+                  <div {...stylex.props(styles.roomIco)}><Wrench size={16} /></div>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.rowTitle)}>{pl.title ?? "Untitled plan"}</div>
+                    <div {...stylex.props(styles.sub)}>{[pl.frequency, pl.vendor].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  {pl.nextDue && <Pill tone={pl.dueSoon ? "warn" : "default"}>{pl.dueSoon ? "due soon · " : ""}{pl.nextDue}</Pill>}
+                </CardRow>
+              ))}
+        </Card>
+      )}
+
+      {tab === "documents" && (
+        <Card>
+          <CardHeader><CardTitle>Documents · {propDocs.length}</CardTitle></CardHeader>
+          {docs.isPending ? <Loading label="Loading documents…" />
+            : docs.isError ? <ErrorState error={docs.error} />
+            : propDocs.length === 0 ? <EmptyState title="No documents">Papers filed against this property — deeds, certificates, warranties — appear here.</EmptyState>
+            : propDocs.map((d) => (
+                <CardRow key={d.id} testId="bible-doc-row">
+                  <div {...stylex.props(styles.roomIco)}><DocIcon size={16} /></div>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.rowTitle)}>{d.name}</div>
+                    <div {...stylex.props(styles.sub)}>{[d.category, humanSize(d.sizeBytes)].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  {d.immutable && <Pill tone="default">original</Pill>}
+                </CardRow>
+              ))}
         </Card>
       )}
 

@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Pill, type PillTone } from "../components/Pill";
@@ -374,7 +374,8 @@ export function Inventory({ vertical, label }: { vertical?: string; label?: stri
   const [view, setView] = useState<"grid" | "list">("grid");
   const [category, setCategory] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [property, setProperty] = useState<string | null>(null);
+  const [searchParams] = useSearchParams(); // deep-link from the Property Bible's "Open in registry"
+  const [property, setProperty] = useState<string | null>(searchParams.get("property"));
   const [collection, setCollection] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);

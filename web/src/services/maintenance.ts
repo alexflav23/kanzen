@@ -8,6 +8,7 @@ export const PlanSchema = z.object({
   nextDue: z.string().nullable(),
   vendor: z.string().nullable(),
   dueSoon: z.boolean(),
+  propertyId: z.string().nullable(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
