@@ -43,6 +43,28 @@ test("a manual expense over the threshold routes to the Principal for approval",
   await expect(page.getByTestId("pending-row").filter({ hasText: payee })).toBeVisible();
 });
 
+// W5.3 (F16) — add a payment method + schedule a payment (Kanzen records the intent; never moves money).
+test("a payment method can be added and a payment scheduled", async ({ page }) => {
+  const method = `Amex ${Date.now()}`;
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Pay queue" }).click();
+  // add a method
+  await page.getByRole("button", { name: "Add method" }).click();
+  const m = page.getByTestId("add-method");
+  await m.getByLabel("Method name").fill(method);
+  await m.getByRole("button", { name: "Add method" }).click();
+  await expect(page.getByTestId("add-method")).toHaveCount(0);
+  await expect(page.getByTestId("method-row").filter({ hasText: method })).toBeVisible();
+  // schedule a manual payment against it
+  await page.getByRole("button", { name: "Schedule payment" }).click();
+  const s = page.getByTestId("schedule-payment");
+  await s.getByLabel("Method").selectOption({ label: method });
+  await s.getByLabel("Amount").fill("220.00");
+  await s.getByRole("button", { name: "Schedule" }).click();
+  await expect(page.getByTestId("schedule-payment")).toHaveCount(0);
+  await expect(page.getByTestId("pay-row").filter({ hasText: "£220" }).first()).toBeVisible();
+});
+
 test("the pay queue tab lists scheduled payments (manual is markable)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Pay queue" }).click();

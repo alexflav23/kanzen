@@ -25,6 +25,17 @@ export const PaymentSchema = z.object({
 export type Payment = z.infer<typeof PaymentSchema>;
 const PaymentViewSchema = z.object({ id: z.string(), mode: z.string(), state: z.string() });
 
+/** F16 — payment methods (display only; never holds card/bank credentials — vault is a reference). */
+export const MethodSchema = z.object({ id: z.string(), displayName: z.string(), last4: z.string().nullable() });
+export type Method = z.infer<typeof MethodSchema>;
+export type CreateMethodReq = { type: string; displayName: string; last4: string | null; currency: string | null; vaultRef: string | null };
+export type ScheduleReq = { billId: string | null; methodId: string | null; amountMinor: number; currency: string; mode: string };
+
+export const listMethods = (token: string | null) => api("/api/payment-methods", z.array(MethodSchema), { token });
+export const createMethod = (req: CreateMethodReq, token: string | null) => api("/api/payment-methods", MethodSchema, { method: "POST", body: req, token });
+/** Schedule a payment into the Pay queue (Manager+) — Kanzen records the intent; it never moves money. */
+export const schedulePayment = (req: ScheduleReq, token: string | null) => api("/api/payments", PaymentViewSchema, { method: "POST", body: req, token });
+
 /** F17 — expenses. */
 export const ExpenseSchema = z.object({
   id: z.string(),

@@ -8,7 +8,7 @@ import { Check, X, Plus } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listMethods, createMethod, schedulePayment, listPayments, markPaid, rejectExpense } from "../services/finance";
 import { listProperties } from "../services/properties";
 import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
 import { getReceipt, listReceipts } from "../services/receipts";
@@ -168,15 +168,105 @@ function AddExpenseModal({ token, onClose }: { token: string | null; onClose: ()
   );
 }
 
+const METHOD_TYPES = ["card", "bank_transfer", "direct_debit", "standing_order", "other"];
+const PAY_MODES = ["manual", "auto", "review"];
+
+/** F16 — add a payment method. Display only: Kanzen never holds card/bank credentials (the vault is a reference). */
+function AddMethodModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [type, setType] = useState("card");
+  const [displayName, setDisplayName] = useState("");
+  const [last4, setLast4] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const mut = useMutation({
+    mutationFn: () => createMethod({ type, displayName: displayName.trim(), last4: last4.trim() || null, currency, vaultRef: null }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["methods"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="add-method" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (displayName.trim()) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Add a payment method</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Type</span>
+          <select {...stylex.props(styles.control)} aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
+            {METHOD_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Name</span>
+          <input {...stylex.props(styles.control)} aria-label="Method name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Coutts current" autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Last 4 (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Last 4" value={last4} onChange={(e) => setLast4(e.target.value)} maxLength={4} placeholder="1234" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Currency</span>
+          <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.note)}>Display only — Kanzen stores a name + last-4, never the card or bank credentials.</div>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!displayName.trim() || mut.isPending}>{mut.isPending ? "Adding…" : "Add method"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** F16 — schedule a payment into the Pay queue. Records the intent; never moves money (mark-paid records reality). */
+function SchedulePaymentModal({ token, bills, methods, onClose }: { token: string | null; bills: { id: string; payee: string }[]; methods: { id: string; displayName: string }[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [billId, setBillId] = useState("");
+  const [methodId, setMethodId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const [mode, setMode] = useState("manual");
+  const amountMinor = Math.round((parseFloat(amount) || 0) * 100);
+  const mut = useMutation({
+    mutationFn: () => schedulePayment({ billId: billId || null, methodId: methodId || null, amountMinor, currency, mode }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payments"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="schedule-payment" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (amountMinor > 0) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Schedule a payment</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Bill (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Bill" value={billId} onChange={(e) => setBillId(e.target.value)}>
+            <option value="">— none</option>
+            {bills.map((b) => <option key={b.id} value={b.id}>{b.payee}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Method</span>
+          <select {...stylex.props(styles.control)} aria-label="Method" value={methodId} onChange={(e) => setMethodId(e.target.value)}>
+            <option value="">— none</option>
+            {methods.map((m) => <option key={m.id} value={m.id}>{m.displayName}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Amount</span>
+          <input {...stylex.props(styles.control)} aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 220.00" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Currency</span>
+          <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Mode</span>
+          <select {...stylex.props(styles.control)} aria-label="Mode" value={mode} onChange={(e) => setMode(e.target.value)}>
+            {PAY_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.note)}>Only <strong>manual</strong> payments can be marked paid (recording reality); auto/review settle externally. Kanzen never moves money.</div>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={amountMinor <= 0 || mut.isPending}>{mut.isPending ? "Scheduling…" : "Schedule"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Finance() {
   const { token } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("bills");
   const [showAddBill, setShowAddBill] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [showAddMethod, setShowAddMethod] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const bills    = useQuery({ queryKey: ["bills", token], queryFn: () => listBills(token) });
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
+  const methods  = useQuery({ queryKey: ["methods", token], queryFn: () => listMethods(token), enabled: tab === "pay" });
   const pending  = useQuery({ queryKey: ["expenses", "pending_approval", token], queryFn: () => listExpenses(token, "pending_approval") });
   const allExp   = useQuery({ queryKey: ["expenses", "all", token], queryFn: () => listExpenses(token, null) });
   const accounts = useQuery({ queryKey: ["bank", "accounts", token], queryFn: () => listAccounts(token) });
@@ -243,21 +333,43 @@ export function Finance() {
       )}
 
       {tab === "pay" && (
-        <Card>
-          <CardHeader><CardTitle>Pay queue · {payments.data?.length ?? 0}</CardTitle></CardHeader>
-          {payments.isPending ? <Loading /> : payments.isError ? <ErrorState error={payments.error} />
-            : payments.data.length === 0 ? <EmptyState title="Nothing scheduled" />
-            : payments.data.map((p) => (
-                <div key={p.id} {...stylex.props(styles.row)} data-testid="pay-row">
-                  <span {...stylex.props(styles.amount, styles.grow)}>{fmtMoney(p.amountMinor, p.currency)}</span>
-                  <Pill tone={p.mode === "manual" ? "accent" : "default"}>{p.mode}</Pill>
-                  <Pill tone={p.state === "paid" ? "default" : "warn"}>{p.state}</Pill>
-                  {p.mode === "manual" && p.state !== "paid"
-                    ? <button type="button" {...stylex.props(styles.btn)} onClick={() => pay.mutate(p.id)}>Mark paid</button>
-                    : <span {...stylex.props(styles.note)}>settles externally</span>}
-                </div>
-              ))}
-        </Card>
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment methods · {methods.data?.length ?? 0}</CardTitle>
+              <button type="button" {...stylex.props(styles.headBtn)} onClick={() => setShowAddMethod(true)}><Plus size={14} /> Add method</button>
+            </CardHeader>
+            {methods.isPending ? <Loading /> : methods.isError ? <ErrorState error={methods.error} />
+              : methods.data.length === 0 ? <div {...stylex.props(styles.note)}>No payment methods yet — add one to schedule against it.</div>
+              : methods.data.map((m) => (
+                  <div key={m.id} {...stylex.props(styles.row)} data-testid="method-row">
+                    <span {...stylex.props(styles.grow, styles.bold)}>{m.displayName}</span>
+                    {m.last4 && <span {...stylex.props(styles.note)}>•••• {m.last4}</span>}
+                  </div>
+                ))}
+          </Card>
+          <div {...stylex.props(styles.spacer24)} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Pay queue · {payments.data?.length ?? 0}</CardTitle>
+              <button type="button" {...stylex.props(styles.headBtn)} onClick={() => setShowSchedule(true)}><Plus size={14} /> Schedule payment</button>
+            </CardHeader>
+            {payments.isPending ? <Loading /> : payments.isError ? <ErrorState error={payments.error} />
+              : payments.data.length === 0 ? <EmptyState title="Nothing scheduled" />
+              : payments.data.map((p) => (
+                  <div key={p.id} {...stylex.props(styles.row)} data-testid="pay-row">
+                    <span {...stylex.props(styles.amount, styles.grow)}>{fmtMoney(p.amountMinor, p.currency)}</span>
+                    <Pill tone={p.mode === "manual" ? "accent" : "default"}>{p.mode}</Pill>
+                    <Pill tone={p.state === "paid" ? "default" : "warn"}>{p.state}</Pill>
+                    {p.mode === "manual" && p.state !== "paid"
+                      ? <button type="button" {...stylex.props(styles.btn)} onClick={() => pay.mutate(p.id)}>Mark paid</button>
+                      : <span {...stylex.props(styles.note)}>settles externally</span>}
+                  </div>
+                ))}
+          </Card>
+          {showAddMethod && <AddMethodModal token={token} onClose={() => setShowAddMethod(false)} />}
+          {showSchedule && <SchedulePaymentModal token={token} bills={(bills.data ?? []).map((b) => ({ id: b.id, payee: b.payee }))} methods={(methods.data ?? []).map((m) => ({ id: m.id, displayName: m.displayName }))} onClose={() => setShowSchedule(false)} />}
+        </div>
       )}
 
       {tab === "expenses" && (
