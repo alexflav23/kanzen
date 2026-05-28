@@ -28,6 +28,12 @@ vi.mock("../services/defects", () => ({
   raiseDefect: vi.fn(), setDefectStatus: vi.fn(), patchDefect: vi.fn(), assignDefectVendor: vi.fn(), spawnDefectTask: vi.fn(),
 }));
 vi.mock("../services/vendors", () => ({ selectableVendors: vi.fn(async () => []) }));
+vi.mock("../services/finance", () => ({
+  listBills: vi.fn(async () => [
+    { id: "b1", payee: "Thames Water", amountMinor: 14500, currency: "GBP", varianceFlag: false, propertyId: "p1", category: "utilities" },
+    { id: "b2", payee: "Unrelated Co", amountMinor: 9999, currency: "GBP", varianceFlag: false, propertyId: "other", category: "services" },
+  ]),
+}));
 // Assets are server-scoped via ?property=; maintenance + documents come back whole and the Bible
 // filters them to this property — so the mocks return a mix to prove the client-side scoping.
 vi.mock("../services/assets", () => ({
@@ -121,6 +127,15 @@ describe("PropertyBible", () => {
     fireEvent.click(screen.getByRole("button", { name: "Maintenance" }));
     expect(await screen.findByText("HVAC service")).toBeInTheDocument();
     expect(screen.queryByText("Pool clean (Singapore)")).not.toBeInTheDocument(); // other property filtered out
+  });
+
+  it("scopes utilities (bills) to this property under the Utilities tab", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    fireEvent.click(screen.getByRole("button", { name: "Utilities" }));
+    expect(await screen.findByText("Thames Water")).toBeInTheDocument();
+    expect(screen.getByText("£145")).toBeInTheDocument(); // tabular money
+    expect(screen.queryByText("Unrelated Co")).not.toBeInTheDocument(); // other property filtered out
   });
 
   it("scopes documents to this property under the Documents tab", async () => {

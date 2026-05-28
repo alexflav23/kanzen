@@ -11,6 +11,22 @@ test("finance opens on the recurring schedule (seeded bills)", async ({ page }) 
   expect(await page.getByTestId("bill-row").count()).toBeGreaterThanOrEqual(2);
 });
 
+// W5 (F15) — add a recurring bill: the create modal posts to the backend and the bill joins the schedule.
+test("a recurring bill can be added via the modal", async ({ page }) => {
+  const payee = `Hyperoptic ${Date.now()}`;
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Add bill" }).click();
+  const modal = page.getByTestId("add-bill");
+  await modal.getByLabel("Payee").fill(payee);
+  await modal.getByLabel("Category").selectOption("services");
+  await modal.getByLabel("Amount").fill("35.00");
+  await modal.getByRole("button", { name: "Add bill" }).click();
+  await expect(page.getByTestId("add-bill")).toHaveCount(0);
+  const row = page.getByTestId("bill-row").filter({ hasText: payee });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("£35"); // captured in major units, stored as minor
+});
+
 test("the pay queue tab lists scheduled payments (manual is markable)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Pay queue" }).click();

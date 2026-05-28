@@ -14,7 +14,7 @@ object BillIT extends IOSuite {
 
   test("a +59% reconciled amount sets the variance flag") { xa =>
     val prog = for {
-      b <- BillRepo.create("SP Group", None, 38420L, "SGD", Some("monthly"))
+      b <- BillRepo.create("SP Group", None, None, 38420L, "SGD", Some("monthly"))
       flagged <- BillRepo.recordSeen(b.id, 61280L)
       fetched <- BillRepo.get(b.id)
     } yield (flagged, fetched)
@@ -26,7 +26,7 @@ object BillIT extends IOSuite {
   }
 
   test("a small change does not flag variance") { xa =>
-    val prog = BillRepo.create("Council tax", None, 20000L, "GBP", Some("monthly")).flatMap { b =>
+    val prog = BillRepo.create("Council tax", None, None, 20000L, "GBP", Some("monthly")).flatMap { b =>
       BillRepo.recordSeen(b.id, 20300L).tupleLeft(b.id)
     }
     prog.transact(xa).map { case (_, flagged) => expect(!flagged) }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
@@ -10,9 +10,10 @@ const h = vi.hoisted(() => {
 
 vi.mock("../services/finance", () => ({
   listBills: async () => [
-    { id: "b1", payee: "Thames Water", amountMinor: 14500, currency: "GBP", varianceFlag: false },
-    { id: "b2", payee: "British Gas", amountMinor: 22000, currency: "GBP", varianceFlag: true },
+    { id: "b1", payee: "Thames Water", amountMinor: 14500, currency: "GBP", varianceFlag: false, propertyId: "p1", category: "utilities" },
+    { id: "b2", payee: "British Gas", amountMinor: 22000, currency: "GBP", varianceFlag: true, propertyId: "p1", category: "utilities" },
   ],
+  createBill: vi.fn(async (req: { payee: string; amountMinor: number; currency: string; propertyId: string | null; category: string | null }) => ({ id: "bNew", payee: req.payee, amountMinor: req.amountMinor, currency: req.currency, varianceFlag: false, propertyId: req.propertyId, category: req.category })),
   listPayments: async () => [],
   markPaid: vi.fn(),
   listExpenses: async (_t: string | null, status?: string | null) => (status === "pending_approval" ? h.pending : []),
@@ -40,6 +41,10 @@ vi.mock("../services/bank", () => ({
   matchTxn: vi.fn(async () => ({ matchId: "m1", state: "matched" })),
 }));
 
+vi.mock("../services/properties", () => ({
+  listProperties: async () => [{ id: "p1", name: "Wardian — Apt 5206", jurisdiction: "GB", currency: "GBP", status: "active", rooms: 0, assets: 0, bills: 0, vendors: 0 }],
+}));
+
 vi.mock("../services/receipts", () => ({
   listReceipts: async () => [{ id: "rc1", kind: "receipt", merchant: "Waitrose", totalMinor: 5470, currency: "GBP", status: "parsed" }],
   getReceipt: async () => ({
@@ -52,6 +57,7 @@ vi.mock("../services/receipts", () => ({
 }));
 
 import { Finance } from "../pages/Finance";
+import { createBill } from "../services/finance";
 
 const renderFinance = () =>
   render(
@@ -69,6 +75,22 @@ beforeEach(() => {
 });
 
 describe("Finance", () => {
+  it("adds a recurring bill via the modal (payee · category · amount → minor units)", async () => {
+    renderFinance();
+    await screen.findAllByTestId("bill-row");
+    fireEvent.click(screen.getByRole("button", { name: "Add bill" })); // header button
+    const modal = await screen.findByTestId("add-bill");
+    fireEvent.change(within(modal).getByLabelText("Payee"), { target: { value: "Hyperoptic" } });
+    fireEvent.change(within(modal).getByLabelText("Amount"), { target: { value: "35.00" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add bill" })); // submit
+    await waitFor(() =>
+      expect(createBill).toHaveBeenCalledWith(
+        expect.objectContaining({ payee: "Hyperoptic", amountMinor: 3500, currency: "GBP", category: "utilities" }),
+        "t",
+      ),
+    );
+  });
+
   it("shows the recurring schedule by default", async () => {
     renderFinance();
     expect(await screen.findByText("Recurring schedule · 2")).toBeInTheDocument();

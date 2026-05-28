@@ -8,8 +8,11 @@ export const BillSchema = z.object({
   amountMinor: z.number(),
   currency: z.string(),
   varianceFlag: z.boolean(),
+  propertyId: z.string().nullable(),
+  category: z.string().nullable(),
 });
 export type Bill = z.infer<typeof BillSchema>;
+export type CreateBillReq = { payee: string; propertyId: string | null; category: string | null; amountMinor: number; currency: string; frequency: string | null };
 
 /** F16 — pay-queue items. */
 export const PaymentSchema = z.object({
@@ -35,6 +38,7 @@ export const ExpenseSchema = z.object({
 export type Expense = z.infer<typeof ExpenseSchema>;
 
 export const listBills = (token: string | null) => api("/api/bills", z.array(BillSchema), { token });
+export const createBill = (req: CreateBillReq, token: string | null) => api("/api/bills", BillSchema, { method: "POST", body: req, token });
 export const listPayments = (token: string | null) => api("/api/payments", z.array(PaymentSchema), { token });
 export const markPaid = (id: string, token: string | null) => api(`/api/payments/${id}/mark-paid`, PaymentViewSchema, { method: "POST", token });
 

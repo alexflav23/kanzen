@@ -6,22 +6,33 @@ import doobie.postgres.implicits._
 
 import java.util.UUID
 
-final case class Bill(id: UUID, payee: String, amountMinor: Long, currency: String, varianceFlag: Boolean)
+final case class Bill(
+    id: UUID,
+    payee: String,
+    amountMinor: Long,
+    currency: String,
+    varianceFlag: Boolean,
+    propertyId: Option[UUID],
+    category: Option[String]
+)
 
 /** F15 — recurring bills; `recordSeen` applies a newly-observed amount (e.g. from the agent's invoice reconciliation)
   * and flags a >= ±15% variance vs the prior amount.
   */
 object BillRepo {
+  private val cols = fr"id, payee, amount_minor, currency, variance_flag, property_id, category"
+
   def create(
       payee: String,
       propertyId: Option[UUID],
+      category: Option[String],
       amountMinor: Long,
       currency: String,
       frequency: Option[String]
   ): ConnectionIO[Bill] =
-    sql"""insert into bills (payee, property_id, amount_minor, currency, frequency)
-          values ($payee, $propertyId, $amountMinor, $currency, $frequency)
-          returning id, payee, amount_minor, currency, variance_flag""".query[Bill].unique
+    (fr"""insert into bills (payee, property_id, category, amount_minor, currency, frequency)
+          values ($payee, $propertyId, $category, $amountMinor, $currency, $frequency)
+          returning""" ++ cols).query[Bill].unique
 
   def recordSeen(id: UUID, seenMinor: Long): ConnectionIO[Boolean] =
     for {
@@ -33,10 +44,10 @@ object BillRepo {
     } yield flag
 
   def get(id: UUID): ConnectionIO[Option[Bill]] =
-    sql"select id, payee, amount_minor, currency, variance_flag from bills where id = $id".query[Bill].option
+    (fr"select" ++ cols ++ fr"from bills where id = $id").query[Bill].option
 
   def list: ConnectionIO[List[Bill]] =
-    sql"select id, payee, amount_minor, currency, variance_flag from bills where deleted_at is null and active order by next_due nulls last"
+    (fr"select" ++ cols ++ fr"from bills where deleted_at is null and active order by next_due nulls last")
       .query[Bill]
       .to[List]
 }

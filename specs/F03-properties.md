@@ -57,7 +57,7 @@ Per `properties.jsx` + App. E.4:
 >
  - **Defect ops + property admin**: a defect can be assigned a **vendor** (F09 — server validates the vendor is approved + insured for the property; `defects.assigned_vendor_id`), **spawn a fix-task** (F06 — "Fix: <title>" into the property's task project, linked via `defects.task_id`, shown as "Task created") and have its particulars **edited**. The Overview offers (Manager+) **Edit property** (PATCH) and **Archive** (two-step confirm → hidden from default lists, records preserved; an archived property is read-only and rejects edits with 409).
 >
-> **W4 is complete.** Remaining for F03: **Utilities (bills)** tab → W5/Finance (needs `Bill.propertyId`); mobile companion → F31.
+> **W4 is complete**, and the **Utilities (bills) tab** landed in W5.1 (once `Bill.propertyId` shipped) — it lists the property's recurring bills (payee · category · amount + variance). Remaining for F03: mobile companion → F31.
 
 ## 6. Business rules & validation
 - **Location tree integrity**: a node's `parent_id` must belong to the same `property_id`; no cycles (reparent validates); depth unbounded but typed.

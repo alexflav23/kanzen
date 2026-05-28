@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
-import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash, Tasks } from "../components/icons";
+import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash, Tasks, Receipt } from "../components/icons";
 import { getProperty, patchProperty, archiveProperty, type PropertyDetail } from "../services/properties";
 import { listLocations, createLocation, patchLocation, moveLocation, deleteLocation, type Location } from "../services/locations";
 import { type AssetView } from "../services/assets";
@@ -14,12 +14,13 @@ import { selectableVendors, type Vendor } from "../services/vendors";
 import { listAssets } from "../services/assets";
 import { listPlans } from "../services/maintenance";
 import { listDocuments } from "../services/documents";
+import { listBills } from "../services/finance";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
-type Tab = "overview" | "assets" | "rooms" | "maintenance" | "documents" | "defects";
-const TABS: Tab[] = ["overview", "assets", "rooms", "maintenance", "documents", "defects"];
+type Tab = "overview" | "assets" | "rooms" | "maintenance" | "utilities" | "documents" | "defects";
+const TABS: Tab[] = ["overview", "assets", "rooms", "maintenance", "utilities", "documents", "defects"];
 // Typed node kinds (F03 §6) — the location tree is more than rooms: it nests storage furniture too.
 const KINDS = ["room", "area", "cabinet", "shelf", "case", "garage", "storage"] as const;
 
@@ -493,10 +494,12 @@ export function PropertyBible() {
   const assets = useQuery({ queryKey: ["bible-assets", id, token], queryFn: () => listAssets(token, { property: id }), enabled: detail.isSuccess && (tab === "assets" || tab === "rooms") });
   const plans = useQuery({ queryKey: ["maintenance", token], queryFn: () => listPlans(token), enabled: detail.isSuccess && tab === "maintenance" });
   const docs = useQuery({ queryKey: ["documents", token], queryFn: () => listDocuments(token), enabled: detail.isSuccess && tab === "documents" });
+  const bills = useQuery({ queryKey: ["bills", token], queryFn: () => listBills(token), enabled: detail.isSuccess && tab === "utilities" });
   // assignable vendors for this property (approved + insured) — feeds the defect vendor picker
   const vendorsQ = useQuery({ queryKey: ["selectable-vendors", id, token], queryFn: () => selectableVendors(id, token), enabled: detail.isSuccess && tab === "defects" && role != null && role !== "staff" });
   const propPlans = (plans.data ?? []).filter((pl) => pl.propertyId === id);
   const propDocs = (docs.data ?? []).filter((d) => d.propertyId === id);
+  const propBills = (bills.data ?? []).filter((b) => b.propertyId === id);
   // group the property's assets by their current node — feeds the per-node item lists + count badges
   const assetsByLoc = useMemo(() => {
     const m = new Map<string, AssetView[]>();
@@ -640,6 +643,26 @@ export function PropertyBible() {
                     <div {...stylex.props(styles.sub)}>{[pl.frequency, pl.vendor].filter(Boolean).join(" · ")}</div>
                   </div>
                   {pl.nextDue && <Pill tone={pl.dueSoon ? "warn" : "default"}>{pl.dueSoon ? "due soon · " : ""}{pl.nextDue}</Pill>}
+                </CardRow>
+              ))}
+        </Card>
+      )}
+
+      {tab === "utilities" && (
+        <Card>
+          <CardHeader><CardTitle>Utilities &amp; bills · {propBills.length}</CardTitle></CardHeader>
+          {bills.isPending ? <Loading label="Loading bills…" />
+            : bills.isError ? <ErrorState error={bills.error} />
+            : propBills.length === 0 ? <EmptyState title="No bills">Recurring bills for this property — utilities, insurance, services — appear here. Add them in Finance.</EmptyState>
+            : propBills.map((b) => (
+                <CardRow key={b.id} testId="bible-bill-row">
+                  <div {...stylex.props(styles.roomIco)}><Receipt size={16} /></div>
+                  <div {...stylex.props(styles.grow)}>
+                    <div {...stylex.props(styles.rowTitle)}>{b.payee}</div>
+                    <div {...stylex.props(styles.sub)}>{b.category ?? "—"}</div>
+                  </div>
+                  {b.varianceFlag && <Pill tone="warn">variance</Pill>}
+                  <span {...stylex.props(styles.money)}>{fmtMoney(b.amountMinor, b.currency)}</span>
                 </CardRow>
               ))}
         </Card>

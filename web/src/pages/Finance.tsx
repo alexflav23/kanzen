@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { Check, X } from "../components/icons";
+import { Check, X, Plus } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { approveExpense, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { approveExpense, createBill, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { listProperties } from "../services/properties";
 import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
 import { getReceipt, listReceipts } from "../services/receipts";
 
@@ -41,15 +42,81 @@ const styles = stylex.create({
   reconTop: { display: "flex", alignItems: "center", gap: "12px" },
   suggest: { display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", padding: "8px 12px", borderRadius: radius.sm, backgroundColor: colors.accentSoft },
   reasons: { fontSize: "11.5px", color: colors.ink3 },
+  headBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
+  catCell: { color: colors.ink3, textTransform: "capitalize" },
+  // modal
+  overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
+  modal: { width: "440px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
+  modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  field: { display: "block", marginBottom: "14px" },
+  flabel: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
+  control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
+  modalActions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
+  ghost: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
+  primary: { padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
 });
 
 const statusTone = (s: string): "default" | "warn" | "danger" =>
   s === "approved" || s === "paid" ? "default" : s === "rejected" ? "danger" : "warn";
 
+const BILL_CATEGORIES = ["utilities", "insurance", "services", "subscriptions", "tax", "other"];
+const CADENCES = ["monthly", "quarterly", "annually", "weekly"];
+const CURRENCIES = ["GBP", "SGD", "USD", "EUR"];
+
+/** F15 — add a recurring bill (Manager+). Money is captured in major units and stored as integer minor. */
+function AddBillModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const props = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const [payee, setPayee] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [category, setCategory] = useState("utilities");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const [frequency, setFrequency] = useState("monthly");
+  const amountMinor = Math.round((parseFloat(amount) || 0) * 100);
+  const mut = useMutation({
+    mutationFn: () => createBill({ payee: payee.trim(), propertyId: propertyId || null, category, amountMinor, currency, frequency }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bills"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="add-bill" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (payee.trim() && amountMinor > 0) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Add a bill</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Payee</span>
+          <input {...stylex.props(styles.control)} aria-label="Payee" value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. Thames Water" autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Category</span>
+          <select {...stylex.props(styles.control)} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            {BILL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Property (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">— none</option>
+            {(props.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Amount</span>
+          <input {...stylex.props(styles.control)} aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 145.00" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Currency</span>
+          <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Cadence</span>
+          <select {...stylex.props(styles.control)} aria-label="Cadence" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+            {CADENCES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!payee.trim() || amountMinor <= 0 || mut.isPending}>{mut.isPending ? "Adding…" : "Add bill"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Finance() {
   const { token } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("bills");
+  const [showAddBill, setShowAddBill] = useState(false);
 
   const bills    = useQuery({ queryKey: ["bills", token], queryFn: () => listBills(token) });
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
@@ -93,16 +160,20 @@ export function Finance() {
 
       {tab === "bills" && (
         <Card>
-          <CardHeader><CardTitle>Recurring schedule · {bills.data?.length ?? 0}</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Recurring schedule · {bills.data?.length ?? 0}</CardTitle>
+            <button type="button" {...stylex.props(styles.headBtn)} onClick={() => setShowAddBill(true)}><Plus size={14} /> Add bill</button>
+          </CardHeader>
           {bills.isPending ? <Loading /> : bills.isError ? <ErrorState error={bills.error} />
             : bills.data.length === 0 ? <EmptyState title="No bills">Add a recurring bill.</EmptyState>
             : (
               <table {...stylex.props(styles.table)}>
-                <thead><tr><th {...stylex.props(styles.th)}>Payee</th><th {...stylex.props(styles.th)}>Status</th><th {...stylex.props(styles.th, styles.thR)}>Amount</th></tr></thead>
+                <thead><tr><th {...stylex.props(styles.th)}>Payee</th><th {...stylex.props(styles.th)}>Category</th><th {...stylex.props(styles.th)}>Status</th><th {...stylex.props(styles.th, styles.thR)}>Amount</th></tr></thead>
                 <tbody>
                   {bills.data.map((b) => (
                     <tr key={b.id} data-testid="bill-row">
                       <td {...stylex.props(styles.td, styles.bold)}>{b.payee}</td>
+                      <td {...stylex.props(styles.td, styles.catCell)}>{b.category ?? "—"}</td>
                       <td {...stylex.props(styles.td)}>{b.varianceFlag ? <Pill tone="warn">variance</Pill> : <Pill>steady</Pill>}</td>
                       <td {...stylex.props(styles.td, styles.tdR)}>{fmtMoney(b.amountMinor, b.currency)}</td>
                     </tr>
@@ -110,6 +181,7 @@ export function Finance() {
                 </tbody>
               </table>
             )}
+          {showAddBill && <AddBillModal token={token} onClose={() => setShowAddBill(false)} />}
         </Card>
       )}
 

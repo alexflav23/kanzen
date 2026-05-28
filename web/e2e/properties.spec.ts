@@ -67,6 +67,16 @@ test("the Bible's Assets tab lists items located in this property", async ({ pag
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 });
 
+test("the Bible's Utilities tab lists the property's recurring bills", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Utilities" }).click();
+  // the seeded Wardian utility bills
+  await expect(page.getByTestId("bible-bill-row").filter({ hasText: "Thames Water" })).toBeVisible();
+  await expect(page.getByTestId("bible-bill-row").filter({ hasText: "British Gas" })).toBeVisible();
+});
+
 test("the Bible's Maintenance tab is scoped to this property's plans", async ({ page }) => {
   await page.goto("/properties");
   await page.getByText("Wardian — Apt 5206").click();

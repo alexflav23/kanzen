@@ -26,10 +26,25 @@ object FinanceApiIT extends IOSuite {
     } yield expect(bills.exists(_.payee == "Thames Water")) and expect(staff.left.exists(_._1.code == 403))
   }
 
+  test("W5 — creating a bill round-trips its property + category (feeds the Bible Utilities tab)") { xa =>
+    val wardian = UUID.fromString("20000000-0000-0000-0000-000000000001")
+    for {
+      created <- Finance
+        .createBill(
+          xa,
+          lorna,
+          CreateBillReq("Hyperoptic", Some(wardian), Some("utilities"), 3500L, "GBP", Some("monthly"))
+        )
+        .map(_.toOption.get)
+      bills <- Finance.listBills(xa, lorna).map(_.toOption.get)
+    } yield expect(created.propertyId.contains(wardian)) and expect(created.category.contains("utilities")) and
+      expect(bills.exists(b => b.id == created.id && b.propertyId.contains(wardian)))
+  }
+
   test("recording an observed amount flags a >=±15% variance") { xa =>
     for {
       bill <- Finance
-        .createBill(xa, lorna, CreateBillReq("EDF Energy", None, 10000L, "GBP", Some("monthly")))
+        .createBill(xa, lorna, CreateBillReq("EDF Energy", None, None, 10000L, "GBP", Some("monthly")))
         .map(_.toOption.get)
       same <- Finance.recordSeen(xa, lorna, bill.id, 10500L).map(_.toOption.get) // +5% → no flag
       big <- Finance.recordSeen(xa, lorna, bill.id, 13000L).map(_.toOption.get) // vs 10500 → +23.8% → flag

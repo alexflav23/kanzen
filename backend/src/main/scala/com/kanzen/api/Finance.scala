@@ -23,10 +23,19 @@ import java.util.UUID
 object Finance {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
-  final case class BillView(id: UUID, payee: String, amountMinor: Long, currency: String, varianceFlag: Boolean)
+  final case class BillView(
+      id: UUID,
+      payee: String,
+      amountMinor: Long,
+      currency: String,
+      varianceFlag: Boolean,
+      propertyId: Option[UUID],
+      category: Option[String]
+  )
   final case class CreateBillReq(
       payee: String,
       propertyId: Option[UUID],
+      category: Option[String],
       amountMinor: Long,
       currency: String,
       frequency: Option[String]
@@ -51,7 +60,8 @@ object Finance {
   )
   final case class MethodView(id: UUID, displayName: String, last4: Option[String])
 
-  private def bv(b: Bill): BillView = BillView(b.id, b.payee, b.amountMinor, b.currency, b.varianceFlag)
+  private def bv(b: Bill): BillView =
+    BillView(b.id, b.payee, b.amountMinor, b.currency, b.varianceFlag, b.propertyId, b.category)
   private def pv(b: BillPayment): PaymentView = PaymentView(b.id, b.mode, b.state)
 
   private val forbidden: (StatusCode, ApiError) =
@@ -87,7 +97,11 @@ object Finance {
   def listBills(xa: Transactor[IO], p: Principal): IO[Out[List[BillView]]] =
     read(p, BillRepo.list.map(_.map(bv))).transact(xa)
   def createBill(xa: Transactor[IO], p: Principal, r: CreateBillReq): IO[Out[BillView]] =
-    write(p, BillRepo.create(r.payee, r.propertyId, r.amountMinor, r.currency, r.frequency).map(bv), createA)
+    write(
+      p,
+      BillRepo.create(r.payee, r.propertyId, r.category, r.amountMinor, r.currency, r.frequency).map(bv),
+      createA
+    )
       .transact(xa)
   def recordSeen(xa: Transactor[IO], p: Principal, id: UUID, seenMinor: Long): IO[Out[SeenResult]] =
     write(p, BillRepo.recordSeen(id, seenMinor).map(SeenResult)).transact(xa)
