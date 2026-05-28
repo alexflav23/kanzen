@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { colors, radius } from "../styles/tokens.stylex";
+import { colors, radius, fonts } from "../styles/tokens.stylex";
 import { darkTheme } from "../styles/themes/dark.stylex";
 
 type Mode = "light" | "dark";
@@ -25,7 +25,7 @@ function initialMode(): Mode {
 }
 
 const styles = stylex.create({
-  root: { minHeight: "100vh", backgroundColor: colors.bg, color: colors.ink },
+  root: { minHeight: "100vh", backgroundColor: colors.bg, color: colors.ink, fontFamily: fonts.sans, fontFeatureSettings: '"ss01", "cv11"', WebkitFontSmoothing: "antialiased" },
   toggle: {
     display: "flex",
     alignItems: "center",

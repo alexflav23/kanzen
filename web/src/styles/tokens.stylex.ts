@@ -47,3 +47,10 @@ export const radius = stylex.defineVars({
   xxl: "28px",
   pill: "999px",
 });
+
+// Type stacks — matched 1:1 to `input/styles.css` (--font-sans / --font-mono). Applied on the app root
+// (ThemeContext) so everything inherits the design's system-sans (not the browser-default serif).
+export const fonts = stylex.defineVars({
+  sans: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif',
+  mono: '"SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace',
+});
