@@ -8,7 +8,7 @@ import { Check, X, Plus } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { approveExpense, createBill, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
+import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listExpenses, listPayments, markPaid, rejectExpense } from "../services/finance";
 import { listProperties } from "../services/properties";
 import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
 import { getReceipt, listReceipts } from "../services/receipts";
@@ -51,6 +51,7 @@ const styles = stylex.create({
   field: { display: "block", marginBottom: "14px" },
   flabel: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
   control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
+  checkRow: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: colors.ink2, marginBottom: "12px" },
   modalActions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
   ghost: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
   primary: { padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
@@ -112,11 +113,67 @@ function AddBillModal({ token, onClose }: { token: string | null; onClose: () =>
   );
 }
 
+/** F17 — submit a manual expense (Manager+). At/over the jurisdiction threshold it routes to the Principal. */
+function AddExpenseModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const props = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const [payee, setPayee] = useState("");
+  const [description, setDescription] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const [deductible, setDeductible] = useState(false);
+  const [vatReclaimable, setVatReclaimable] = useState(false);
+  const amountMinor = Math.round((parseFloat(amount) || 0) * 100);
+  const threshold = EXPENSE_THRESHOLDS[currency];
+  const overThreshold = threshold != null ? amountMinor >= threshold : amountMinor > 0; // unknown ccy → safe default
+  const mut = useMutation({
+    mutationFn: () => submitExpense({ payee: payee.trim() || null, description: description.trim() || null, amountMinor, currency, propertyId: propertyId || null, deductible, vatReclaimable }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["expenses"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="add-expense" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (amountMinor > 0) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Submit an expense</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Payee</span>
+          <input {...stylex.props(styles.control)} aria-label="Payee" value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. Bonhams" autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Description (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Property (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Property" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">— none</option>
+            {(props.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Amount</span>
+          <input {...stylex.props(styles.control)} aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1800.00" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.flabel)}>Currency</span>
+          <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+        <label {...stylex.props(styles.checkRow)}><input type="checkbox" aria-label="Tax-deductible" checked={deductible} onChange={(e) => setDeductible(e.target.checked)} /> <span>Tax-deductible</span></label>
+        <label {...stylex.props(styles.checkRow)}><input type="checkbox" aria-label="VAT reclaimable" checked={vatReclaimable} onChange={(e) => setVatReclaimable(e.target.checked)} /> <span>VAT reclaimable</span></label>
+        {amountMinor > 0 && (
+          <div {...stylex.props(styles.note)} data-testid="approval-hint">
+            {overThreshold
+              ? `At ${fmtMoney(amountMinor, currency)} this is at or above the ${threshold != null ? fmtMoney(threshold, currency) : "approval"} threshold — it routes to the Principal for approval.`
+              : `Below the ${fmtMoney(threshold, currency)} threshold — auto-approved on submit.`}
+          </div>
+        )}
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={amountMinor <= 0 || mut.isPending}>{mut.isPending ? "Submitting…" : "Submit expense"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Finance() {
   const { token } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("bills");
   const [showAddBill, setShowAddBill] = useState(false);
+  const [showAddExpense, setShowAddExpense] = useState(false);
 
   const bills    = useQuery({ queryKey: ["bills", token], queryFn: () => listBills(token) });
   const payments = useQuery({ queryKey: ["payments", token], queryFn: () => listPayments(token) });
@@ -222,7 +279,10 @@ export function Finance() {
           </Card>
           <div {...stylex.props(styles.spacer24)} />
           <Card>
-            <CardHeader><CardTitle>All expenses · {allExp.data?.length ?? 0}</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>All expenses · {allExp.data?.length ?? 0}</CardTitle>
+              <button type="button" {...stylex.props(styles.headBtn)} onClick={() => setShowAddExpense(true)}><Plus size={14} /> Add expense</button>
+            </CardHeader>
             {allExp.isPending ? <Loading /> : allExp.isError ? <ErrorState error={allExp.error} />
               : allExp.data.length === 0 ? <EmptyState title="No expenses" />
               : (
@@ -240,6 +300,7 @@ export function Finance() {
                 </table>
               )}
           </Card>
+          {showAddExpense && <AddExpenseModal token={token} onClose={() => setShowAddExpense(false)} />}
         </div>
       )}
 

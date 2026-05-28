@@ -27,6 +27,22 @@ test("a recurring bill can be added via the modal", async ({ page }) => {
   await expect(row).toContainText("£35"); // captured in major units, stored as minor
 });
 
+// W5.2 (F17) — submit a manual expense; over the jurisdiction threshold it routes to Principal approval.
+test("a manual expense over the threshold routes to the Principal for approval", async ({ page }) => {
+  const payee = `Bonhams ${Date.now()}`;
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Expenses" }).click();
+  await page.getByRole("button", { name: "Add expense" }).click();
+  const modal = page.getByTestId("add-expense");
+  await modal.getByLabel("Payee").fill(payee);
+  await modal.getByLabel("Amount").fill("1800.00"); // ≥ £1,500 → pending_approval
+  await expect(modal.getByTestId("approval-hint")).toContainText("Principal");
+  await modal.getByRole("button", { name: "Submit expense" }).click();
+  await expect(page.getByTestId("add-expense")).toHaveCount(0);
+  // it lands in the "Awaiting approval" queue (over-threshold), where the Principal can decide
+  await expect(page.getByTestId("pending-row").filter({ hasText: payee })).toBeVisible();
+});
+
 test("the pay queue tab lists scheduled payments (manual is markable)", async ({ page }) => {
   await page.goto("/finance");
   await page.getByRole("button", { name: "Pay queue" }).click();

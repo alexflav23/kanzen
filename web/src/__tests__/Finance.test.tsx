@@ -16,6 +16,8 @@ vi.mock("../services/finance", () => ({
   createBill: vi.fn(async (req: { payee: string; amountMinor: number; currency: string; propertyId: string | null; category: string | null }) => ({ id: "bNew", payee: req.payee, amountMinor: req.amountMinor, currency: req.currency, varianceFlag: false, propertyId: req.propertyId, category: req.category })),
   listPayments: async () => [],
   markPaid: vi.fn(),
+  EXPENSE_THRESHOLDS: { GBP: 150000, SGD: 250000 },
+  submitExpense: vi.fn(async (req: { payee: string | null; amountMinor: number; currency: string; deductible: boolean; vatReclaimable: boolean }) => ({ id: "exNew", payee: req.payee, amountMinor: req.amountMinor, currency: req.currency, status: req.amountMinor >= 150000 ? "pending_approval" : "approved", deductible: req.deductible, vatReclaimable: req.vatReclaimable })),
   listExpenses: async (_t: string | null, status?: string | null) => (status === "pending_approval" ? h.pending : []),
   approveExpense: async (id: string) => { h.pending = h.pending.filter((e) => e.id !== id); return { id, payee: "x", amountMinor: 0, currency: "GBP", status: "approved", deductible: false, vatReclaimable: false }; },
   rejectExpense: async (id: string) => { h.pending = h.pending.filter((e) => e.id !== id); return { id, payee: "x", amountMinor: 0, currency: "GBP", status: "rejected", deductible: false, vatReclaimable: false }; },
@@ -57,7 +59,7 @@ vi.mock("../services/receipts", () => ({
 }));
 
 import { Finance } from "../pages/Finance";
-import { createBill } from "../services/finance";
+import { createBill, submitExpense } from "../services/finance";
 
 const renderFinance = () =>
   render(
@@ -88,6 +90,20 @@ describe("Finance", () => {
         expect.objectContaining({ payee: "Hyperoptic", amountMinor: 3500, currency: "GBP", category: "utilities" }),
         "t",
       ),
+    );
+  });
+
+  it("submits a manual expense; an over-threshold amount is flagged as routing to the Principal", async () => {
+    renderFinance();
+    fireEvent.click(screen.getByRole("button", { name: "Expenses" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add expense" }));
+    const modal = await screen.findByTestId("add-expense");
+    fireEvent.change(within(modal).getByLabelText("Payee"), { target: { value: "Bonhams" } });
+    fireEvent.change(within(modal).getByLabelText("Amount"), { target: { value: "1800.00" } });
+    expect(within(modal).getByTestId("approval-hint")).toHaveTextContent(/Principal/); // £1,800 ≥ £1,500
+    fireEvent.click(within(modal).getByRole("button", { name: "Submit expense" }));
+    await waitFor(() =>
+      expect(submitExpense).toHaveBeenCalledWith(expect.objectContaining({ payee: "Bonhams", amountMinor: 180000, currency: "GBP" }), "t"),
     );
   });
 

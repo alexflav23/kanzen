@@ -37,6 +37,22 @@ export const ExpenseSchema = z.object({
 });
 export type Expense = z.infer<typeof ExpenseSchema>;
 
+export type SubmitExpenseReq = {
+  payee: string | null;
+  description: string | null;
+  amountMinor: number;
+  currency: string;
+  propertyId: string | null;
+  deductible: boolean;
+  vatReclaimable: boolean;
+};
+/** F17 — submit a manual expense (Manager+). Over the per-jurisdiction threshold → status `pending_approval`. */
+export const submitExpense = (req: SubmitExpenseReq, token: string | null) =>
+  api("/api/expenses", ExpenseSchema, { method: "POST", body: { ...req, categoryId: null, taxCategory: null }, token });
+
+// Per-jurisdiction approval thresholds (minor units; mirrors backend ExpenseService) — for the UI hint only.
+export const EXPENSE_THRESHOLDS: Record<string, number> = { GBP: 150000, SGD: 250000 };
+
 export const listBills = (token: string | null) => api("/api/bills", z.array(BillSchema), { token });
 export const createBill = (req: CreateBillReq, token: string | null) => api("/api/bills", BillSchema, { method: "POST", body: req, token });
 export const listPayments = (token: string | null) => api("/api/payments", z.array(PaymentSchema), { token });
