@@ -64,6 +64,7 @@ object Assets {
       acquisitionCostMinor: Option[Long],
       acquisitionCurrency: Option[String],
       propertyId: Option[UUID],
+      locationId: Option[UUID] = None, // F03 W4: current node, for grouping under the Bible's location tree
       heroUrl: Option[String] = None, // F04: signed blob URL of the hero photo (for the grid card thumbnail)
       attributes: Json =
         Json.obj() // F22/F24: typed vertical attributes (e.g. vehicle reg/colour/MOT) for bespoke cards
@@ -142,6 +143,7 @@ object Assets {
       a.acquisitionCostMinor,
       a.acquisitionCurrency,
       propertyId,
+      a.locationId,
       heroUrl,
       a.attributes
     )
@@ -185,14 +187,15 @@ object Assets {
       property: Option[UUID] = None,
       collection: Option[UUID] = None,
       status: Option[String] = None,
-      tag: Option[UUID] = None
+      tag: Option[UUID] = None,
+      location: Option[UUID] = None
   ): IO[Out[List[AssetView]]] = {
     type Rows = List[(Asset, Option[UUID], Option[String])]
     val tx: ConnectionIO[Out[Rows]] = Authz.forUser(p.userId, p.role).flatMap { authz =>
       // Own-scope (F02 v2): a grant scoped to records I created restricts the list to my own assets.
       val owner = if (authz.scopeFor(viewA) == Scope.Own) Some(p.userId) else None
       def run(cats: Option[NonEmptyList[UUID]]) =
-        AssetRepo.list(cats, q, vertical, property, collection, status, owner, tag).map(Right(_): Out[Rows])
+        AssetRepo.list(cats, q, vertical, property, collection, status, owner, tag, location).map(Right(_): Out[Rows])
       if (!authz.can(viewA)) (Left(forbidden): Out[Rows]).pure[ConnectionIO]
       else
         category match {
@@ -466,6 +469,7 @@ object Assets {
         Option[UUID],
         Option[UUID],
         Option[String],
+        Option[UUID],
         Option[UUID]
     ),
     (StatusCode, ApiError),
@@ -482,9 +486,12 @@ object Assets {
       .in(query[Option[UUID]]("collection"))
       .in(query[Option[String]]("status"))
       .in(query[Option[UUID]]("tag"))
+      .in(query[Option[UUID]]("location"))
       .errorOut(err)
       .out(jsonBody[List[AssetView]])
-      .summary("List assets (Principal-private; faceted by category/q/vertical/property/collection/status/tag)")
+      .summary(
+        "List assets (Principal-private; faceted by category/q/vertical/property/collection/status/tag/location)"
+      )
 
   val detailEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), AssetDetail, Any] =
     sttp.tapir.endpoint.get
@@ -558,8 +565,8 @@ object Assets {
   def serverEndpoints(a: Auth, xa: Transactor[IO], store: ObjectStore): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (cat, q, vert, prop, coll, st, tag) =>
-        list(xa, p, store, cat, q, vert, prop, coll, st, tag)
+      .serverLogic(p => { case (cat, q, vert, prop, coll, st, tag, loc) =>
+        list(xa, p, store, cat, q, vert, prop, coll, st, tag, loc)
       }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),

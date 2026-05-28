@@ -13,6 +13,7 @@ export const AssetViewSchema = z.object({
   acquisitionCostMinor: z.number().nullable(),
   acquisitionCurrency: z.string().nullable(),
   propertyId: z.string().nullable().optional(), // list-card only (resolved via location); absent on the detail view
+  locationId: z.string().nullable().optional(), // F03 W4 — current node, for grouping under the Bible's location tree
   heroUrl: z.string().nullable().optional(), // F04 — signed blob URL of the hero photo (grid-card thumbnail)
   attributes: z.record(z.string(), z.unknown()).default({}), // F22/F24 — typed vertical attrs (vehicle reg/colour/MOT…)
 });
@@ -62,6 +63,7 @@ export type AssetFilters = {
   collection?: string | null;
   status?: string | null;
   tag?: string | null;
+  location?: string | null;
 };
 
 export function listAssets(token: string | null, filters: AssetFilters = {}): Promise<AssetView[]> {

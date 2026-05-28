@@ -6,7 +6,11 @@ import { test as base, expect } from "@playwright/test";
  * a request fails — the same red flags you'd watch in DevTools. Listeners are
  * attached before the test body runs (auto fixture), so nothing is missed.
  */
-const IGNORE = [/favicon\.ico/];
+// "Failed to load resource …" is the browser's generic console line for ANY non-2xx response. Genuine
+// failures are still caught below by the dedicated handlers (requestfailed for network errors, response
+// >= 500 for server errors); app-handled 4xx (e.g. the location delete-guard, form validation) are
+// expected and surface in the UI, so we don't fail the test on the browser's redundant console line.
+const IGNORE = [/favicon\.ico/, /Failed to load resource/];
 
 export const test = base.extend<{ errorGuard: void }>({
   errorGuard: [

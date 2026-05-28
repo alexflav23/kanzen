@@ -18,6 +18,7 @@ vi.mock("../services/locations", () => ({
     { id: "l1", parentId: null, kind: "room", name: "Living room", floor: "52", area: "42 m²", notes: null },
     { id: "l2", parentId: "l1", kind: "cabinet", name: "Drinks cabinet", floor: null, area: null, notes: null },
   ]),
+  createLocation: vi.fn(), patchLocation: vi.fn(), moveLocation: vi.fn(), deleteLocation: vi.fn(),
 }));
 vi.mock("../services/defects", () => ({
   listDefects: vi.fn(async () => [
@@ -28,7 +29,7 @@ vi.mock("../services/defects", () => ({
 // filters them to this property — so the mocks return a mix to prove the client-side scoping.
 vi.mock("../services/assets", () => ({
   listAssets: vi.fn(async () => [
-    { id: "a1", title: "Eames Lounge Chair", maker: "Herman Miller", categoryId: null, trackingMode: "unique", quantity: 1, ownershipStatus: "owned", acquisitionCostMinor: 750000, acquisitionCurrency: "GBP", propertyId: "p1", attributes: {} },
+    { id: "a1", title: "Eames Lounge Chair", maker: "Herman Miller", categoryId: null, trackingMode: "unique", quantity: 1, ownershipStatus: "owned", acquisitionCostMinor: 750000, acquisitionCurrency: "GBP", propertyId: "p1", locationId: "l1", attributes: {} },
   ]),
 }));
 vi.mock("../services/maintenance", () => ({
@@ -83,7 +84,17 @@ describe("PropertyBible", () => {
     await screen.findByText("Wardian — Apt 5206");
     fireEvent.click(screen.getByRole("button", { name: "Rooms" }));
     expect(await screen.findByText("Living room")).toBeInTheDocument();
-    expect(screen.getByText("Drinks cabinet")).toBeInTheDocument();
+    expect(screen.getByText("Drinks cabinet")).toBeInTheDocument(); // a richer 'cabinet' kind, nested under the room
+  });
+
+  it("shows per-node item counts and expands a node to its items", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    fireEvent.click(screen.getByRole("button", { name: "Rooms" }));
+    await screen.findByText("Living room");
+    expect(await screen.findByText("1 item")).toBeInTheDocument(); // the Living room holds one located asset
+    fireEvent.click(screen.getByRole("button", { name: "Expand Living room" }));
+    expect(await screen.findByText("Eames Lounge Chair")).toBeInTheDocument(); // the per-node item list
   });
 
   it("lists defects under the Defects tab", async () => {

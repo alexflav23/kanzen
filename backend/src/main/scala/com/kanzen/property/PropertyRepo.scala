@@ -198,6 +198,10 @@ object PropertyRepo {
   def childCount(id: UUID): ConnectionIO[Int] =
     sql"select count(*) from locations where parent_id = $id and deleted_at is null".query[Int].unique
 
+  /** Live assets located directly at a node — the other half of the delete-guard ("move N items first"). */
+  def assetCountAtLocation(id: UUID): ConnectionIO[Int] =
+    sql"select count(*) from assets where location_id = $id and deleted_at is null".query[Int].unique
+
   def softDeleteLocation(id: UUID): ConnectionIO[Int] =
     sql"update locations set deleted_at = now() where id = $id and deleted_at is null".update.run
 }

@@ -174,9 +174,15 @@ object Locations {
         authorizeWrite(p, loc.propertyId).flatMap {
           case Left(e) => (Left(e): Out[DeletedResp]).pure[ConnectionIO]
           case Right(_) =>
-            PropertyRepo.childCount(id).flatMap { n =>
-              if (n > 0) (Left(badReq(s"move $n child location(s) first")): Out[DeletedResp]).pure[ConnectionIO]
-              else PropertyRepo.softDeleteLocation(id).as(Right(DeletedResp(id)): Out[DeletedResp])
+            (PropertyRepo.childCount(id), PropertyRepo.assetCountAtLocation(id)).tupled.flatMap {
+              case (kids, items) if kids > 0 || items > 0 =>
+                // delete-guard: a node must be empty (no items, no sub-locations) before it can be removed
+                val parts = List(
+                  Option.when(items > 0)(s"$items item(s)"),
+                  Option.when(kids > 0)(s"$kids sub-location(s)")
+                ).flatten.mkString(" and ")
+                (Left(badReq(s"move $parts first")): Out[DeletedResp]).pure[ConnectionIO]
+              case _ => PropertyRepo.softDeleteLocation(id).as(Right(DeletedResp(id)): Out[DeletedResp])
             }
         }
     }

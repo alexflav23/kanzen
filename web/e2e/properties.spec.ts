@@ -86,6 +86,63 @@ test("the Bible's Documents tab shows property papers, marks originals, and scop
   await expect(page.getByText("Tenancy Agreement — Singapore.pdf")).toHaveCount(0);
 });
 
+// W4 (F03) — location-tree depth: per-node item lists, rename, move/reparent, and the delete-guard.
+test("a tree node shows its item count and expands to the items located there", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Rooms" }).click();
+  // the seeded 'cabinet' (a richer kind) holds the watches (count flexes: a parallel test may relocate one)
+  const cabinet = page.getByTestId("room-row").filter({ hasText: "Watch Cabinet" });
+  await expect(cabinet).toBeVisible();
+  await expect(cabinet.getByText(/\d+ item/)).toBeVisible(); // a per-node item count badge
+  await page.getByRole("button", { name: "Expand Watch Cabinet" }).click();
+  // the Submariner stays in the cabinet (unlike the Royal Oak, which other suites relocate)
+  await expect(page.getByTestId("node-asset-row").filter({ hasText: "Submariner Date" })).toBeVisible();
+});
+
+test("the delete-guard blocks removing a node that still holds items", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Rooms" }).click();
+  await page.getByRole("button", { name: "Delete Watch Cabinet" }).click();
+  await page.getByRole("button", { name: "Confirm delete Watch Cabinet" }).click();
+  await expect(page.getByTestId("tree-error")).toContainText("item"); // "move 2 item(s) first"
+  await expect(page.getByTestId("room-row").filter({ hasText: "Watch Cabinet" })).toBeVisible(); // not deleted
+});
+
+test("a node can be renamed, moved, and (when empty) deleted (Manager+)", async ({ page }) => {
+  const a = `Cellar ${Date.now()}`;
+  const renamed = `Wine Cellar ${Date.now()}`;
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  await page.getByRole("button", { name: "Rooms" }).click();
+
+  // create
+  await page.getByRole("button", { name: "Add room" }).click();
+  await page.getByTestId("add-room").getByLabel("Room name").fill(a);
+  await page.getByTestId("add-room").getByRole("button", { name: "Add room" }).click();
+  await expect(page.getByText(a)).toBeVisible();
+
+  // rename
+  await page.getByRole("button", { name: `Rename ${a}` }).click();
+  await page.getByTestId("edit-room").getByLabel("Location name").fill(renamed);
+  await page.getByTestId("edit-room").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(renamed)).toBeVisible();
+
+  // move it inside the Study (reparent), then delete it (empty → allowed)
+  await page.getByRole("button", { name: `Move ${renamed}` }).click();
+  await page.getByTestId("move-room").getByLabel("New parent").selectOption({ label: "Study" });
+  await page.getByTestId("move-room").getByRole("button", { name: "Move" }).click();
+  await expect(page.getByTestId("move-room")).toHaveCount(0);
+
+  await page.getByRole("button", { name: `Delete ${renamed}` }).click();
+  await page.getByRole("button", { name: `Confirm delete ${renamed}` }).click();
+  await expect(page.getByText(renamed)).toHaveCount(0); // empty node removed
+});
+
 test("a defect can be reported and moved through its lifecycle (Manager+)", async ({ page }) => {
   const title = `Leaky tap ${Date.now()}`;
   await page.goto("/properties");

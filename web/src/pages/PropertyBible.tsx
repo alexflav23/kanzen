@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
-import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon } from "../components/icons";
+import { Box, Plus, Check, X, Alert, Wrench, Documents as DocIcon, ChevronRight, ChevronDown, Move, Trash } from "../components/icons";
 import { getProperty } from "../services/properties";
-import { listLocations, createLocation, type Location } from "../services/locations";
+import { listLocations, createLocation, patchLocation, moveLocation, deleteLocation, type Location } from "../services/locations";
+import { type AssetView } from "../services/assets";
 import { listDefects, raiseDefect, setDefectStatus, type Defect } from "../services/defects";
 import { listAssets } from "../services/assets";
 import { listPlans } from "../services/maintenance";
@@ -18,6 +19,8 @@ import { Loading, EmptyState, ErrorState } from "../components/states";
 
 type Tab = "overview" | "assets" | "rooms" | "maintenance" | "documents" | "defects";
 const TABS: Tab[] = ["overview", "assets", "rooms", "maintenance", "documents", "defects"];
+// Typed node kinds (F03 §6) — the location tree is more than rooms: it nests storage furniture too.
+const KINDS = ["room", "area", "cabinet", "shelf", "case", "garage", "storage"] as const;
 
 /** Bytes → compact human size for the Documents tab. */
 function humanSize(bytes: number | null): string {
@@ -73,6 +76,10 @@ const styles = stylex.create({
   defectMeta: { display: "flex", gap: "8px", alignItems: "center" },
   actions: { display: "flex", gap: "6px", marginLeft: "10px" },
   miniBtn: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 9px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  miniBtnDanger: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 9px", borderRadius: radius.sm, border: 0, backgroundColor: colors.danger, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  expander: { width: "20px", height: "20px", flexShrink: 0, display: "grid", placeItems: "center", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", padding: 0 },
+  expanderSpacer: { width: "20px", flexShrink: 0 },
+  errorNote: { padding: "10px 12px", borderRadius: radius.sm, backgroundColor: colors.dangerSoft, color: colors.ink, fontSize: "12.5px", marginBottom: "12px" },
   headBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
   // modal
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
@@ -91,24 +98,157 @@ function coverFor(id: string): string {
   return COVERS[n % COVERS.length];
 }
 
-/** A node + its descendants, indented by depth. */
-function RoomNodes({ nodes, parentId, depth }: { nodes: Location[]; parentId: string | null; depth: number }) {
-  const here = nodes.filter((n) => n.parentId === parentId);
+/** A node + all of its descendants (used to forbid moving a node under its own subtree). */
+function descendantIds(nodes: Location[], rootId: string): Set<string> {
+  const byParent = new Map<string, Location[]>();
+  for (const n of nodes) {
+    const k = n.parentId ?? "__root";
+    const arr = byParent.get(k) ?? [];
+    arr.push(n);
+    byParent.set(k, arr);
+  }
+  const acc = new Set<string>();
+  const stack = [rootId];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const c of byParent.get(cur) ?? []) {
+      acc.add(c.id);
+      stack.push(c.id);
+    }
+  }
+  return acc;
+}
+
+/** Rename/edit a node's particulars (name · floor · area · notes). */
+function EditLocationModal({ node, propertyId, token, onClose }: { node: Location; propertyId: string; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(node.name);
+  const [floor, setFloor] = useState(node.floor ?? "");
+  const [area, setArea] = useState(node.area ?? "");
+  const [notes, setNotes] = useState(node.notes ?? "");
+  const mut = useMutation({
+    mutationFn: () => patchLocation(node.id, { name: name.trim(), floor: floor.trim() || null, area: area.trim() || null, notes: notes.trim() || null }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["locations", propertyId] }); onClose(); },
+  });
   return (
-    <>
-      {here.map((n) => (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="edit-room" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (name.trim()) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Edit {node.kind}</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Name</span>
+          <input {...stylex.props(styles.control)} aria-label="Location name" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Floor (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Floor" value={floor} onChange={(e) => setFloor(e.target.value)} /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Area (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Area" value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. 42 m²" /></label>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Notes (optional)</span>
+          <input {...stylex.props(styles.control)} aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!name.trim() || mut.isPending}>{mut.isPending ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Move/reparent a node — choices exclude the node itself and its descendants (no cycles). */
+function MoveLocationModal({ node, nodes, propertyId, token, onClose }: { node: Location; nodes: Location[]; propertyId: string; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [parentId, setParentId] = useState(node.parentId ?? "");
+  const blocked = useMemo(() => { const d = descendantIds(nodes, node.id); d.add(node.id); return d; }, [nodes, node.id]);
+  const choices = nodes.filter((n) => !blocked.has(n.id));
+  const mut = useMutation({
+    mutationFn: () => moveLocation(node.id, parentId || null, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["locations", propertyId] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="move-room" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Move {node.name}</div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Inside</span>
+          <select {...stylex.props(styles.control)} aria-label="New parent" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <option value="">— top level</option>
+            {choices.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+          </select></label>
+        {mut.isError && <div {...stylex.props(styles.errorNote)}>{mut.error instanceof Error ? mut.error.message : "Could not move"}</div>}
+        <div {...stylex.props(styles.modalActions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={mut.isPending}>{mut.isPending ? "Moving…" : "Move"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** The property's nested location tree — expandable per-node item lists + (Manager+) rename/move/delete. */
+function LocationTree({ nodes, assetsByLoc, propertyId, canManage, token }: { nodes: Location[]; assetsByLoc: Map<string, AssetView[]>; propertyId: string; canManage: boolean; token: string | null }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Location | null>(null);
+  const [moving, setMoving] = useState<Location | null>(null);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const del = useMutation({
+    mutationFn: (id: string) => deleteLocation(id, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["locations", propertyId] }); setConfirmDel(null); setError(null); },
+    onError: (e: unknown) => setError(e instanceof Error ? e.message : "Could not delete this location"),
+  });
+  const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const render = (parentId: string | null, depth: number) => {
+    const here = nodes.filter((n) => (n.parentId ?? null) === parentId);
+    return here.map((n) => {
+      const items = assetsByLoc.get(n.id) ?? [];
+      const open = expanded.has(n.id);
+      return (
         <div key={n.id}>
-          <CardRow>
+          <CardRow testId="room-row">
             <div {...stylex.props(styles.indent(depth * 22))} />
+            {items.length > 0
+              ? <button type="button" {...stylex.props(styles.expander)} aria-label={`${open ? "Collapse" : "Expand"} ${n.name}`} aria-expanded={open} onClick={() => toggle(n.id)}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
+              : <div {...stylex.props(styles.expanderSpacer)} />}
             <div {...stylex.props(styles.roomIco)}><Box size={16} /></div>
             <div {...stylex.props(styles.grow)}>
               <div {...stylex.props(styles.rowTitle)}>{n.name}</div>
               <div {...stylex.props(styles.sub)}>{[n.kind, n.floor && `floor ${n.floor}`, n.area].filter(Boolean).join(" · ")}</div>
             </div>
+            {items.length > 0 && <Pill tone="default">{`${items.length} item${items.length === 1 ? "" : "s"}`}</Pill>}
+            {canManage && (
+              <span {...stylex.props(styles.actions)}>
+                <button type="button" {...stylex.props(styles.miniBtn)} aria-label={`Rename ${n.name}`} onClick={() => setEditing(n)}>Rename</button>
+                <button type="button" {...stylex.props(styles.miniBtn)} aria-label={`Move ${n.name}`} onClick={() => setMoving(n)}><Move size={12} /> Move</button>
+                {confirmDel === n.id
+                  ? <>
+                      <button type="button" {...stylex.props(styles.miniBtnDanger)} aria-label={`Confirm delete ${n.name}`} disabled={del.isPending} onClick={() => del.mutate(n.id)}>Confirm</button>
+                      <button type="button" {...stylex.props(styles.miniBtn)} onClick={() => setConfirmDel(null)}>Cancel</button>
+                    </>
+                  : <button type="button" {...stylex.props(styles.miniBtn)} aria-label={`Delete ${n.name}`} onClick={() => { setError(null); setConfirmDel(n.id); }}><Trash size={12} /></button>}
+              </span>
+            )}
           </CardRow>
-          <RoomNodes nodes={nodes} parentId={n.id} depth={depth + 1} />
+          {open && items.map((a) => (
+            <CardRow key={a.id} testId="node-asset-row" onClick={() => navigate(`/inventory/${a.id}`)}>
+              <div {...stylex.props(styles.indent(depth * 22 + 30))} />
+              <div {...stylex.props(styles.roomIco)}>{a.heroUrl ? <img src={a.heroUrl} alt="" {...stylex.props(styles.thumb)} /> : <Box size={14} />}</div>
+              <div {...stylex.props(styles.grow)}>
+                <div {...stylex.props(styles.rowTitle)}>{a.title}</div>
+                <div {...stylex.props(styles.sub)}>{a.maker ?? "—"}</div>
+              </div>
+            </CardRow>
+          ))}
+          {render(n.id, depth + 1)}
         </div>
-      ))}
+      );
+    });
+  };
+
+  return (
+    <>
+      {error && <div {...stylex.props(styles.errorNote)} role="alert" data-testid="tree-error">{error}</div>}
+      {render(null, 0)}
+      {editing && <EditLocationModal node={editing} propertyId={propertyId} token={token} onClose={() => setEditing(null)} />}
+      {moving && <MoveLocationModal node={moving} nodes={nodes} propertyId={propertyId} token={token} onClose={() => setMoving(null)} />}
     </>
   );
 }
@@ -167,14 +307,14 @@ function AddRoomModal({ propertyId, rooms, token, onClose }: { propertyId: strin
           <input {...stylex.props(styles.control)} aria-label="Room name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Wine Cellar" autoFocus /></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Kind</span>
           <select {...stylex.props(styles.control)} aria-label="Kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {["room", "area"].map((k) => <option key={k} value={k}>{k}</option>)}
+            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Floor (optional)</span>
           <input {...stylex.props(styles.control)} aria-label="Floor" value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. 52" /></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Inside (optional)</span>
           <select {...stylex.props(styles.control)} aria-label="Parent room" value={parentId} onChange={(e) => setParentId(e.target.value)}>
             <option value="">— top level</option>
-            {rooms.filter((r) => r.kind === "room").map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select></label>
         <div {...stylex.props(styles.modalActions)}>
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
@@ -208,11 +348,17 @@ export function PropertyBible() {
   const defects = useQuery({ queryKey: ["defects", id, token], queryFn: () => listDefects(id, token), enabled: detail.isSuccess });
   // The property record: what's IN it (assets, server-scoped via the ?property= facet), what keeps it
   // running (maintenance plans), and its papers (documents) — the last two filtered to this property.
-  const assets = useQuery({ queryKey: ["bible-assets", id, token], queryFn: () => listAssets(token, { property: id }), enabled: detail.isSuccess && tab === "assets" });
+  const assets = useQuery({ queryKey: ["bible-assets", id, token], queryFn: () => listAssets(token, { property: id }), enabled: detail.isSuccess && (tab === "assets" || tab === "rooms") });
   const plans = useQuery({ queryKey: ["maintenance", token], queryFn: () => listPlans(token), enabled: detail.isSuccess && tab === "maintenance" });
   const docs = useQuery({ queryKey: ["documents", token], queryFn: () => listDocuments(token), enabled: detail.isSuccess && tab === "documents" });
   const propPlans = (plans.data ?? []).filter((pl) => pl.propertyId === id);
   const propDocs = (docs.data ?? []).filter((d) => d.propertyId === id);
+  // group the property's assets by their current node — feeds the per-node item lists + count badges
+  const assetsByLoc = useMemo(() => {
+    const m = new Map<string, AssetView[]>();
+    for (const a of assets.data ?? []) if (a.locationId) { const arr = m.get(a.locationId) ?? []; arr.push(a); m.set(a.locationId, arr); }
+    return m;
+  }, [assets.data]);
   const setStatus = useMutation({
     mutationFn: ({ defectId, status }: { defectId: string; status: string }) => setDefectStatus(defectId, status, token),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["defects", id] }),
@@ -321,7 +467,7 @@ export function PropertyBible() {
           {rooms.isPending ? <Loading label="Loading rooms…" />
             : rooms.isError ? <ErrorState error={rooms.error} />
             : roomList.length === 0 ? <EmptyState title="No rooms yet">Add rooms and sub-locations to map this property.</EmptyState>
-            : <RoomNodes nodes={roomList} parentId={null} depth={0} />}
+            : <LocationTree nodes={roomList} assetsByLoc={assetsByLoc} propertyId={p.id} canManage={canManage} token={token} />}
         </Card>
       )}
 

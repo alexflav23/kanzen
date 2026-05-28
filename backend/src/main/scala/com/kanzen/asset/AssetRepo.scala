@@ -157,7 +157,8 @@ object AssetRepo {
       collectionId: Option[UUID] = None,
       status: Option[String] = None,
       ownerId: Option[UUID] = None, // F02 v2: Own-scope restriction (records I created)
-      tag: Option[UUID] = None // F04: filter to assets carrying this tag (polymorphic entity_tags)
+      tag: Option[UUID] = None, // F04: filter to assets carrying this tag (polymorphic entity_tags)
+      locationId: Option[UUID] = None // F03 W4: items located at a specific node (Bible per-node asset list)
   ): ConnectionIO[List[(Asset, Option[UUID], Option[String])]] = {
     val collJoin =
       collectionId.map(_ => fr"join collection_members cm on cm.asset_id = a.id").getOrElse(Fragment.empty)
@@ -172,6 +173,7 @@ object AssetRepo {
       categoryIds.map(ids => Fragments.in(fr"a.category_id", ids)),
       vertical.map(v => fr"a.vertical = $v"),
       propertyId.map(pid => fr"loc.property_id = $pid"),
+      locationId.map(lid => fr"a.location_id = $lid"),
       collectionId.map(cid => fr"cm.collection_id = $cid"),
       status.map(s => fr"a.ownership_status = $s"),
       ownerId.map(oid => fr"a.owner_id = $oid"),

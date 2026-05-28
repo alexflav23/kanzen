@@ -90,6 +90,18 @@ object AssetsApiIT extends IOSuite {
       expect(byChild.exists(_.title == "Abstract No.4"))
   }
 
+  test("F03 W4 — the location filter scopes the list to items at a node (Bible per-node list)") { xa =>
+    // Watch Cabinet (V2_78) holds the two watches and nothing else.
+    val watchCabinet = UUID.fromString("60000000-0000-0000-0000-000000000010")
+    for {
+      store <- ObjectStore.inMemory
+      atNode <- Assets
+        .list(xa, principal("principal"), store, None, None, location = Some(watchCabinet))
+        .map(_.toOption.get)
+    } yield expect(atNode.map(_.title).toSet == Set("Royal Oak 15500ST", "Submariner Date")) and
+      expect(atNode.forall(_.locationId.contains(watchCabinet))) // each carries its current node
+  }
+
   test("the seeded registry is visible to the principal; categories list (Staff 403)") { xa =>
     for {
       store <- ObjectStore.inMemory

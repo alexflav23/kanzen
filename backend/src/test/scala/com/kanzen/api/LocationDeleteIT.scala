@@ -19,6 +19,9 @@ object LocationDeleteIT extends IOSuite {
   private def req(parent: Option[UUID], kind: String, name: String) =
     CreateReq(wardian, parent, kind, name, None, None, None)
 
+  // Watch Cabinet (V2_78) holds the two watches and has no child locations — an items-only leaf.
+  private val watchCabinet = UUID.fromString("60000000-0000-0000-0000-000000000010")
+
   test("deleting a location with children is blocked; an empty leaf soft-deletes") { xa =>
     for {
       parent <- Locations.create(xa, manager, req(None, "room", "Study")).map(_.toOption.get)
@@ -30,5 +33,14 @@ object LocationDeleteIT extends IOSuite {
       expect(okLeaf.isRight) and
       expect(!tree.exists(_.id == child.id)) and
       expect(tree.exists(_.id == parent.id))
+  }
+
+  test("deleting a location that holds items is blocked (delete-guard counts assets, not just children)") { xa =>
+    for {
+      blocked <- Locations.delete(xa, manager, watchCabinet)
+      tree <- Locations.tree(xa, manager, wardian).map(_.toOption.get)
+    } yield expect(blocked.left.exists(_._1.code == 400)) and
+      expect(blocked.left.exists(_._2.detail.contains("item"))) and // "move N item(s) first"
+      expect(tree.exists(_.id == watchCabinet)) // not deleted
   }
 }
