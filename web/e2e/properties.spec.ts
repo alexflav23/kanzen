@@ -37,6 +37,21 @@ test("opening a property shows its Bible (overview, currency, rooms, defects) fr
   await expect(page.getByTestId("defect-row").filter({ hasText: "Dishwasher not draining" })).toBeVisible();
 });
 
+// W4 (F03) — Overview depth: full particulars + the linked-systems card (references only, never a secret).
+test("the Bible Overview shows full particulars and the linked-systems references", async ({ page }) => {
+  await page.goto("/properties");
+  await page.getByText("Wardian — Apt 5206").click();
+  await expect(page.getByText("Particulars")).toBeVisible();
+  // full particulars (address/type/ownership/building-management from the API)
+  await expect(page.getByText("Wardian, 9 Wards Place, London E14")).toBeVisible();
+  await expect(page.getByText("United Kingdom")).toBeVisible(); // friendly country from jurisdiction
+  await expect(page.getByText("Ballymore — Wardian Estate Management")).toBeVisible();
+  // linked systems — task project resolved to its name + the reference-only assurance
+  await expect(page.getByText("Linked systems")).toBeVisible();
+  await expect(page.getByText("Wardian — Household")).toBeVisible(); // task project name (not its id)
+  await expect(page.getByText(/never credentials or secrets/i)).toBeVisible();
+});
+
 // W4 (F03) — the Bible is the full property record: what's in it (Assets, server-scoped via ?property=),
 // what keeps it running (Maintenance), and its papers (Documents) — each scoped to this property.
 test("the Bible's Assets tab lists items located in this property", async ({ page }) => {

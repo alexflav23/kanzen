@@ -10,6 +10,20 @@ final case class Property(id: UUID, name: String, jurisdiction: Option[String], 
 
 /** The per-property tallies on the Bible + property cards (rooms/assets/bills/vendors). */
 final case class PropertyCounts(rooms: Int, assets: Int, bills: Int, vendors: Int)
+
+/** Bible Overview depth (F03 §5): the full particulars + linked-system references. The task project is resolved to its
+  * name (reference only); the 1Password vault is a NAME, never a secret.
+  */
+final case class PropertyParticulars(
+    address: Option[String],
+    propType: Option[String],
+    ownership: Option[String],
+    buildingManagement: Option[String],
+    taskProjectName: Option[String],
+    googleCalendarId: Option[String],
+    driveFolder: Option[String],
+    onepasswordVault: Option[String]
+)
 final case class Location(
     id: UUID,
     propertyId: UUID,
@@ -101,6 +115,14 @@ object PropertyRepo {
   /** Vendors linked to a property (the directory many-to-many). */
   def vendorCount(propertyId: UUID): ConnectionIO[Int] =
     sql"select count(*) from vendor_property_link where property_id = $propertyId".query[Int].unique
+
+  /** Full particulars + linked-system references for the Bible Overview — task project resolved to its name. */
+  def particulars(propertyId: UUID): ConnectionIO[PropertyParticulars] =
+    sql"""select p.address, p.type, p.ownership, p.building_management, tp.name,
+                 p.google_calendar_id, p.drive_folder, p.onepassword_vault
+          from properties p
+          left join task_projects tp on tp.id = p.task_project_id
+          where p.id = $propertyId""".query[PropertyParticulars].unique
 
   /** Full counts for one property — feeds the Bible aggregate. */
   def countsFor(propertyId: UUID): ConnectionIO[PropertyCounts] =

@@ -72,7 +72,12 @@ object PropertiesApiIT extends IOSuite {
       // the aggregate have a body); the seed gives Wardian 2 bills + 2 vendor links.
       case Right(d) =>
         expect(d.name == "Wardian — Apt 5206") and expect(d.rooms == 9) and expect(d.assets == 5) and
-          expect(d.bills == 2) and expect(d.vendors == 2)
+          expect(d.bills == 2) and expect(d.vendors == 2) and
+          // Overview depth (W4): particulars + linked systems (task project resolved to its name; V2_77)
+          expect(d.propType.contains("apartment")) and expect(d.ownership.contains("owned")) and
+          expect(d.buildingManagement.exists(_.contains("Ballymore"))) and
+          expect(d.linked.taskProject.contains("Wardian — Household")) and
+          expect(d.linked.onepasswordVault.contains("Wardian — Apt 5206"))
       case Left((sc, _)) => failure(s"expected 200, got $sc")
     }
   }

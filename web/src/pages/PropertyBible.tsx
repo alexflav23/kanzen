@@ -55,6 +55,9 @@ const styles = stylex.create({
   meta: { display: "grid", gridTemplateColumns: "120px 1fr", rowGap: "10px", fontSize: "13.5px" },
   metaK: { color: colors.ink3 },
   metaV: { textTransform: "capitalize" },
+  linkVal: { wordBreak: "break-word" },
+  linkMuted: { color: colors.ink3, fontStyle: "italic" },
+  note: { fontSize: "11.5px", color: colors.ink3, marginTop: "16px", lineHeight: 1.5 },
   glance: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" },
   glanceCell: { padding: "14px 16px", backgroundColor: colors.bgSunken, borderRadius: radius.md },
   glanceL: { fontSize: "12px", color: colors.ink3 },
@@ -182,6 +185,14 @@ function AddRoomModal({ propertyId, rooms, token, onClose }: { propertyId: strin
   );
 }
 
+const COUNTRY: Record<string, string> = { GB: "United Kingdom", SG: "Singapore", US: "United States", FR: "France", CH: "Switzerland", AE: "United Arab Emirates", IT: "Italy", ES: "Spain" };
+const countryName = (j: string | null) => (j ? COUNTRY[j] ?? j : "—");
+
+/** A linked-system reference (or a muted "Not linked"). Reference only — never a secret. */
+function LinkVal({ v }: { v: string | null }) {
+  return v ? <span {...stylex.props(styles.linkVal)}>{v}</span> : <span {...stylex.props(styles.linkMuted)}>Not linked</span>;
+}
+
 export function PropertyBible() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -240,11 +251,26 @@ export function PropertyBible() {
           <Card style={styles.pad}>
             <div {...stylex.props(styles.eyebrow)}>Particulars</div>
             <div {...stylex.props(styles.meta)}>
+              <span {...stylex.props(styles.metaK)}>Address</span><span>{p.address ?? "—"}</span>
+              <span {...stylex.props(styles.metaK)}>Country</span><span>{countryName(p.jurisdiction)}</span>
+              <span {...stylex.props(styles.metaK)}>Type</span><span {...stylex.props(styles.metaV)}>{p.propType ?? "—"}</span>
+              <span {...stylex.props(styles.metaK)}>Ownership</span><span {...stylex.props(styles.metaV)}>{p.ownership ?? "—"}</span>
               <span {...stylex.props(styles.metaK)}>Jurisdiction</span><span {...stylex.props(styles.metaV)}>{p.jurisdiction ?? "—"}</span>
               <span {...stylex.props(styles.metaK)}>Currency</span><span>{p.currency}</span>
+              <span {...stylex.props(styles.metaK)}>Building mgmt</span><span>{p.buildingManagement ?? "—"}</span>
               <span {...stylex.props(styles.metaK)}>Status</span><span {...stylex.props(styles.metaV)}>{p.status}</span>
               <span {...stylex.props(styles.metaK)}>Open defects</span><span>{openDefects}</span>
             </div>
+          </Card>
+          <Card style={styles.pad}>
+            <div {...stylex.props(styles.eyebrow)}>Linked systems</div>
+            <div {...stylex.props(styles.meta)}>
+              <span {...stylex.props(styles.metaK)}>Task project</span><LinkVal v={p.linked.taskProject} />
+              <span {...stylex.props(styles.metaK)}>Calendar</span><LinkVal v={p.linked.googleCalendar} />
+              <span {...stylex.props(styles.metaK)}>Drive folder</span><LinkVal v={p.linked.driveFolder} />
+              <span {...stylex.props(styles.metaK)}>1Password</span><LinkVal v={p.linked.onepasswordVault} />
+            </div>
+            <div {...stylex.props(styles.note)}>References only — Kanzen stores names and links, never credentials or secrets.</div>
           </Card>
           <Card style={styles.full}>
             <div {...stylex.props(styles.pad)}>

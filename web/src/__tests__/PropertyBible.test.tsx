@@ -8,6 +8,9 @@ vi.mock("../services/properties", () => ({
   getProperty: vi.fn(async () => ({
     id: "p1", name: "Wardian — Apt 5206", jurisdiction: "GB", currency: "GBP", status: "active",
     rooms: 2, assets: 0, bills: 0, vendors: 0,
+    address: "Wardian, 9 Wards Place, London E14", propType: "apartment", ownership: "owned",
+    buildingManagement: "Ballymore — Wardian Estate Management",
+    linked: { taskProject: "Wardian — Household", googleCalendar: "wardian.5206@group.calendar.google.com", driveFolder: "Kanzen / Properties / Wardian", onepasswordVault: "Wardian Vault" },
   })),
 }));
 vi.mock("../services/locations", () => ({
@@ -61,6 +64,18 @@ describe("PropertyBible", () => {
     renderBible();
     expect(await screen.findByText("Wardian — Apt 5206")).toBeInTheDocument();
     expect(screen.getByText("Jurisdiction")).toBeInTheDocument();
+  });
+
+  it("shows full particulars and the linked-systems references (reference-only, no secret)", async () => {
+    renderBible();
+    await screen.findByText("Wardian — Apt 5206");
+    // full particulars
+    expect(screen.getByText("Wardian, 9 Wards Place, London E14")).toBeInTheDocument();
+    expect(screen.getByText("United Kingdom")).toBeInTheDocument(); // friendly country from jurisdiction
+    expect(screen.getByText("Ballymore — Wardian Estate Management")).toBeInTheDocument();
+    // linked systems — the 1Password VAULT NAME, never a secret
+    expect(screen.getByText("Wardian — Household")).toBeInTheDocument(); // resolved task-project name
+    expect(screen.getByText(/never credentials or secrets/i)).toBeInTheDocument();
   });
 
   it("shows the nested room tree under the Rooms tab", async () => {

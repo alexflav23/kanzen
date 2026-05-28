@@ -34,7 +34,15 @@ object Properties {
       vendors: Int
   )
 
-  /** The Bible aggregate — rooms/assets/bills/vendors tallies for the property. */
+  /** Linked-system references (F03 §7) — reference only, never a secret (the 1Password field is a vault NAME). */
+  final case class LinkedSystems(
+      taskProject: Option[String],
+      googleCalendar: Option[String],
+      driveFolder: Option[String],
+      onepasswordVault: Option[String]
+  )
+
+  /** The Bible aggregate — particulars + rooms/assets/bills/vendors tallies + linked systems. */
   final case class PropertyDetail(
       id: UUID,
       name: String,
@@ -44,7 +52,13 @@ object Properties {
       rooms: Int,
       assets: Int,
       bills: Int,
-      vendors: Int
+      vendors: Int,
+      // Overview depth (W4)
+      address: Option[String],
+      propType: Option[String],
+      ownership: Option[String],
+      buildingManagement: Option[String],
+      linked: LinkedSystems
   )
 
   final case class CreateReq(
@@ -152,9 +166,8 @@ object Properties {
         case (false, _) => (Left(forbidden): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, None) => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, Some(pr)) =>
-          PropertyRepo
-            .countsFor(id)
-            .map(c =>
+          (PropertyRepo.countsFor(id), PropertyRepo.particulars(id)).tupled
+            .map { case (c, pt) =>
               Right(
                 PropertyDetail(
                   pr.id,
@@ -165,10 +178,15 @@ object Properties {
                   c.rooms,
                   c.assets,
                   c.bills,
-                  c.vendors
+                  c.vendors,
+                  pt.address,
+                  pt.propType,
+                  pt.ownership,
+                  pt.buildingManagement,
+                  LinkedSystems(pt.taskProjectName, pt.googleCalendarId, pt.driveFolder, pt.onepasswordVault)
                 )
               )
-            )
+            }
       }
     } yield result
     tx.transact(xa)

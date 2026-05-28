@@ -18,8 +18,22 @@ export type Property = z.infer<typeof PropertySchema>;
 
 const PropertiesSchema = z.array(PropertySchema);
 
-/** The Bible aggregate — same shape as the list row (the counts are the aggregate). */
-export const PropertyDetailSchema = PropertySchema;
+/** Linked-system references (F03 §7) — reference only, never a secret (the vault field is a NAME). */
+export const LinkedSystemsSchema = z.object({
+  taskProject: z.string().nullable(),
+  googleCalendar: z.string().nullable(),
+  driveFolder: z.string().nullable(),
+  onepasswordVault: z.string().nullable(),
+});
+
+/** The Bible aggregate — the list row's counts plus the full particulars + linked systems (Overview depth). */
+export const PropertyDetailSchema = PropertySchema.extend({
+  address: z.string().nullable(),
+  propType: z.string().nullable(),
+  ownership: z.string().nullable(),
+  buildingManagement: z.string().nullable(),
+  linked: LinkedSystemsSchema,
+});
 export type PropertyDetail = z.infer<typeof PropertyDetailSchema>;
 
 export type CreatePropertyReq = {
