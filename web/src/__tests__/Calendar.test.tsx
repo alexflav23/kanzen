@@ -1,16 +1,21 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 
-vi.mock("../services/calendar", () => ({
-  listEvents: async () => [
-    { id: "c1", title: "Plumber visit · Wardian", startOn: "2026-05-26", category: "maintenance", source: "manual", readOnly: false },
-    { id: "c2", title: "Waitrose delivery", startOn: "2026-05-29", category: "delivery", source: "manual", readOnly: false },
-    { id: "t1", title: "Order pool chemicals", startOn: "2026-05-27", category: "task", source: "task", readOnly: true },
-  ],
-  createEvent: vi.fn(async () => ({ id: "new", title: "Window cleaners", startOn: "2026-06-01", category: "manual", source: "manual", readOnly: false })),
-}));
+// Events dated relative to "today" so they always fall inside the current month/week grid, regardless of run date.
+vi.mock("../services/calendar", () => {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const rel = (off: number) => { const x = new Date(); x.setDate(x.getDate() + off); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`; };
+  return {
+    listEvents: async () => [
+      { id: "c1", title: "Plumber visit · Wardian", startOn: rel(0), category: "maintenance", source: "manual", readOnly: false },
+      { id: "c2", title: "Waitrose delivery", startOn: rel(1), category: "delivery", source: "manual", readOnly: false },
+      { id: "t1", title: "Order pool chemicals", startOn: rel(-1), category: "task", source: "task", readOnly: true },
+    ],
+    createEvent: vi.fn(async () => ({ id: "new", title: "Window cleaners", startOn: rel(0), category: "manual", source: "manual", readOnly: false })),
+  };
+});
 
 import { Calendar } from "../pages/Calendar";
 import { createEvent } from "../services/calendar";
@@ -25,19 +30,43 @@ const renderCal = () =>
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
 describe("Calendar", () => {
-  it("renders the agenda with events and marks overlays read-only", async () => {
+  it("renders the month grid by default (42 cells) with events placed as chips", async () => {
     renderCal();
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
-    expect(await screen.findByText("Plumber visit · Wardian")).toBeInTheDocument();
-    expect(screen.getByText("Waitrose delivery")).toBeInTheDocument();
+    expect(await screen.findByTestId("cal-grid")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cal-day")).toHaveLength(42); // 6-week month grid
+    expect(await screen.findByText("Plumber visit · Wardian")).toBeInTheDocument(); // a chip on today's cell
+    expect(screen.getByTestId("cal-period")).toBeInTheDocument();
+  });
+
+  it("switches to the agenda and marks overlays read-only", async () => {
+    renderCal();
+    fireEvent.click(screen.getByRole("tab", { name: "Agenda" }));
+    expect(await screen.findByText("Waitrose delivery")).toBeInTheDocument();
     expect(screen.getAllByTestId("cal-event")).toHaveLength(3);
-    // the task overlay is read-only
     expect(screen.getByText(/from task · read-only/)).toBeInTheDocument();
+  });
+
+  it("week view shows a 7-day grid and navigation changes the period label", async () => {
+    renderCal();
+    fireEvent.click(screen.getByRole("tab", { name: "Week" }));
+    expect(await screen.findByTestId("cal-grid")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cal-day")).toHaveLength(7);
+    const before = screen.getByTestId("cal-period").textContent;
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByTestId("cal-period").textContent).not.toBe(before);
+  });
+
+  it("clicking a day opens the new-event form pre-dated", async () => {
+    renderCal();
+    await screen.findByTestId("cal-grid");
+    fireEvent.click(screen.getAllByTestId("cal-day")[10]);
+    const modal = await screen.findByTestId("new-event");
+    expect((within(modal).getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("creates a new event via the modal", async () => {
     renderCal();
-    await screen.findByText("Plumber visit · Wardian");
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     expect(await screen.findByTestId("new-event")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Window cleaners" } });
