@@ -12,6 +12,7 @@ vi.mock("../services/wealth", () => ({
   listHoldings: async () => [
     { securityId: "s1", symbol: "VWRL", quantity: 10, costBasisMinor: 90000, marketValueMinor: 98000, unrealizedGainMinor: 8000 },
   ],
+  getIncomeStatement: async () => ({ entityId: null, from: "2026-01-01", to: "2026-05-28", incomeMinor: 1200000, expenseMinor: 450000, netMinor: 750000 }),
 }));
 
 import { Wealth } from "../pages/Wealth";
@@ -34,5 +35,13 @@ describe("Wealth", () => {
     expect(await screen.findByText("VWRL")).toBeInTheDocument();
     expect(screen.getByText("+£80")).toBeInTheDocument();
     expect(screen.getByText("balanced")).toBeInTheDocument();
+  });
+
+  it("shows the income statement for the period and offers a CSV export", async () => {
+    renderWealth();
+    expect(await screen.findByTestId("income-statement")).toBeInTheDocument();
+    expect(screen.getByTestId("is-income")).toHaveTextContent("£12,000"); // 1,200,000 minor
+    expect(screen.getByTestId("is-net")).toHaveTextContent("£7,500"); // income − expenses
+    expect(screen.getByRole("button", { name: "Export statement CSV" })).toBeInTheDocument();
   });
 });

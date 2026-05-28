@@ -24,3 +24,16 @@ test("switching to an entity scope reconverts the view", async ({ page }) => {
   await page.getByRole("button", { name: "Flavian (Individual)" }).click();
   await expect(page.getByTestId("networth-net")).toBeVisible(); // recomputed for the entity
 });
+
+// W5.5 (F43) — income statement (P&L) for a period + CSV export.
+test("the income statement renders for a period and exports a CSV", async ({ page }) => {
+  await page.goto("/wealth");
+  await expect(page.getByTestId("income-statement")).toBeVisible();
+  await expect(page.getByTestId("is-income")).toContainText("£"); // real figure from the ledger
+  await expect(page.getByTestId("is-net")).toContainText("£");
+  await page.getByRole("button", { name: "This month" }).click(); // re-queries from/to
+  await expect(page.getByTestId("income-statement")).toBeVisible();
+  const dl = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export statement CSV" }).click();
+  expect((await dl).suggestedFilename()).toMatch(/income-statement.*\.csv/);
+});

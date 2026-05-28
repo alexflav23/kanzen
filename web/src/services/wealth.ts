@@ -33,6 +33,17 @@ export const BalanceSheetSchema = z.object({
 });
 export type BalanceSheet = z.infer<typeof BalanceSheetSchema>;
 
+/** F43 — income statement (P&L) over a period. */
+export const IncomeStatementSchema = z.object({
+  entityId: z.string().nullable(),
+  from: z.string(),
+  to: z.string(),
+  incomeMinor: z.number(),
+  expenseMinor: z.number(),
+  netMinor: z.number(),
+});
+export type IncomeStatement = z.infer<typeof IncomeStatementSchema>;
+
 /** F40 — investment holdings at market with unrealised gain. */
 export const HoldingSchema = z.object({
   securityId: z.string(),
@@ -53,3 +64,8 @@ export const getBalanceSheet = (token: string | null, entity?: string | null) =>
   api(`/api/wealth/balance-sheet${entityQs(entity)}`, BalanceSheetSchema, { token });
 export const listHoldings = (token: string | null, entity?: string | null) =>
   api(`/api/investments/holdings${entityQs(entity)}`, z.array(HoldingSchema), { token });
+export const getIncomeStatement = (token: string | null, from: string, to: string, entity?: string | null) => {
+  const qs = new URLSearchParams({ from, to });
+  if (entity) qs.set("entity", entity);
+  return api(`/api/wealth/income-statement?${qs.toString()}`, IncomeStatementSchema, { token });
+};

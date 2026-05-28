@@ -7,7 +7,7 @@ import { Pill } from "../components/Pill";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { getBalanceSheet, getNetWorth, listEntities, listHoldings } from "../services/wealth";
+import { getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, type BalanceSheet, type IncomeStatement } from "../services/wealth";
 
 const styles = stylex.create({
   header: { marginBottom: "20px" },
@@ -35,20 +35,66 @@ const styles = stylex.create({
   loss: { color: colors.danger },
   bsRow: { display: "flex", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${colors.line}`, fontSize: "14px" },
   bsTotal: { fontWeight: 600, color: colors.ink, fontVariantNumeric: "tabular-nums" },
+  periodRow: { display: "flex", gap: "6px", marginLeft: "auto" },
+  periodBtn: { padding: "5px 10px", borderRadius: "8px", border: `1px solid ${colors.line}`, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12.5px" },
+  periodBtnOn: { backgroundColor: colors.accentSoft, color: colors.accent, borderColor: "transparent" },
+  exportBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 11px", borderRadius: "8px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", marginLeft: "8px" },
 });
 
 const gbp = (m: number) => fmtMoney(m, "GBP");
+
+type Period = "month" | "quarter" | "year";
+const PERIODS: { key: Period; label: string }[] = [{ key: "month", label: "This month" }, { key: "quarter", label: "This quarter" }, { key: "year", label: "This year" }];
+const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function periodRange(p: Period): { from: string; to: string } {
+  const now = new Date();
+  const start =
+    p === "month" ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : p === "quarter" ? new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
+    : new Date(now.getFullYear(), 0, 1);
+  return { from: fmtDate(start), to: fmtDate(now) };
+}
+
+/** Download the income statement (+ balance sheet) as a CSV — no money moves, it's a report. */
+function exportStatementCsv(is: IncomeStatement, bs: BalanceSheet | undefined, entityName: string) {
+  const major = (m: number) => (m / 100).toFixed(2);
+  const rows: string[][] = [
+    ["Kanzen — Income statement"],
+    ["Entity", entityName],
+    ["From", is.from],
+    ["To", is.to],
+    [],
+    ["Line", "Amount (GBP)"],
+    ["Income", major(is.incomeMinor)],
+    ["Expenses", major(is.expenseMinor)],
+    ["Net", major(is.netMinor)],
+  ];
+  if (bs) rows.push([], ["Balance sheet"], ["Assets", major(bs.assetsMinor)], ["Liabilities", major(bs.liabilitiesMinor)], ["Equity", major(bs.equityMinor)]);
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `kanzen-income-statement-${is.from}_${is.to}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 /** Wave G — Private Wealth: consolidated net worth (F41) + holdings (F40) + balance sheet (F43),
   * per entity (F42) or consolidated. Principal-private (the API hard-403s anyone else). */
 export function Wealth() {
   const { token } = useAuth();
   const [entity, setEntity] = useState<string | null>(null); // null = consolidated
+  const [period, setPeriod] = useState<Period>("year");
+  const { from, to } = periodRange(period);
 
   const entities = useQuery({ queryKey: ["wealth", "entities", token], queryFn: () => listEntities(token) });
   const net = useQuery({ queryKey: ["wealth", "net", token, entity], queryFn: () => getNetWorth(token, entity) });
   const bs = useQuery({ queryKey: ["wealth", "bs", token, entity], queryFn: () => getBalanceSheet(token, entity) });
   const holdings = useQuery({ queryKey: ["wealth", "holdings", token, entity], queryFn: () => listHoldings(token, entity) });
+  const inc = useQuery({ queryKey: ["wealth", "income", token, entity, from, to], queryFn: () => getIncomeStatement(token, from, to, entity) });
+  const entityName = entity === null ? "Consolidated" : entities.data?.find((e) => e.id === entity)?.name ?? "Entity";
 
   return (
     <div>
@@ -76,6 +122,25 @@ export function Wealth() {
               <div {...stylex.props(styles.cell)}><div {...stylex.props(styles.cellLabel)}>Investments</div><div {...stylex.props(styles.cellVal)}>{gbp(net.data.investmentsMinor)}</div></div>
               <div {...stylex.props(styles.cell)}><div {...stylex.props(styles.cellLabel)}>Liabilities</div><div {...stylex.props(styles.cellVal)}>{gbp(net.data.liabilitiesMinor)}</div></div>
             </div>
+          </div>
+        )}
+      </Card>
+
+      <Card style={styles.hero}>
+        <CardHeader>
+          <CardTitle>Income statement</CardTitle>
+          <div {...stylex.props(styles.periodRow)}>
+            {PERIODS.map((pp) => (
+              <button key={pp.key} type="button" aria-pressed={period === pp.key} {...stylex.props(styles.periodBtn, period === pp.key && styles.periodBtnOn)} onClick={() => setPeriod(pp.key)}>{pp.label}</button>
+            ))}
+            <button type="button" {...stylex.props(styles.exportBtn)} aria-label="Export statement CSV" disabled={!inc.data} onClick={() => inc.data && exportStatementCsv(inc.data, bs.data, entityName)}>Export CSV</button>
+          </div>
+        </CardHeader>
+        {inc.isPending ? <Loading /> : inc.isError ? <ErrorState error={inc.error} /> : (
+          <div data-testid="income-statement">
+            <div {...stylex.props(styles.bsRow)}><span>Income</span><span {...stylex.props(styles.bsTotal, styles.gain)} data-testid="is-income">{gbp(inc.data.incomeMinor)}</span></div>
+            <div {...stylex.props(styles.bsRow)}><span>Expenses</span><span {...stylex.props(styles.bsTotal)}>{gbp(inc.data.expenseMinor)}</span></div>
+            <div {...stylex.props(styles.bsRow)}><span {...stylex.props(styles.bold)}>Net</span><span {...stylex.props(styles.bsTotal, inc.data.netMinor >= 0 ? styles.gain : styles.loss)} data-testid="is-net">{inc.data.netMinor >= 0 ? "" : "−"}{gbp(Math.abs(inc.data.netMinor))}</span></div>
           </div>
         )}
       </Card>

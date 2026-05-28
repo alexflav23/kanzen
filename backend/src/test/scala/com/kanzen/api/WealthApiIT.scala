@@ -127,6 +127,17 @@ object WealthApiIT extends IOSuite {
       expect(nw.assetsMinor == 400000L) and expect(nw.netMinor == 350000L) // (350000+50000) − 50000
   }
 
+  test("F43 — income statement sums income/expense GL flow for the period (seeded Individual book)") { xa =>
+    val individual = UUID.fromString("40000000-0000-0000-0000-000000000001")
+    val from = LocalDate.now().withDayOfYear(1)
+    val to = LocalDate.now()
+    for {
+      is <- Wealth.incomeStatement(xa, toby, Some(individual), from, to).map(_.toOption.get)
+      mgr <- Wealth.incomeStatement(xa, lorna, Some(individual), from, to) // Principal-private
+    } yield expect(is.incomeMinor == 1200000L) and expect(is.expenseMinor == 450000L) and
+      expect(is.netMinor == 750000L) and expect(mgr.left.exists(_._1.code == 403))
+  }
+
   test("Private Wealth is Principal-only — Manager gets 403 on entities / net worth / create") { xa =>
     for {
       list <- Wealth.entities(xa, lorna)
