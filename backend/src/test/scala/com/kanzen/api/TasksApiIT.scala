@@ -47,4 +47,22 @@ object TasksApiIT extends IOSuite {
       done <- Tasks.complete(xa, lorna, t.id).map(_.toOption.get)
     } yield expect(done.nextTaskId.isEmpty)
   }
+
+  test("W6.2 — a task carries an assignee + due date + recurrence, and recurrence preserves the assignee") { xa =>
+    val marciaId = UUID.fromString("10000000-0000-0000-0000-000000000003")
+    for {
+      proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Assigned work", None)).map(_.toOption.get)
+      t <- Tasks
+        .create(
+          xa,
+          lorna,
+          CreateTaskReq(proj.id, "Water the plants", Some(LocalDate.now), Some("weekly"), Some(marciaId))
+        )
+        .map(_.toOption.get)
+      done <- Tasks.complete(xa, lorna, t.id).map(_.toOption.get)
+      list <- Tasks.list(xa, lorna, Some(proj.id)).map(_.toOption.get)
+      next = list.find(x => x.title == "Water the plants" && x.status == "todo")
+    } yield expect(t.assigneeId.contains(marciaId)) and expect(t.dueOn.contains(LocalDate.now)) and
+      expect(next.exists(_.assigneeId.contains(marciaId))) // assignee carried to the spawned occurrence
+  }
 }

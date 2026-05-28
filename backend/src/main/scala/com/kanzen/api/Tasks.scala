@@ -34,14 +34,22 @@ object Tasks {
       title: String,
       status: String,
       dueOn: Option[LocalDate],
-      recurrence: Option[String]
+      recurrence: Option[String],
+      assigneeId: Option[UUID]
   )
   final case class CreateProjectReq(name: String, propertyId: Option[UUID])
-  final case class CreateTaskReq(projectId: UUID, title: String, dueOn: Option[LocalDate], recurrence: Option[String])
+  final case class CreateTaskReq(
+      projectId: UUID,
+      title: String,
+      dueOn: Option[LocalDate],
+      recurrence: Option[String],
+      assigneeId: Option[UUID] = None
+  )
   final case class CompleteResult(completed: UUID, nextTaskId: Option[UUID])
 
   private def pv(p: TaskProject): ProjectView = ProjectView(p.id, p.name, p.propertyId)
-  private def tv(t: TaskRow): TaskView = TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence)
+  private def tv(t: TaskRow): TaskView =
+    TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence, t.assigneeId)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to tasks"))
@@ -78,8 +86,8 @@ object Tasks {
     write(
       p,
       TaskRepo
-        .createTask(r.projectId, r.title, r.dueOn, r.recurrence)
-        .map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence)),
+        .createTask(r.projectId, r.title, r.dueOn, r.recurrence, r.assigneeId)
+        .map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence, r.assigneeId)),
       createA
     ).transact(xa)
   def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =
