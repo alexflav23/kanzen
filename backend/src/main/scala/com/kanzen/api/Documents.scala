@@ -17,6 +17,7 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
+import java.time.Instant
 import java.util.{Base64, UUID}
 import scala.util.Try
 
@@ -45,7 +46,8 @@ object Documents {
       visibility: String,
       source: String,
       propertyId: Option[UUID],
-      immutable: Boolean
+      immutable: Boolean,
+      createdAt: Instant
   )
   final case class UploadReq(
       name: String,
@@ -82,7 +84,8 @@ object Documents {
       d.visibility,
       d.source,
       d.propertyId,
-      d.immutable
+      d.immutable,
+      d.createdAt
     )
 
   private val forbidden: (StatusCode, ApiError) =

@@ -13,8 +13,14 @@ export const DocumentSchema = z.object({
   source: z.string(),
   propertyId: z.string().nullable(),
   immutable: z.boolean(),
+  createdAt: z.string(),
 });
 export type Document = z.infer<typeof DocumentSchema>;
+
+const PresignSchema = z.object({ url: z.string(), expiresInSeconds: z.number() });
+/** A short-lived presigned URL to open/preview/download a document's immutable original. */
+export const documentDownloadUrl = (id: string, token: string | null) =>
+  api(`/api/documents/${id}/download`, PresignSchema, { token });
 
 const UploadResultSchema = z.object({ document: DocumentSchema, deduped: z.boolean() });
 export type UploadResult = z.infer<typeof UploadResultSchema>;

@@ -2,7 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
-import { Plus, Trash, Image, Star, StarFill } from "./icons";
+import { Plus, Trash, Image, Star, StarFill, Documents as DocIcon } from "./icons";
 import { Lightbox } from "./Lightbox";
 import { documentsFor, removePhoto, uploadAndLink } from "../services/documents";
 import { useAuth } from "../state/AuthContext";
@@ -21,6 +21,8 @@ const styles = stylex.create({
   dropTile: { width: "64px", height: "64px", borderRadius: radius.sm, border: `1.5px dashed ${colors.line}`, backgroundColor: "transparent", color: colors.ink3, cursor: "pointer", display: "inline-flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2px", flexShrink: 0 },
   dropTileOver: { borderColor: colors.accent, color: colors.accent, backgroundColor: colors.accentSoft },
   tileLabel: { fontSize: "9px", letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 },
+  fileLink: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px", width: "100%", height: "100%", color: colors.ink2, textDecoration: "none", padding: "4px" },
+  fileName: { fontSize: "9px", letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600, color: colors.ink3 },
   hint: { fontSize: "11.5px", color: colors.ink3 },
   busy: { fontSize: "11.5px", color: colors.ink3 },
   hiddenInput: { position: "absolute", width: "1px", height: "1px", padding: 0, margin: "-1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 },
@@ -82,11 +84,13 @@ export function MediaGallery({
 
   const accept = (list: FileList | null) => {
     if (!list) return;
-    const imgs = Array.from(list).filter((f) => f.type.startsWith("image/"));
-    if (imgs.length) upload.mutate(imgs);
+    const files = Array.from(list).filter((f) => f.type.startsWith("image/") || f.type === "application/pdf");
+    if (files.length) upload.mutate(files);
   };
+  const isImg = (ct: string | null) => !!ct && ct.startsWith("image/");
 
   const photos = q.data ?? [];
+  const images = photos.filter((d) => isImg(d.contentType)); // the Lightbox is image-only
 
   return (
     <div {...stylex.props(styles.wrap)}>
@@ -96,12 +100,19 @@ export function MediaGallery({
         onDragLeave={readOnly ? undefined : () => setOver(false)}
         onDrop={readOnly ? undefined : (e) => { e.preventDefault(); setOver(false); accept(e.dataTransfer.files); }}
       >
-        {photos.map((d, i) => (
+        {photos.map((d) => (
           <div {...stylex.props(styles.thumb, hoverReveal.group)} key={d.id}>
-            <button type="button" {...stylex.props(styles.viewBtn)} aria-label={`View ${d.name}`} onClick={() => setViewer(i)}>
-              <img {...stylex.props(styles.img)} src={d.url} alt={d.name} loading="lazy" />
-            </button>
-            {onSetHero && (
+            {isImg(d.contentType) ? (
+              <button type="button" {...stylex.props(styles.viewBtn)} aria-label={`View ${d.name}`} onClick={() => setViewer(images.indexOf(d))}>
+                <img {...stylex.props(styles.img)} src={d.url} alt={d.name} loading="lazy" />
+              </button>
+            ) : (
+              <a {...stylex.props(styles.fileLink)} href={d.url} target="_blank" rel="noreferrer" aria-label={`Open ${d.name}`} data-testid="file-tile">
+                <DocIcon size={20} />
+                <span {...stylex.props(styles.fileName)}>{d.name.split(".").pop()?.slice(0, 4) ?? "file"}</span>
+              </a>
+            )}
+            {isImg(d.contentType) && onSetHero && (
               <button
                 type="button"
                 data-role="hero"
@@ -145,7 +156,7 @@ export function MediaGallery({
               ref={inputRef}
               {...stylex.props(styles.hiddenInput)}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               multiple
               aria-label={`Upload ${label}`}
               onChange={(e) => { accept(e.target.files); e.target.value = ""; }}
@@ -160,7 +171,7 @@ export function MediaGallery({
       {upload.isError && <span {...stylex.props(styles.hint)}>Upload failed — try again.</span>}
 
       <Lightbox
-        photos={photos}
+        photos={images}
         index={viewer}
         onClose={() => setViewer(null)}
         onIndex={setViewer}

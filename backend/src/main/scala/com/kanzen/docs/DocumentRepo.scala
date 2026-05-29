@@ -4,6 +4,7 @@ import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
 
+import java.time.Instant
 import java.util.UUID
 
 final case class Document(
@@ -17,7 +18,8 @@ final case class Document(
     visibility: String,
     source: String,
     propertyId: Option[UUID],
-    immutable: Boolean
+    immutable: Boolean,
+    createdAt: Instant
 )
 
 /** F05 — in-house evidence store metadata. Originals are immutable (no update path); documents attach polymorphically
@@ -25,7 +27,7 @@ final case class Document(
   */
 object DocumentRepo {
   private val cols =
-    fr"id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id, immutable"
+    fr"id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id, immutable, created_at"
 
   def insert(
       id: UUID,
