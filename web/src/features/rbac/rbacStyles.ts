@@ -33,7 +33,7 @@ export const rbac = stylex.create({
   actionControls: { display: "flex", alignItems: "center", gap: "8px" },
 
   seg: { display: "inline-flex", border: `1px solid ${colors.line}`, borderRadius: radius.sm, overflow: "hidden" },
-  segBtn: { appearance: "none", border: 0, background: colors.bgElev, color: colors.ink3, padding: "5px 11px", fontSize: "12px", cursor: "pointer", borderRight: `1px solid ${colors.line}` },
+  segBtn: { appearance: "none", border: 0, backgroundColor: colors.bgElev, color: colors.ink3, padding: "5px 11px", fontSize: "12px", cursor: "pointer", borderRight: `1px solid ${colors.line}` },
   segBtnLast: { borderRight: 0 },
   // active states use high-contrast ink on the soft tint (positive/danger as text fail AA at 12px); the tint +
   // the "Allow"/"Deny" label + aria-pressed convey state without relying on colour alone.

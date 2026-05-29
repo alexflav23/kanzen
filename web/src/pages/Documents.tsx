@@ -46,7 +46,7 @@ const styles = stylex.create({
   pagerInfo: { fontSize: "12.5px", color: colors.ink3, fontVariantNumeric: "tabular-nums" },
   pagerBtn: { display: "inline-grid", placeItems: "center", width: "30px", height: "30px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", ":disabled": { opacity: 0.4, cursor: "default" } },
   segs: { display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" },
-  seg: { padding: "5px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, background: colors.bgElev, cursor: "pointer", fontSize: "12.5px", color: colors.ink2, textTransform: "capitalize" },
+  seg: { padding: "5px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", fontSize: "12.5px", color: colors.ink2, textTransform: "capitalize" },
   segActive: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
   table: { width: "100%", borderCollapse: "collapse" },
   th: { textAlign: "left", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3, padding: "12px 16px", borderBottom: `1px solid ${colors.line}` },
