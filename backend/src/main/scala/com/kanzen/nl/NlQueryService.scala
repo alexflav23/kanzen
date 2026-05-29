@@ -16,6 +16,7 @@ object NlQueryService {
   final case class CountIntent(entity: String, filter: Option[String]) extends Intent
   final case class LastPurchaseIntent(category: String) extends Intent
   final case class WhereIsIntent(keyword: String) extends Intent
+  final case class CategoryValueIntent(category: String) extends Intent
   final case class ValueByCategoryIntent() extends Intent
   final case class SpendIntent(category: Option[String], months: Int) extends Intent
   final case class DueSoonIntent(days: Int) extends Intent
@@ -42,11 +43,12 @@ object NlQueryService {
       LastPurchaseIntent(firstIn(p, assetCats).getOrElse("asset"))
     else if (p.contains("where is") || p.contains("where are") || p.contains("where's"))
       WhereIsIntent(firstIn(p, assetCats).orElse(keywordAfterWhere(p)).getOrElse(""))
-    else if (
-      (p.contains("worth") || p.contains("value")) && (p.contains("categor") || p
-        .contains("registry") || p.contains("collection") || p.contains("worth"))
-    )
-      ValueByCategoryIntent()
+    else if (p.contains("worth") || p.contains("value"))
+      // a named category → that category's value ("how much are my watches worth"); otherwise the whole-registry breakdown
+      firstIn(p, assetCats) match {
+        case Some(cat) => CategoryValueIntent(cat)
+        case None => ValueByCategoryIntent()
+      }
     else if (p.contains("spend") || p.contains("spent") || p.contains("how much"))
       SpendIntent(firstIn(p, spendCats), months(p))
     else if (p.contains("due") || p.contains("coming up") || p.contains("upcoming"))

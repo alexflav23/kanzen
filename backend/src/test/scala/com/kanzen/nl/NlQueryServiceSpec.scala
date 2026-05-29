@@ -26,8 +26,11 @@ class NlQueryServiceSpec extends AnyFreeSpec with Matchers {
     "'where is my royal oak?' -> where-is intent" in {
       NlQueryService.translate("Where is my Royal Oak?") shouldBe WhereIsIntent("royal oak")
     }
-    "'what's my registry worth by category?' -> value-by-category intent" in {
-      NlQueryService.translate("What's my registry worth by category?") shouldBe ValueByCategoryIntent()
+    "'how much are my watches worth?' -> category-value (watches, not the whole portfolio)" in {
+      NlQueryService.translate("How much are my watches worth?") shouldBe CategoryValueIntent("watch")
+    }
+    "'what's my registry worth?' (no category named) -> value-by-category breakdown" in {
+      NlQueryService.translate("What's my registry worth?") shouldBe ValueByCategoryIntent()
     }
     "an unrecognised prompt is Unknown" in {
       NlQueryService.translate("tell me a joke") shouldBe Unknown("tell me a joke")

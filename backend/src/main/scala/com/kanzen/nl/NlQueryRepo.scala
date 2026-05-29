@@ -33,6 +33,15 @@ object NlQueryRepo {
           where a.deleted_at is null and (a.title ilike ${"%" + kw + "%"} or a.maker ilike ${"%" + kw + "%"})
           order by a.created_at desc limit 1""".query[(String, Option[String], Option[String])].option
 
+  /** Acquisition value of assets in/matching one category — "how much are my watches worth": (sumMinor, count). */
+  def categoryValue(kw: String): ConnectionIO[(Long, Long)] =
+    sql"""select coalesce(sum(a.acquisition_cost_minor), 0), count(*)
+          from assets a left join categories c on c.id = a.category_id
+          where a.deleted_at is null and a.acquisition_cost_minor is not null
+            and (c.name ilike ${"%" + kw + "%"} or a.title ilike ${"%" + kw + "%"} or a.maker ilike ${"%" + kw + "%"})"""
+      .query[(Long, Long)]
+      .unique
+
   /** Acquisition value by category (top 5) — the basis for "what's my registry worth". */
   def valueByCategory: ConnectionIO[List[(String, Long)]] =
     sql"""select c.name, coalesce(sum(a.acquisition_cost_minor), 0)

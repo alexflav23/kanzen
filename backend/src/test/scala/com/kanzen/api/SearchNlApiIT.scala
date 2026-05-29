@@ -44,11 +44,14 @@ object SearchNlApiIT extends IOSuite {
     for {
       spend <- NlQuery.query(xa, toby, "how much did I spend on maintenance this year").map(_.toOption.get)
       due <- NlQuery.query(xa, toby, "what's due this week").map(_.toOption.get)
-      worth <- NlQuery.query(xa, toby, "what's my registry worth by category").map(_.toOption.get)
+      worth <- NlQuery.query(xa, toby, "what's my registry worth").map(_.toOption.get)
+      watches <- NlQuery.query(xa, toby, "how much are my watches worth").map(_.toOption.get)
       where <- NlQuery.query(xa, toby, "where is my Royal Oak").map(_.toOption.get)
     } yield expect(spend.intent == "spend") and expect(spend.answer.contains("£")) and
       expect(due.intent == "due_soon") and expect(due.count.exists(_ >= 0L)) and
       expect(worth.intent == "value_by_category") and
+      // a named category answers for THAT category, not the whole portfolio
+      expect(watches.intent == "category_value") and expect(watches.answer.toLowerCase.contains("watch")) and
       expect(where.intent == "where_is") and expect(where.answer.contains("Royal Oak"))
   }
 

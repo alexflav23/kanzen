@@ -64,6 +64,17 @@ object NlQuery {
                     ok(prompt, "where_is", s"$title — $where.", None)
                   case None => ok(prompt, "where_is", s"""No asset matching "$kw".""", None)
                 }
+            case NlQueryService.CategoryValueIntent(cat) =>
+              NlQueryRepo.categoryValue(cat).map { case (sum, cnt) =>
+                if (cnt == 0L) ok(prompt, "category_value", s"No $cat assets with a recorded value.", Some(0L))
+                else
+                  ok(
+                    prompt,
+                    "category_value",
+                    s"Your $cat assets are worth ${gbp(sum)} ($cnt asset(s), acquisition value).",
+                    Some(cnt)
+                  )
+              }
             case NlQueryService.ValueByCategoryIntent() =>
               NlQueryRepo.valueByCategory.map { rows =>
                 val total = rows.map(_._2).sum
