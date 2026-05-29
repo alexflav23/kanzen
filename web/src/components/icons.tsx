@@ -24,6 +24,8 @@ export const Alert = ({ size }: P) => <Base size={size}><path d="M12 3l10 17H2L1
 export const Wrench = ({ size }: P) => <Base size={size}><path d="M14 6a4 4 0 014 5l4 4-3 3-4-4a4 4 0 01-5-4l-3-3a4 4 0 010-6l3 3a4 4 0 014 0z" transform="rotate(45 12 12)" /></Base>;
 export const Box = ({ size }: P) => <Base size={size}><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></Base>;
 export const Refresh = ({ size }: P) => <Base size={size}><path d="M20 4v6h-6" /><path d="M4 20v-6h6" /><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3" /></Base>;
+export const Directory = ({ size }: P) => <Base size={size}><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M4 8h16" /><circle cx="12" cy="14" r="2.5" /><path d="M8 19c.5-1.8 2-3 4-3s3.5 1.2 4 3" /></Base>;
+export const Mail = ({ size }: P) => <Base size={size}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></Base>;
 // nav + chrome (grouped sidebar)
 export const Grid = ({ size }: P) => <Base size={size}><rect x="3.5" y="3.5" width="7" height="9" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="5" rx="1.5" /><rect x="3.5" y="14.5" width="7" height="6" rx="1.5" /><rect x="13.5" y="10.5" width="7" height="10" rx="1.5" /></Base>;
 export const Inbox = ({ size }: P) => <Base size={size}><path d="M3 13v6a2 2 0 002 2h14a2 2 0 002-2v-6" /><path d="M5 3h14l2 10h-5l-2 3h-4l-2-3H3l2-10z" /></Base>;

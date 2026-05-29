@@ -63,6 +63,7 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await go("Vendors", /^Vendors$/);
   await go("Documents", /^Documents$/);
   await go("Finance", /Bills, expenses/);
+  await go("Directory", /^Directory$/);
   await go("Wealth", /Net worth/);
   // statements (sub-route off Wealth)
   await page.getByRole("link", { name: "Statements →" }).click();

@@ -27,6 +27,7 @@ import { Backup } from "./pages/Backup";
 import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
 import { Customization } from "./pages/Customization";
+import { Directory } from "./pages/Directory";
 import { CommandPalette } from "./components/CommandPalette";
 import { NotificationsBell } from "./components/NotificationsBell";
 import { BootSplash } from "./components/BootSplash";
@@ -66,6 +67,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
   { group: "FINANCE & SYSTEM", items: [
     { label: "Finance", route: "/finance", icon: I.Finance },
     { label: "Wealth", route: "/wealth", icon: I.Trending },
+    { label: "Directory", route: "/directory", icon: I.Directory },
     { label: "Backup", route: "/backup", icon: I.Database },
     { label: "Customization", route: "/customization", icon: I.Layers },
     { label: "Settings", route: "/settings", icon: I.Settings },
@@ -243,6 +245,7 @@ function Shell() {
                 <Route path="/supplies" element={<Products />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/customization" element={<Customization />} />
+                <Route path="/directory" element={<Directory />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<p>Coming soon.</p>} />
               </Routes>

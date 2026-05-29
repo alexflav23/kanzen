@@ -108,7 +108,7 @@ graph LR
   F & G --> H[Hardening & launch]
 ```
 
-## End-to-end UI completeness (audit — 2026-05-29, through W8.3)
+## End-to-end UI completeness (audit — 2026-05-29, through W8.4)
 Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + migration + ITs). This audit is strictly about the **web UI**: is *every* UI surface the feature needs shipped, wired to the real API, live on :3020, and tested? Judged against the per-feature specs + `input/` prototype. Mobile (F31) is a separate surface, tracked on its own row. Honest bar — "tested endpoint exists" ≠ UI done.
 
 **Legend:** 🟢 UI complete (no web UI deferred) · 🟡 core workflow usable E2E, named UI extras deferred · 🔵 no dedicated web UI yet (backend-only, or surfaces only indirectly).
@@ -157,7 +157,7 @@ Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + mi
 | F00/F01 Foundation/Auth | 🔵 | infra + DevLogin/`/api/me` plumbing (not a feature screen) |
 | F31 Flutter companion | 🔵 | separate mobile surface (6 screens, mock data — own row) |
 
-**Summary (W6 complete; W7/W8 in progress):** 🟢 **21 UI-complete** (F02, F03, F04, F05, F06, F07, F08, F09, F11, F15, F16, F17, F18, F19/20/21, F22, F26, F28, F30, F33, F39, F43) · 🟡 **13 core-usable, extras deferred** (F10, F12, F13, F14, F23, F24, F29, F34, F35, F38, F40, F41, F42) · 🔵 **7 backend-only / no dedicated UI** (F00/F01, F25, F27, F32, F36, F37, F31-mobile). The old "Finance is mostly read" theme is **resolved** (W5); **W6 Operations surfaces complete**. Remaining web gaps: **W7** — ✅ People detail (F10), ✅ entity-management (F42), ✅ investments record-a-trade (F40); F41 illiquid valuations, FX selector (F37); **W8** — ✅ notifications bell (F34), ✅ rich Documents (F05), ✅ ledger statements/registers (F18/F39); NL query (F32), spend-trend (F23/F29), replenishment cadence (F36), Directory + Settings tabs.
+**Summary (W6 complete; W7/W8 in progress):** 🟢 **21 UI-complete** (F02, F03, F04, F05, F06, F07, F08, F09, F11, F15, F16, F17, F18, F19/20/21, F22, F26, F28, F30, F33, F39, F43) · 🟡 **13 core-usable, extras deferred** (F10, F12, F13, F14, F23, F24, F29, F34, F35, F38, F40, F41, F42) · 🔵 **7 backend-only / no dedicated UI** (F00/F01, F25, F27, F32, F36, F37, F31-mobile). The old "Finance is mostly read" theme is **resolved** (W5); **W6 Operations surfaces complete**. Remaining web gaps: **W7** — ✅ People detail (F10), ✅ entity-management (F42), ✅ investments record-a-trade (F40); F41 illiquid valuations, FX selector (F37); **W8** — ✅ notifications bell (F34), ✅ rich Documents (F05), ✅ ledger statements/registers (F18/F39); ✅ Directory (W8.4); NL query (F32), spend-trend (F23/F29), replenishment cadence (F36), Settings tabs.
 
 ## Forward build plan — actionable slices (2026-05-27)
 The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. Each `[ ]` is one **vertical-slice** (DB/seed → API gap if any → service+Zod → UI+states → tests → verify live at :3020), the same loop used for Lists/Dashboard/PropertyBible/People/Wealth. Waves are value+dependency ordered; one slice in flight; check off as shipped. 🔒 = **operator-gated** (needs SETUP.md provisioning — can't be completed in the sandbox).
@@ -166,7 +166,7 @@ The ordered backlog to close the 🟡/🔵 gaps above and reach in-depth Done. E
 
 **Design-driven items the spec-only plan missed (now folded in):**
 - **Vehicles** is a *bespoke card view* (garage · name · colour · reg + MOT/Tax/Insurance meta-grid), not a generic Inventory filter → W3.
-- **Directory** screen (operational mailboxes + role addresses) — we don't have it at all → W8 (new).
+- ✅ **Directory** screen (operational mailboxes + role addresses) — shipped W8.4.
 - **Documents** design is rich: 4 KPI tiles (docs/storage/parse-runs/line-items) + search + category segmented filter + table with attached-to + immutable/parse-run badges + agent ribbon → W8 (ours is simpler).
 - **Settings** is 4 tabs in the design — Integrations (connected-systems health) · Permissions (role×module matrix, have it) · Preferences (thresholds/security) · Audit log → W8.
 - **Shell** (`app.jsx`): grouped nav incl. a **Directory** item + **external-integration markers** on Tasks/Calendar + a **Mobile-preview** toggle (have brand/⌘K/theme) → W8.
@@ -222,10 +222,10 @@ Bible has only Overview/Rooms/Defects; spec wants the full record. Per F03 §5.
 - [x] **F40** Investments — **record-a-lot/trade UI** ✅ (2026-05-29, W7.3): a "Record trade" modal on Wealth → Buy opens a cost-basis lot / Sell closes FIFO and surfaces the **realised gain**; "Add security"; per-entity, Principal-private (web-only on the existing buy/sell/securities endpoints). Deferred: dividends + corporate actions, TWR/IRR, set-price UI. · [ ] **F41** pull illiquid valuations into the book. · [ ] **F37** **FX display-currency selector** (parked — wealth figures are GBP-consolidated; needs native composition first).
 
 ### W8 · Agent, search, system & design-only screens
-- [ ] **Directory** (design: `stubs.jsx` DirectoryView) — new screen: operational mailboxes + role addresses; add to nav.
+- [x] **Directory** ✅ (2026-05-29, W8.4) — new screen (design: `stubs.jsx` DirectoryView): operational mailboxes (agent-triaged) + role/property addresses on the household domain, two meta-grid cards (mono addresses); added to the left nav (FINANCE & SYSTEM, ported `Directory` icon). Presentational config (reference info). Directory.test + directory e2e (page + nav) + a11y route.
 - [x] **F05** Documents ✅ (2026-05-29, W8.2): 4 KPI tiles (total · storage · immutable · agent-filed) + search + category filter + type-iconed table w/ immutable shield + agent ribbon + **Uploaded** date; **drag-and-drop upload** (PDF/image/any) + **click-row → in-app preview** (PDF iframe / image / download); **MediaGallery now accepts + renders PDFs** (file tile → open) so attachments everywhere take PDFs. Backend exposed `createdAt`. Deferred: attached-to column, embedded asset/property doc tabs, parse-run versions.
 - [~] **Settings** → match `stubs.jsx` SettingsView 4 tabs: **Integrations** (connected-systems health) — pending; Permissions (have it: Builder + Advanced matrix); **Preferences** (thresholds/security) — pending; ✅ **Audit log** (2026-05-27, W2) — the platform action log (`/api/admin/audit` over `audit_log_entries`, admin-gated + append-only) rendered through the reusable `<Timeline>` with an action filter, **plus per-entity activity feeds** (`<ActivityFeed>` over `GET /api/activity/:targetType/:targetId`, gated on reading the entity; wired onto the asset detail as an "Activity" card, refreshing live after actions). Reusable on any entity whose endpoints audit — extend to property/person/vendor as those gain audit coverage.
-- [ ] **Shell** (design: `app.jsx`) — grouped-nav **Directory** item + **external-integration markers** on Tasks/Calendar + **Mobile-preview** toggle.
+- [~] **Shell** (design: `app.jsx`) — ✅ grouped-nav **Directory** item (W8.4); ✅ external-integration markers on Tasks/Calendar (the ↗ external badges already render). Deferred: **Mobile-preview** toggle.
 - [x] **F34** Notifications **top-bar bell** ✅ (2026-05-29, W8.1): unread badge + popover of recent items (mark-read on click) + "View all", polled (30s), present on every route, shares the `["notifications"]` query with the centre. Web-only on the existing inbox/mark-read endpoints. Deferred: quiet-hours (→ Settings · Preferences). · [ ] **F32** **NL query UI** + Drive export. · [x] **F18/F39** Principal-only **statements/registers** view ✅ (2026-05-29, W8.3): the chart of accounts (grouped by type, derived balances) + per-account **register** (transaction-level statement lines — never raw postings), reached via "Statements →" off Wealth; Principal-private. Web-only on the existing Ledger register + Wealth accounts endpoints. · [ ] **F23/F29** **spend-trend** time-series.
 
 ### Operator-gated track (🔒 — needs you, per SETUP.md; blocks Done(prod))
