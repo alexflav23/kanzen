@@ -1,10 +1,10 @@
 import * as stylex from "@stylexjs/stylex";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
 import { Pill } from "../components/Pill";
-import { Plus, Search, Shield, Documents as DocIcon, Image as ImageIcon, X, External } from "../components/icons";
+import { Plus, Search, Shield, Documents as DocIcon, Image as ImageIcon, X, External, ChevronLeft, ChevronRight } from "../components/icons";
 import { documentDownloadUrl, fileToBase64, listDocuments, uploadDocument, type Document } from "../services/documents";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
@@ -27,6 +27,24 @@ const styles = stylex.create({
   kpiSub: { fontSize: "11.5px", color: colors.ink3, marginTop: "4px" },
   toolbar: { display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, marginBottom: "16px" },
   input: { border: 0, background: "transparent", padding: 0, fontSize: "14px", height: "28px", flex: 1, color: colors.ink, outline: "none" },
+  viewToggle: { display: "inline-flex", borderRadius: radius.sm, border: `1px solid ${colors.line}`, overflow: "hidden", flexShrink: 0 },
+  viewBtn: { padding: "5px 12px", border: 0, borderLeft: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink3, cursor: "pointer", fontSize: "12.5px" },
+  viewBtnFirst: { borderLeft: 0 },
+  viewBtnOn: { backgroundColor: colors.accent, color: colors.accentInk },
+  // grid view
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(184px, 1fr))", gap: "14px" },
+  gcard: { border: `1px solid ${colors.line}`, borderRadius: radius.lg, backgroundColor: colors.bgElev, overflow: "hidden", cursor: "pointer", color: colors.ink, textAlign: "left", padding: 0, display: "flex", flexDirection: "column", ":hover": { boxShadow: colors.shadow1 } },
+  gthumb: { aspectRatio: "4 / 3", backgroundColor: colors.bgSunken, display: "grid", placeItems: "center", color: colors.ink4, position: "relative" },
+  gthumbImg: { width: "100%", height: "100%", objectFit: "cover" },
+  gext: { position: "absolute", bottom: "6px", right: "8px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", color: colors.ink3, textTransform: "uppercase" },
+  gbody: { padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 },
+  gname: { fontSize: "13px", fontWeight: 500, color: colors.ink, display: "flex", alignItems: "center", gap: "6px", minWidth: 0 },
+  gnameText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  gmeta: { display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: colors.ink3 },
+  gmetaGrow: { marginLeft: "auto", fontVariantNumeric: "tabular-nums" },
+  pager: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", marginTop: "16px" },
+  pagerInfo: { fontSize: "12.5px", color: colors.ink3, fontVariantNumeric: "tabular-nums" },
+  pagerBtn: { display: "inline-grid", placeItems: "center", width: "30px", height: "30px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", ":disabled": { opacity: 0.4, cursor: "default" } },
   segs: { display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" },
   seg: { padding: "5px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, background: colors.bgElev, cursor: "pointer", fontSize: "12.5px", color: colors.ink2, textTransform: "capitalize" },
   segActive: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
@@ -95,7 +113,10 @@ export function Documents() {
   const [category, setCategory] = useState<string | null>(null);
   const [preview, setPreview] = useState<Document | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [page, setPage] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => setPage(0), [category, search, view]); // reset paging when the view changes
 
   const docsQ = useQuery({ queryKey: ["documents", category, search, token], queryFn: () => listDocuments(token, category, search) });
   // KPI tiles reflect the whole store, independent of the active filter/search.
@@ -149,6 +170,10 @@ export function Documents() {
       <div {...stylex.props(styles.toolbar)}>
         <Search size={15} />
         <input {...stylex.props(styles.input)} placeholder="Search documents by name…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search documents" />
+        <div {...stylex.props(styles.viewToggle)} role="group" aria-label="View">
+          <button type="button" {...stylex.props(styles.viewBtn, styles.viewBtnFirst, view === "grid" && styles.viewBtnOn)} aria-pressed={view === "grid"} onClick={() => setView("grid")}>Grid</button>
+          <button type="button" {...stylex.props(styles.viewBtn, view === "list" && styles.viewBtnOn)} aria-pressed={view === "list"} onClick={() => setView("list")}>List</button>
+        </div>
       </div>
 
       <div {...stylex.props(styles.segs)}>
@@ -162,35 +187,74 @@ export function Documents() {
 
       {docsQ.isPending ? <Loading label="Loading documents…" />
         : docsQ.isError ? <ErrorState error={docsQ.error} />
-        : docsQ.data.length === 0 ? <EmptyState title="No documents">Upload a receipt, invoice or warranty to start the evidence store.</EmptyState>
-        : (
-          <Card>
-            <table {...stylex.props(styles.table)}>
-              <thead><tr>
-                <th {...stylex.props(styles.th)} aria-label="Type" /><th {...stylex.props(styles.th)}>Document</th>
-                <th {...stylex.props(styles.th)}>Category</th><th {...stylex.props(styles.th)}>Source</th>
-                <th {...stylex.props(styles.th)}>Size</th><th {...stylex.props(styles.th)}>Uploaded</th>
-              </tr></thead>
-              <tbody>
-                {docsQ.data.map((d) => (
-                  <tr key={d.id} data-testid="doc-row" {...stylex.props(styles.row)} onClick={() => setPreview(d)}>
-                    <td {...stylex.props(styles.tdIcon)}>{isImage(d.contentType) ? <ImageIcon size={15} /> : <DocIcon size={15} />}</td>
-                    <td {...stylex.props(styles.td)}>
-                      <span {...stylex.props(styles.name)}>
-                        {d.immutable && <span {...stylex.props(styles.lock)} title="Immutable original"><Shield size={13} /></span>}
-                        {d.name}
-                      </span>
-                    </td>
-                    <td {...stylex.props(styles.td)}><Pill>{d.category}</Pill></td>
-                    <td {...stylex.props(styles.td)}>{d.source === "agent" ? <Pill tone="accent">agent</Pill> : "manual"}</td>
-                    <td {...stylex.props(styles.td)}>{fmtSize(d.sizeBytes)}</td>
-                    <td {...stylex.props(styles.td)}>{fmtDate(d.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
+        : docsQ.data.length === 0 ? <EmptyState title="No documents">Drag a PDF or scan here, or hit Upload, to start the evidence store.</EmptyState>
+        : (() => {
+            const docs = docsQ.data;
+            const SIZE = view === "grid" ? 12 : 15;
+            const pages = Math.max(1, Math.ceil(docs.length / SIZE));
+            const cur = Math.min(page, pages - 1);
+            const shown = docs.slice(cur * SIZE, cur * SIZE + SIZE);
+            return (
+              <>
+                {view === "grid" ? (
+                  <div {...stylex.props(styles.grid)} data-testid="doc-grid">
+                    {shown.map((d) => (
+                      <button key={d.id} type="button" data-testid="doc-card" {...stylex.props(styles.gcard)} onClick={() => setPreview(d)}>
+                        <span {...stylex.props(styles.gthumb)}>
+                          {isImage(d.contentType) ? <ImageIcon size={28} /> : <DocIcon size={28} />}
+                          <span {...stylex.props(styles.gext)}>{d.name.split(".").pop()?.slice(0, 4) ?? "file"}</span>
+                        </span>
+                        <span {...stylex.props(styles.gbody)}>
+                          <span {...stylex.props(styles.gname)}>
+                            {d.immutable && <span {...stylex.props(styles.lock)} title="Immutable original"><Shield size={12} /></span>}
+                            <span {...stylex.props(styles.gnameText)}>{d.name}</span>
+                          </span>
+                          <span {...stylex.props(styles.gmeta)}>
+                            <Pill tone={d.source === "agent" ? "accent" : "default"}>{d.category}</Pill>
+                            <span {...stylex.props(styles.gmetaGrow)}>{fmtSize(d.sizeBytes)}</span>
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <Card>
+                    <table {...stylex.props(styles.table)}>
+                      <thead><tr>
+                        <th {...stylex.props(styles.th)} aria-label="Type" /><th {...stylex.props(styles.th)}>Document</th>
+                        <th {...stylex.props(styles.th)}>Category</th><th {...stylex.props(styles.th)}>Source</th>
+                        <th {...stylex.props(styles.th)}>Size</th><th {...stylex.props(styles.th)}>Uploaded</th>
+                      </tr></thead>
+                      <tbody>
+                        {shown.map((d) => (
+                          <tr key={d.id} data-testid="doc-row" {...stylex.props(styles.row)} onClick={() => setPreview(d)}>
+                            <td {...stylex.props(styles.tdIcon)}>{isImage(d.contentType) ? <ImageIcon size={15} /> : <DocIcon size={15} />}</td>
+                            <td {...stylex.props(styles.td)}>
+                              <span {...stylex.props(styles.name)}>
+                                {d.immutable && <span {...stylex.props(styles.lock)} title="Immutable original"><Shield size={13} /></span>}
+                                {d.name}
+                              </span>
+                            </td>
+                            <td {...stylex.props(styles.td)}><Pill>{d.category}</Pill></td>
+                            <td {...stylex.props(styles.td)}>{d.source === "agent" ? <Pill tone="accent">agent</Pill> : "manual"}</td>
+                            <td {...stylex.props(styles.td)}>{fmtSize(d.sizeBytes)}</td>
+                            <td {...stylex.props(styles.td)}>{fmtDate(d.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Card>
+                )}
+                {pages > 1 && (
+                  <div {...stylex.props(styles.pager)}>
+                    <span {...stylex.props(styles.pagerInfo)} data-testid="doc-pageinfo">{cur * SIZE + 1}–{Math.min(docs.length, cur * SIZE + SIZE)} of {docs.length}</span>
+                    <button type="button" {...stylex.props(styles.pagerBtn)} aria-label="Previous page" disabled={cur === 0} onClick={() => setPage(cur - 1)}><ChevronLeft size={15} /></button>
+                    <button type="button" {...stylex.props(styles.pagerBtn)} aria-label="Next page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}><ChevronRight size={15} /></button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
       {preview && <DocPreview doc={preview} token={token} onClose={() => setPreview(null)} />}
     </div>

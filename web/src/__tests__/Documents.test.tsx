@@ -28,15 +28,17 @@ const renderDocs = () =>
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
 describe("Documents", () => {
-  it("lists documents from the API", async () => {
+  it("lists documents from the API as grid cards by default, and toggles to a list view", async () => {
     renderDocs();
-    expect(await screen.findAllByTestId("doc-row")).toHaveLength(2);
+    expect(await screen.findAllByTestId("doc-card")).toHaveLength(2); // grid is the default
     expect(screen.getByText("Royal Oak receipt.pdf")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(await screen.findAllByTestId("doc-row")).toHaveLength(2); // list view
   });
 
   it("filters by category", async () => {
     renderDocs();
-    await screen.findAllByTestId("doc-row");
+    await screen.findAllByTestId("doc-card");
     fireEvent.click(screen.getByRole("button", { name: "insurance" }));
     expect(await screen.findByText("Buildings insurance.pdf")).toBeInTheDocument();
     expect(screen.queryByText("Royal Oak receipt.pdf")).not.toBeInTheDocument();
@@ -44,17 +46,17 @@ describe("Documents", () => {
 
   it("shows KPI tiles derived from the whole store", async () => {
     renderDocs();
-    await screen.findAllByTestId("doc-row");
+    await screen.findAllByTestId("doc-card");
     const kpis = screen.getAllByTestId("doc-kpi");
     expect(kpis[0]).toHaveTextContent("2"); // total documents
     expect(kpis[2]).toHaveTextContent("2"); // immutable originals
     expect(kpis[3]).toHaveTextContent("1"); // agent-filed (d2)
   });
 
-  it("opens a PDF preview (iframe) when a row is clicked", async () => {
+  it("opens a PDF preview (iframe) when a card is clicked", async () => {
     renderDocs();
-    const rows = await screen.findAllByTestId("doc-row");
-    fireEvent.click(rows[0]);
+    const cards = await screen.findAllByTestId("doc-card");
+    fireEvent.click(cards[0]);
     expect(await screen.findByTestId("doc-preview")).toBeInTheDocument();
     expect(await screen.findByTestId("pdf-frame")).toBeInTheDocument();
   });
