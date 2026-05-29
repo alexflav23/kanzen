@@ -189,7 +189,7 @@ object Inbox {
     for {
       authz <- Authz.forUser(p.userId, p.role)
       scope <- staffScope(p)
-      vis <- CollabInboxRepo.visible(threadId, scope)
+      vis <- CollabInboxRepo.visible(threadId, scope, p.role)
       res <-
         if (!authz.can(action)) (Left(forbidden): Out[A]).pure[ConnectionIO]
         else if (!vis) (Left(notFound): Out[A]).pure[ConnectionIO]
@@ -197,7 +197,7 @@ object Inbox {
     } yield res
 
   def inboxes(xa: Transactor[IO], p: Principal): IO[Out[List[InboxView]]] =
-    read(p, staffScope(p).flatMap(CollabInboxRepo.inboxes).map(_.map(iv))).transact(xa)
+    read(p, staffScope(p).flatMap(s => CollabInboxRepo.inboxes(s, p.role)).map(_.map(iv))).transact(xa)
 
   private val validFolder = Set("inbox", "sent", "spam", "archive")
   def threads(
@@ -214,7 +214,7 @@ object Inbox {
         me <-
           if (assignee.contains("me")) PeopleRepo.assigneeScope(p.userId).map(_.map(_.personId))
           else Option.empty[UUID].pure[ConnectionIO]
-        rows <- CollabInboxRepo.threads(inbox, folder.filter(validFolder).getOrElse("inbox"), me, scope)
+        rows <- CollabInboxRepo.threads(inbox, folder.filter(validFolder).getOrElse("inbox"), me, scope, p.role)
       } yield rows.map(tv)
     ).transact(xa)
 
@@ -223,7 +223,7 @@ object Inbox {
       p,
       for {
         scope <- staffScope(p)
-        vis <- CollabInboxRepo.visible(id, scope)
+        vis <- CollabInboxRepo.visible(id, scope, p.role)
         t <- CollabInboxRepo.thread(id)
         res <- (vis, t) match {
           case (true, Some(row)) =>
@@ -246,7 +246,8 @@ object Inbox {
 
   /** Back-reference: threads linked to a record (asset/expense/calendar), scope-filtered. */
   def linked(xa: Transactor[IO], p: Principal, targetType: String, targetId: UUID): IO[Out[List[ThreadView]]] =
-    read(p, staffScope(p).flatMap(CollabInboxRepo.linkedThreads(targetType, targetId, _)).map(_.map(tv))).transact(xa)
+    read(p, staffScope(p).flatMap(s => CollabInboxRepo.linkedThreads(targetType, targetId, s, p.role)).map(_.map(tv)))
+      .transact(xa)
 
   /** The itemised detail behind a proposal (receipt line items / dated event + what Confirm will do), for the review
     * popup. Read-gated + scope-checked like the thread it belongs to.
@@ -261,7 +262,7 @@ object Inbox {
         case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ProposalDetail]).pure[ConnectionIO]
         case Some(pr) =>
           val tid = pr.threadId.get
-          CollabInboxRepo.visible(tid, scope).flatMap { vis =>
+          CollabInboxRepo.visible(tid, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ProposalDetail]).pure[ConnectionIO]
             else
               for {
@@ -488,7 +489,7 @@ object Inbox {
         case Some(pr) if pr.status != "proposed" => (Left(conflict): Out[ConfirmResult]).pure[ConnectionIO]
         case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ConfirmResult]).pure[ConnectionIO]
         case Some(pr) =>
-          CollabInboxRepo.visible(pr.threadId.get, scope).flatMap { vis =>
+          CollabInboxRepo.visible(pr.threadId.get, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
             else execute(p, pr, authz)
           }
@@ -505,7 +506,7 @@ object Inbox {
       res <- prOpt.flatMap(_.threadId) match {
         case None => (Left(notFound): Out[Unit]).pure[ConnectionIO]
         case Some(tid) =>
-          CollabInboxRepo.visible(tid, scope).flatMap { vis =>
+          CollabInboxRepo.visible(tid, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
             else CollabInboxRepo.rejectProposal(id).as(Right(()): Out[Unit])
           }

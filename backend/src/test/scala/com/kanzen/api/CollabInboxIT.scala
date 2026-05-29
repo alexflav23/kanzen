@@ -22,6 +22,8 @@ object CollabInboxIT extends IOSuite {
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "flavian@kanzen.local", "principal")
   private val marcia =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
+  private val lorna =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
 
   test("inboxes + threads + detail surface the agent's proposal (financial stays proposed)") { xa =>
     for {
@@ -46,6 +48,23 @@ object CollabInboxIT extends IOSuite {
       expect(!marciaT.exists(_.subject.exists(_.contains("Pool service")))) and // hidden from Wardian staff
       expect(marciaT.exists(_.subject.exists(_.contains("Ocado")))) and // Wardian threads visible
       expect(!marciaInboxes.exists(_.address.startsWith("singapore")))
+  }
+
+  test("W9.4 — mailbox visibility is RBAC-gated: only the right person sees the right mailbox") { xa =>
+    for {
+      tobyBoxes <- Inbox.inboxes(xa, toby).map(_.toOption.get.map(_.label))
+      lornaBoxes <- Inbox.inboxes(xa, lorna).map(_.toOption.get.map(_.label))
+      marciaBoxes <- Inbox.inboxes(xa, marcia).map(_.toOption.get.map(_.label))
+      // a staff member can't open a thread in a mailbox above their tier, even by id (no API bypass)
+      principalThreads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
+      eleanor = principalThreads.find(_.subject.exists(_.contains("dinner"))).get // in the Principal mailbox
+      marciaSeesEleanor <- Inbox.detail(xa, marcia, eleanor.id).map(_.isRight)
+    } yield expect(tobyBoxes.contains("Principal")) and // principal sees their private mailbox
+      expect(!lornaBoxes.contains("Principal")) and // manager does NOT see the principal's mailbox
+      expect(lornaBoxes.contains("Accounts")) and // manager sees the manager-tier mailbox
+      expect(!marciaBoxes.contains("Accounts")) and // staff does NOT see the manager-tier mailbox
+      expect(!marciaBoxes.contains("Principal")) and
+      expect(!marciaSeesEleanor) // and can't reach its threads by id
   }
 
   test("W9.2 — confirming a proposal creates the real record + links it back; attachments surface") { xa =>

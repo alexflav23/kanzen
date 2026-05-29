@@ -74,6 +74,16 @@ object CollabInboxRepo {
     case Some(AssigneeScope(person, Some(prop))) => fr"and (t.assignee_id = $person or i.property_id = $prop)"
     case Some(AssigneeScope(person, None)) => fr"and t.assignee_id = $person"
   }
+
+  /** Mailbox visibility tier (RBAC): principal sees all tiers, manager sees staff+manager, staff sees staff-tier only.
+    * Applied over `mail_inboxes i` on every inbox/thread query so a hidden mailbox can't be reached by any path.
+    */
+  private def visibilityPred(role: String): Fragment = role match {
+    case "principal" => Fragment.empty
+    case "manager" => fr"and i.visibility in ('staff','manager')"
+    case _ => fr"and i.visibility = 'staff'"
+  }
+
   // for the inbox-list count subquery, the threads are aliased `t2` against the outer inbox `i`. The rail badge counts
   // the Inbox folder (open, not spam).
   private def countScope(scope: Option[AssigneeScope]): Fragment = scope match {
@@ -82,8 +92,8 @@ object CollabInboxRepo {
     case Some(AssigneeScope(person, None)) => fr"and t2.assignee_id = $person"
   }
 
-  def inboxes(scope: Option[AssigneeScope]): ConnectionIO[List[InboxRow]] = {
-    val visible = scope match { // Staff see only their property's inboxes
+  def inboxes(scope: Option[AssigneeScope], role: String): ConnectionIO[List[InboxRow]] = {
+    val propF = scope match { // Staff see only their property's inboxes
       case Some(AssigneeScope(_, Some(prop))) => fr"and i.property_id = $prop"
       case _ => Fragment.empty
     }
@@ -91,7 +101,7 @@ object CollabInboxRepo {
             (select count(*) from email_threads t2 where t2.inbox_id = i.id and t2.status = 'open' and t2.spam = false""" ++ countScope(
       scope
     ) ++ fr""")
-          from mail_inboxes i where i.deleted_at is null""" ++ visible ++ fr"order by i.label")
+          from mail_inboxes i where i.deleted_at is null""" ++ propF ++ visibilityPred(role) ++ fr"order by i.label")
       .query[InboxRow]
       .to[List]
   }
@@ -111,7 +121,8 @@ object CollabInboxRepo {
       inboxId: Option[UUID],
       folder: String,
       assignedTo: Option[UUID],
-      scope: Option[AssigneeScope]
+      scope: Option[AssigneeScope],
+      role: String
   ): ConnectionIO[List[ThreadRow]] = {
     val inboxF = inboxId.fold(Fragment.empty)(id => fr"and t.inbox_id = $id")
     val assignF = assignedTo.fold(Fragment.empty)(a => fr"and t.assignee_id = $a")
@@ -119,16 +130,16 @@ object CollabInboxRepo {
             t.status, t.assignee_id,
             (select count(*) from agent_actions a where a.thread_id = t.id and a.status = 'proposed')
           from email_threads t join mail_inboxes i on i.id = t.inbox_id
-          where 1=1""" ++ folderPred(folder) ++ inboxF ++ assignF ++ scopePred(scope) ++
+          where 1=1""" ++ folderPred(folder) ++ inboxF ++ assignF ++ scopePred(scope) ++ visibilityPred(role) ++
       fr"order by t.last_message_at desc")
       .query[ThreadRow]
       .to[List]
   }
 
-  /** A single thread is visible to a scope iff it survives the scope predicate. */
-  def visible(threadId: UUID, scope: Option[AssigneeScope]): ConnectionIO[Boolean] =
+  /** A single thread is visible iff it survives the scope predicate AND the mailbox's visibility tier. */
+  def visible(threadId: UUID, scope: Option[AssigneeScope], role: String): ConnectionIO[Boolean] =
     (fr"""select exists(select 1 from email_threads t join mail_inboxes i on i.id = t.inbox_id
-          where t.id = $threadId""" ++ scopePred(scope) ++ fr")").query[Boolean].unique
+          where t.id = $threadId""" ++ scopePred(scope) ++ visibilityPred(role) ++ fr")").query[Boolean].unique
 
   def thread(threadId: UUID): ConnectionIO[Option[ThreadRow]] =
     sql"""select t.id, t.inbox_id, t.subject, t.snippet, t.from_name, t.last_message_at, t.unread, t.has_attachments,
@@ -255,13 +266,20 @@ object CollabInboxRepo {
   /** Back-reference: the email threads linked to a record (e.g. an asset/expense/calendar event), so its page can
     * answer "what mail concerns this?". Scope-filtered — Staff never see threads outside their own/property (no leak).
     */
-  def linkedThreads(targetType: String, targetId: UUID, scope: Option[AssigneeScope]): ConnectionIO[List[ThreadRow]] =
+  def linkedThreads(
+      targetType: String,
+      targetId: UUID,
+      scope: Option[AssigneeScope],
+      role: String
+  ): ConnectionIO[List[ThreadRow]] =
     (fr"""select t.id, t.inbox_id, t.subject, t.snippet, t.from_name, t.last_message_at, t.unread, t.has_attachments,
             t.status, t.assignee_id,
             (select count(*) from agent_actions a where a.thread_id = t.id and a.status = 'proposed')
           from entity_links l
             join email_threads t on t.id = l.source_id and l.source_type = 'email_thread'
             join mail_inboxes i on i.id = t.inbox_id
-          where l.target_type = $targetType and l.target_id = $targetId""" ++ scopePred(scope) ++
+          where l.target_type = $targetType and l.target_id = $targetId""" ++ scopePred(scope) ++ visibilityPred(
+      role
+    ) ++
       fr"order by t.last_message_at desc").query[ThreadRow].to[List]
 }
