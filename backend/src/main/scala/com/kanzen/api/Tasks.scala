@@ -52,6 +52,14 @@ object Tasks {
       propertyId: Option[UUID] = None, // link the task to a property…
       assetIds: Option[List[UUID]] = None // …and/or one or more assets (what the task is about)
   )
+  final case class UpdateTaskReq(
+      projectId: UUID,
+      title: String,
+      dueOn: Option[LocalDate],
+      recurrence: Option[String],
+      priority: Option[String] = None,
+      assigneeId: Option[UUID] = None
+  )
   final case class LinkReq(targetType: String, targetId: UUID)
   final case class CompleteResult(completed: UUID, nextTaskId: Option[UUID])
 
@@ -130,24 +138,41 @@ object Tasks {
     ).transact(xa)
 
   def addLink(xa: Transactor[IO], p: Principal, id: UUID, r: LinkReq): IO[Out[Unit]] =
-    write(p, TaskRepo.addLink(id, r.targetType, r.targetId).void).transact(xa)
+    scopedWrite[Unit](p, id)(TaskRepo.addLink(id, r.targetType, r.targetId).void).transact(xa)
   def removeLink(xa: Transactor[IO], p: Principal, id: UUID, targetType: String, targetId: UUID): IO[Out[Unit]] =
-    write(p, TaskRepo.removeLink(id, targetType, targetId).void).transact(xa)
-  def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] = {
-    val tx = for {
+    scopedWrite[Unit](p, id)(TaskRepo.removeLink(id, targetType, targetId).void).transact(xa)
+
+  /** A write gated on both the action grant (`task:edit`) AND — for Staff — the task being in their own scope (assigned
+    * to them / unassigned in their property). Manager/Principal are unscoped.
+    */
+  private def scopedWrite[A](p: Principal, id: UUID)(body: ConnectionIO[A]): ConnectionIO[Out[A]] =
+    for {
       authz <- Authz.forUser(p.userId, p.role)
       scope <- staffScope(p)
-      // a Staff member can only complete a task within their own scope (assigned to them / unassigned in their property)
       inScope <- scope match {
         case Some(sc) => TaskRepo.inScope(id, sc)
         case None => true.pure[ConnectionIO]
       }
       res <-
-        if (!authz.can(editA) || !inScope) (Left(forbidden): Out[CompleteResult]).pure[ConnectionIO]
-        else doComplete(p, id).map(r => Right(r): Out[CompleteResult])
+        if (!authz.can(editA) || !inScope) (Left(forbidden): Out[A]).pure[ConnectionIO]
+        else body.map(a => Right(a): Out[A])
     } yield res
-    tx.transact(xa)
-  }
+
+  def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =
+    scopedWrite(p, id)(doComplete(p, id)).transact(xa)
+
+  def update(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateTaskReq): IO[Out[TaskView]] =
+    scopedWrite(p, id)(for {
+      row <- TaskRepo.update(id, r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+      links <- TaskRepo.linksFor(List(id))
+    } yield row.map(t => tv(t, links.getOrElse(id, Nil).map(lkv)))).transact(xa).map {
+      case Right(Some(view)) => Right(view)
+      case Right(None) => Left((StatusCode.NotFound, ApiError(404, "not_found", "No such task.")))
+      case Left(e) => Left(e)
+    }
+
+  def delete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Unit]] =
+    scopedWrite[Unit](p, id)(TaskRepo.cancel(id).void).transact(xa)
 
   private def doComplete(p: Principal, id: UUID): ConnectionIO[CompleteResult] =
     for {
@@ -204,6 +229,19 @@ object Tasks {
     .errorOut(err)
     .out(jsonBody[CompleteResult])
     .summary("Complete a task (recurring → next occurrence)")
+  val updateEndpoint = sttp.tapir.endpoint.patch
+    .securityIn(bearer)
+    .in("api" / "tasks" / path[UUID]("id"))
+    .in(jsonBody[UpdateTaskReq])
+    .errorOut(err)
+    .out(jsonBody[TaskView])
+    .summary("Edit a task")
+  val deleteEndpoint = sttp.tapir.endpoint.delete
+    .securityIn(bearer)
+    .in("api" / "tasks" / path[UUID]("id"))
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Delete a task (soft — cancelled)")
   val addLinkEndpoint = sttp.tapir.endpoint.post
     .securityIn(bearer)
     .in("api" / "tasks" / path[UUID]("id") / "links")
@@ -226,6 +264,8 @@ object Tasks {
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (proj: Option[UUID]) => list(xa, p, proj)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateTaskReq) => create(xa, p, r)),
     completeEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => complete(xa, p, id)),
+    updateEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => update(xa, p, id, r) }),
+    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => delete(xa, p, id)),
     addLinkEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addLink(xa, p, id, r) }),
     removeLinkEndpoint
       .serverSecurityLogic(a.securityLogic)
@@ -239,6 +279,8 @@ object Tasks {
       listEndpoint,
       createEndpoint,
       completeEndpoint,
+      updateEndpoint,
+      deleteEndpoint,
       addLinkEndpoint,
       removeLinkEndpoint
     )

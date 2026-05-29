@@ -77,6 +77,26 @@ object TasksApiIT extends IOSuite {
       expect(reFetched.links.exists(l => l.targetType == "property" && l.label.contains("Wardian")))
   }
 
+  test("F06 — a task can be edited (title/priority/due) and deleted (drops out of the list)") { xa =>
+    import com.kanzen.api.Tasks.UpdateTaskReq
+    for {
+      proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Editable", None)).map(_.toOption.get)
+      t <- Tasks.create(xa, lorna, CreateTaskReq(proj.id, "Draft title", None, None)).map(_.toOption.get)
+      edited <- Tasks
+        .update(
+          xa,
+          lorna,
+          t.id,
+          UpdateTaskReq(proj.id, "Polished title", Some(LocalDate.now), Some("weekly"), priority = Some("urgent"))
+        )
+        .map(_.toOption.get)
+      _ <- Tasks.delete(xa, lorna, t.id).map(_.toOption.get)
+      after <- Tasks.list(xa, lorna, Some(proj.id)).map(_.toOption.get)
+    } yield expect(edited.title == "Polished title") and expect(edited.priority == "urgent") and
+      expect(edited.dueOn.contains(LocalDate.now)) and expect(edited.recurrence.contains("weekly")) and
+      expect(!after.exists(_.id == t.id)) // deleted (cancelled) → gone from the active list
+  }
+
   test("seeded project + tasks are listable; a recurring task spawns its next occurrence on complete") { xa =>
     for {
       proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Test Project", None)).map(_.toOption.get)

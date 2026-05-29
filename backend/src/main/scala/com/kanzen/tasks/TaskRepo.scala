@@ -58,7 +58,7 @@ object TaskRepo {
   def listTasks(projectId: Option[UUID], scope: Option[AssigneeScope] = None): ConnectionIO[List[TaskRow]] = {
     val base =
       fr"""select t.id, t.project_id, t.title, t.status, t.due_on, t.recurrence, t.priority, t.assignee_id
-           from tasks t left join task_projects pr on pr.id = t.project_id where true"""
+           from tasks t left join task_projects pr on pr.id = t.project_id where t.status <> 'cancelled'"""
     val proj = projectId.fold(Fragment.empty)(pid => fr"and t.project_id = $pid")
     // Todoist-style ordering: by priority (urgent → low), then soonest due, then newest.
     (base ++ proj ++ scopePred(scope) ++
@@ -102,6 +102,27 @@ object TaskRepo {
         case None => Option.empty[UUID].pure[ConnectionIO]
       }
     } yield next
+
+  /** Edit a task's core fields (Todoist-style). Returns the updated row (None if missing/cancelled). */
+  def update(
+      taskId: UUID,
+      projectId: UUID,
+      title: String,
+      dueOn: Option[LocalDate],
+      recurrence: Option[String],
+      priority: String,
+      assigneeId: Option[UUID]
+  ): ConnectionIO[Option[TaskRow]] =
+    sql"""update tasks set project_id = $projectId, title = $title, due_on = $dueOn, recurrence = $recurrence,
+            priority = $priority, assignee_id = $assigneeId
+          where id = $taskId and status <> 'cancelled'
+          returning id, project_id, title, status, due_on, recurrence, priority, assignee_id"""
+      .query[TaskRow]
+      .option
+
+  /** Soft-delete (Todoist "Delete"): mark cancelled so it drops out of both the active list and completed history. */
+  def cancel(taskId: UUID): ConnectionIO[Int] =
+    sql"update tasks set status = 'cancelled' where id = $taskId".update.run
 
   def get(taskId: UUID): ConnectionIO[Option[Task]] =
     sql"select id, title, status, recurrence from tasks where id = $taskId".query[Task].option

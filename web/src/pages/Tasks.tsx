@@ -7,7 +7,7 @@ import { Card } from "../components/Card";
 import { Avatar } from "../components/Avatar";
 import { PRIORITIES } from "../components/PriorityPill";
 import { Plus, Check, Box, Home, X } from "../components/icons";
-import { completeTask, createTask, listProjects, listTasks, type Task } from "../services/tasks";
+import { addTaskLink, completeTask, createTask, deleteTask, listProjects, listTasks, removeTaskLink, updateTask, type Task } from "../services/tasks";
 import { listPeople } from "../services/people";
 import { listAssets } from "../services/assets";
 import { listProperties } from "../services/properties";
@@ -71,8 +71,9 @@ const styles = stylex.create({
   check: { width: "20px", height: "20px", marginTop: "1px", borderRadius: "999px", borderWidth: "2px", borderStyle: "solid", display: "grid", placeItems: "center", cursor: "pointer", backgroundColor: "transparent", padding: 0, flexShrink: 0, color: "transparent", ":hover": { backgroundColor: colors.bgSunken, color: colors.ink3 } },
   checkDone: { color: colors.accentInk, backgroundColor: colors.ink4, borderColor: colors.ink4 },
   grow: { flex: 1, minWidth: 0 },
-  taskTitle: { fontSize: "14.5px", color: colors.ink, lineHeight: 1.3 },
-  taskTitleDone: { textDecoration: "line-through", color: colors.ink4 },
+  // the title is a button — click to edit (Todoist-style); resets button chrome
+  taskTitle: { display: "block", textAlign: "left", border: 0, background: "transparent", padding: 0, fontFamily: "inherit", cursor: "pointer", fontSize: "14.5px", color: colors.ink, lineHeight: 1.3, ":hover": { color: colors.accent } },
+  taskTitleDone: { textDecoration: "line-through", color: colors.ink4, cursor: "default", ":hover": { color: colors.ink4 } },
   meta: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px", marginTop: "3px", fontSize: "12px", color: colors.ink3 },
   sep: { color: colors.ink5 },
   dateOverdue: { color: colors.danger, fontWeight: 500 },
@@ -98,35 +99,56 @@ const styles = stylex.create({
   chipX: { display: "inline-flex", alignItems: "center", border: 0, background: "transparent", cursor: "pointer", color: colors.accent, padding: 0 },
   ghost: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
   primary: { padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
+  del: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.danger, cursor: "pointer", fontSize: "13px" },
   ring: (c: string) => ({ borderColor: c }),
 });
 
-function NewTaskModal({ token, projects, people, onClose }: {
+function TaskModal({ token, projects, people, task, onClose }: {
   token: string | null;
   projects: { id: string; name: string }[];
   people: { id: string; name: string }[];
+  task?: Task; // present = edit mode
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
-  const [title, setTitle] = useState("");
-  const [dueOn, setDueOn] = useState("");
-  const [recurrence, setRecurrence] = useState("");
-  const [priority, setPriority] = useState("normal");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [propertyId, setPropertyId] = useState("");
-  const [assetIds, setAssetIds] = useState<string[]>([]);
+  const editing = !!task;
+  const initProp = task?.links.find((l) => l.targetType === "property")?.targetId ?? "";
+  const initAssets = (task?.links ?? []).filter((l) => l.targetType === "asset").map((l) => l.targetId);
+  const [projectId, setProjectId] = useState(task?.projectId ?? projects[0]?.id ?? "");
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [dueOn, setDueOn] = useState(task?.dueOn ?? "");
+  const [recurrence, setRecurrence] = useState(task?.recurrence ?? "");
+  const [priority, setPriority] = useState(task?.priority ?? "normal");
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? "");
+  const [propertyId, setPropertyId] = useState(initProp);
+  const [assetIds, setAssetIds] = useState<string[]>(initAssets);
+  const [confirmDel, setConfirmDel] = useState(false);
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
   const assetsQ = useQuery({ queryKey: ["assets-all", token], queryFn: () => listAssets(token, {}) });
   const assetTitle = (id: string) => (assetsQ.data ?? []).find((a) => a.id === id)?.title ?? id;
+  const close = () => { qc.invalidateQueries({ queryKey: ["tasks"] }); onClose(); };
   const mut = useMutation({
-    mutationFn: () => createTask({ projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, priority, assigneeId: assigneeId || null, propertyId: propertyId || null, assetIds }, token),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); onClose(); },
+    mutationFn: async () => {
+      const core = { projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, priority, assigneeId: assigneeId || null };
+      if (!editing) { await createTask({ ...core, propertyId: propertyId || null, assetIds }, token); return; }
+      await updateTask(task!.id, core, token);
+      // diff the links and apply (property is single; assets are a set)
+      if (initProp !== propertyId) {
+        if (initProp) await removeTaskLink(task!.id, "property", initProp, token);
+        if (propertyId) await addTaskLink(task!.id, "property", propertyId, token);
+      }
+      await Promise.all([
+        ...initAssets.filter((id) => !assetIds.includes(id)).map((id) => removeTaskLink(task!.id, "asset", id, token)),
+        ...assetIds.filter((id) => !initAssets.includes(id)).map((id) => addTaskLink(task!.id, "asset", id, token)),
+      ]);
+    },
+    onSuccess: close,
   });
+  const del = useMutation({ mutationFn: () => deleteTask(task!.id, token), onSuccess: close });
   return (
     <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
-      <form {...stylex.props(styles.modal)} data-testid="new-task" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (title.trim() && projectId) mut.mutate(); }}>
-        <div {...stylex.props(styles.modalTitle)}>New task</div>
+      <form {...stylex.props(styles.modal)} data-testid={editing ? "edit-task" : "new-task"} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (title.trim() && projectId) mut.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>{editing ? "Edit task" : "New task"}</div>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Project</span>
           <select {...stylex.props(styles.control)} aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -175,19 +197,29 @@ function NewTaskModal({ token, projects, people, onClose }: {
         </div>
         <div {...stylex.props(styles.label)}>A due date makes the task show on the Calendar (read-only overlay).</div>
         <div {...stylex.props(styles.actions)}>
+          {editing && (
+            <button type="button" {...stylex.props(styles.del)} data-testid="delete-task"
+              onClick={() => confirmDel ? del.mutate() : setConfirmDel(true)} disabled={del.isPending}>
+              {del.isPending ? "Deleting…" : confirmDel ? "Confirm delete" : "Delete"}
+            </button>
+          )}
+          <span {...stylex.props(styles.grow)} />
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
-          <button type="submit" {...stylex.props(styles.primary)} disabled={!title.trim() || !projectId || mut.isPending}>{mut.isPending ? "Adding…" : "Add task"}</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!title.trim() || !projectId || mut.isPending}>
+            {mut.isPending ? "Saving…" : editing ? "Save changes" : "Add task"}
+          </button>
         </div>
       </form>
     </div>
   );
 }
 
-function TaskRow({ t, projectName, assignee, onComplete }: {
+function TaskRow({ t, projectName, assignee, onComplete, onEdit }: {
   t: Task;
   projectName?: string;
   assignee?: string;
   onComplete: () => void;
+  onEdit: () => void;
 }) {
   const done = t.status === "done";
   const bucket = bucketOf(t.dueOn);
@@ -211,7 +243,7 @@ function TaskRow({ t, projectName, assignee, onComplete }: {
         <Check size={12} />
       </button>
       <div {...stylex.props(styles.grow)}>
-        <div {...stylex.props(styles.taskTitle, done && styles.taskTitleDone)} data-testid="task-row" data-priority={t.priority}>{t.title}</div>
+        <button type="button" {...stylex.props(styles.taskTitle, done && styles.taskTitleDone)} data-testid="task-row" data-priority={t.priority} onClick={onEdit}>{t.title}</button>
         {parts.length > 0 && (
           <div {...stylex.props(styles.meta)}>
             {parts.map((node, i) => (
@@ -240,6 +272,7 @@ export function Tasks() {
   const { token } = useAuth();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Task | null>(null);
   const [showDone, setShowDone] = useState(false);
   const tasks = useQuery({ queryKey: ["tasks", token], queryFn: () => listTasks(token) });
   const projects = useQuery({ queryKey: ["task-projects", token], queryFn: () => listProjects(token) });
@@ -265,7 +298,8 @@ export function Tasks() {
 
   const row = (t: Task) => (
     <TaskRow key={t.id} t={t} projectName={t.projectId ? projectById.get(t.projectId) : undefined}
-      assignee={t.assigneeId ? peopleById.get(t.assigneeId) : undefined} onComplete={() => complete.mutate(t.id)} />
+      assignee={t.assigneeId ? peopleById.get(t.assigneeId) : undefined} onComplete={() => complete.mutate(t.id)}
+      onEdit={() => setEditing(t)} />
   );
 
   return (
@@ -279,7 +313,8 @@ export function Tasks() {
         <button type="button" {...stylex.props(styles.btn)} disabled={!canAdd} onClick={() => setAdding(true)}><Plus size={14} /> New task</button>
       </header>
 
-      {adding && <NewTaskModal token={token} projects={projects.data ?? []} people={people.data ?? []} onClose={() => setAdding(false)} />}
+      {adding && <TaskModal token={token} projects={projects.data ?? []} people={people.data ?? []} onClose={() => setAdding(false)} />}
+      {editing && <TaskModal token={token} projects={projects.data ?? []} people={people.data ?? []} task={editing} onClose={() => setEditing(null)} />}
 
       {tasks.isPending ? <Loading /> : tasks.isError ? <ErrorState error={tasks.error} />
         : active.length === 0 && completed.length === 0 ? <EmptyState title="No tasks">Add a task to get started.</EmptyState>

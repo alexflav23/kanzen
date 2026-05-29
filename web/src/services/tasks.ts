@@ -39,3 +39,13 @@ export const createTask = (req: CreateTaskReq, token: string | null) =>
   api("/api/tasks", TaskSchema, { method: "POST", body: req, token });
 export const completeTask = (id: string, token: string | null) =>
   api(`/api/tasks/${id}/complete`, CompleteSchema, { method: "POST", token });
+
+export type UpdateTaskReq = { projectId: string; title: string; dueOn: string | null; recurrence: string | null; priority: string; assigneeId: string | null };
+export const updateTask = (id: string, req: UpdateTaskReq, token: string | null) =>
+  api(`/api/tasks/${id}`, TaskSchema, { method: "PATCH", body: req, token });
+export const deleteTask = (id: string, token: string | null) =>
+  api(`/api/tasks/${id}`, z.unknown(), { method: "DELETE", token });
+export const addTaskLink = (id: string, targetType: string, targetId: string, token: string | null) =>
+  api(`/api/tasks/${id}/links`, z.unknown(), { method: "POST", body: { targetType, targetId }, token });
+export const removeTaskLink = (id: string, targetType: string, targetId: string, token: string | null) =>
+  api(`/api/tasks/${id}/links/${targetType}/${targetId}`, z.unknown(), { method: "DELETE", token });
