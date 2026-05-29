@@ -5,6 +5,8 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.maintenance.{MaintenanceRepo, MaintenanceService, PlanRow}
+import com.kanzen.property.PropertyRepo
+import com.kanzen.tasks.TaskRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -58,6 +60,10 @@ object Maintenance {
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to maintenance"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such plan."))
+  private def badReq(msg: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", msg))
+
+  /** F11 — the task spawned from a plan (in the property's task project, due on the plan's next_due). */
+  final case class SpawnResult(taskId: UUID, dueOn: Option[LocalDate])
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[PlanView]]] = {
     val today = LocalDate.now()
@@ -95,6 +101,37 @@ object Maintenance {
     tx.transact(xa)
   }
 
+  /** Spawn a task from a plan into the plan's property task project, due on next_due (Manager+; F11). The task lands on
+    * the Calendar via its due date (the plan's own next_due also overlays read-only).
+    */
+  def spawnTask(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[SpawnResult]] = {
+    val tx = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      plan <- MaintenanceRepo.findRow(id)
+      res <-
+        if (!authz.can(Actions.byKey("maintenance:edit"))) (Left(forbidden): Out[SpawnResult]).pure[ConnectionIO]
+        else
+          plan match {
+            case None => (Left(notFound): Out[SpawnResult]).pure[ConnectionIO]
+            case Some(pl) =>
+              pl.propertyId match {
+                case None =>
+                  (Left(badReq("plan has no property — can't route a task")): Out[SpawnResult]).pure[ConnectionIO]
+                case Some(propId) =>
+                  PropertyRepo.taskProjectId(propId).flatMap {
+                    case None =>
+                      (Left(badReq("this property has no linked task project")): Out[SpawnResult]).pure[ConnectionIO]
+                    case Some(projId) =>
+                      TaskRepo
+                        .createTask(projId, pl.title.getOrElse("Maintenance"), pl.nextDue, None)
+                        .map(t => Right(SpawnResult(t.id, pl.nextDue)): Out[SpawnResult])
+                  }
+              }
+          }
+    } yield res
+    tx.transact(xa)
+  }
+
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
@@ -119,11 +156,19 @@ object Maintenance {
     .out(jsonBody[CompleteResult])
     .summary("Log a service + roll next_due forward")
 
+  val spawnTaskEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "maintenance" / path[UUID]("id") / "task")
+    .errorOut(err)
+    .out(jsonBody[SpawnResult])
+    .summary("Spawn a task from a plan into the property's task project, due on next_due (Manager+)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => list(xa, p)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
-    completeEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => complete(xa, p, id, r) })
+    completeEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => complete(xa, p, id, r) }),
+    spawnTaskEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => spawnTask(xa, p, id))
   )
 
-  val endpoints: List[AnyEndpoint] = List(listEndpoint, createEndpoint, completeEndpoint)
+  val endpoints: List[AnyEndpoint] = List(listEndpoint, createEndpoint, completeEndpoint, spawnTaskEndpoint)
 }

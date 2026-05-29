@@ -57,4 +57,23 @@ object MaintenanceApiIT extends IOSuite {
       )
     } yield expect(create.left.exists(_._1.code == 403)) and expect(complete.left.exists(_._1.code == 403))
   }
+
+  test(
+    "F11 — spawning a task from a plan lands it in the property's project (due = next_due); no-property 400; Staff 403"
+  ) { xa =>
+    val boiler = UUID.fromString("d0000000-0000-0000-0000-000000000001") // seeded: Wardian, next_due +25
+    val wardianProject = UUID.fromString("b0000000-0000-0000-0000-000000000001") // V2_77-linked task project
+    for {
+      ok <- Maintenance.spawnTask(xa, lorna, boiler)
+      tasks <- Tasks.list(xa, lorna, Some(wardianProject)).map(_.toOption.get)
+      orphan <- Maintenance
+        .create(xa, lorna, CreateReq("Orphan", None, None, "monthly", LocalDate.now, None))
+        .map(_.toOption.get)
+      noProp <- Maintenance.spawnTask(xa, lorna, orphan.id)
+      staff <- Maintenance.spawnTask(xa, marcia, boiler)
+    } yield expect(ok.toOption.exists(_.dueOn.contains(LocalDate.now.plusDays(25)))) and
+      expect(tasks.exists(t => t.title == "Boiler service" && t.dueOn.contains(LocalDate.now.plusDays(25)))) and
+      expect(noProp.left.exists(_._1.code == 400)) and // plan has no property → can't route a task
+      expect(staff.left.exists(_._1.code == 403))
+  }
 }

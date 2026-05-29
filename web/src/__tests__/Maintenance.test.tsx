@@ -10,6 +10,7 @@ vi.mock("../services/maintenance", () => ({
   ]),
   createPlan: vi.fn(),
   completePlan: vi.fn(),
+  spawnMaintenanceTask: vi.fn(async () => ({ taskId: "t-new", dueOn: "2026-06-22" })),
 }));
 
 import { Maintenance } from "../pages/Maintenance";

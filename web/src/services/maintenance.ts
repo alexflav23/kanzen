@@ -19,3 +19,8 @@ export const createPlan = (title: string, frequency: string, firstDue: string, t
   api("/api/maintenance", PlanSchema, { method: "POST", body: { title, propertyId: null, vendor: null, frequency, firstDue, leadDays: 14 }, token });
 export const completePlan = (id: string, token: string | null) =>
   api(`/api/maintenance/${id}/complete`, CompleteSchema, { method: "POST", body: { performedOn: null, costMinor: null }, token });
+
+const SpawnSchema = z.object({ taskId: z.string(), dueOn: z.string().nullable() });
+/** F11 — spawn a task (due on next_due) into the plan's property task project; it lands on the Calendar too. */
+export const spawnMaintenanceTask = (id: string, token: string | null) =>
+  api(`/api/maintenance/${id}/task`, SpawnSchema, { method: "POST", token });

@@ -14,3 +14,13 @@ test("adding a plan makes it appear", async ({ page }) => {
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByText(title)).toBeVisible();
 });
+
+// W6.2/F11 — spawn a task from a plan; it lands in the property's project (and on the Calendar via its due date).
+test("spawning a task from the boiler plan creates it under Tasks", async ({ page }) => {
+  await page.goto("/maintenance");
+  await page.getByRole("button", { name: "Spawn task for Boiler service" }).click();
+  await expect(page.getByText("task created")).toBeVisible(); // the row flips to a confirmation
+  // the spawned task appears under Tasks (titled after the plan)
+  await page.goto("/tasks");
+  await expect(page.getByTestId("task-row").filter({ hasText: "Boiler service" })).toBeVisible();
+});

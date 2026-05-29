@@ -71,4 +71,10 @@ object MaintenanceRepo {
 
   def get(planId: UUID): ConnectionIO[Option[Plan]] =
     sql"select id, frequency, next_due from maintenance_plans where id = $planId".query[Plan].option
+
+  /** Full plan row (title + property + next-due) — for spawning a task from a plan (F11). */
+  def findRow(id: UUID): ConnectionIO[Option[PlanRow]] =
+    sql"select id, title, frequency, next_due, lead_days, vendor, property_id from maintenance_plans where id = $id"
+      .query[PlanRow]
+      .option
 }
