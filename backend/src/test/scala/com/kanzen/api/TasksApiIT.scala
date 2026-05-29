@@ -50,6 +50,33 @@ object TasksApiIT extends IOSuite {
       expect(denied.left.exists(_._1.code == 403))
   }
 
+  test("F06 — a task can be linked to a property and an asset; the links round-trip with resolved labels") { xa =>
+    val wardian = UUID.fromString("20000000-0000-0000-0000-000000000001")
+    val richter = UUID.fromString("40000000-0000-0000-0000-000000000004")
+    for {
+      proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Linked work", None)).map(_.toOption.get)
+      t <- Tasks
+        .create(
+          xa,
+          lorna,
+          CreateTaskReq(
+            proj.id,
+            "Re-appraise the Richter",
+            None,
+            None,
+            propertyId = Some(wardian),
+            assetIds = Some(List(richter))
+          )
+        )
+        .map(_.toOption.get)
+      reFetched <- Tasks.list(xa, lorna, Some(proj.id)).map(_.toOption.get.find(_.id == t.id).get)
+    } yield expect(t.links.exists(l => l.targetType == "asset" && l.targetId == richter)) and
+      expect(t.links.exists(l => l.targetType == "property" && l.targetId == wardian)) and
+      // labels are resolved from the real rows (asset title / property name), not just ids
+      expect(reFetched.links.exists(l => l.targetType == "asset" && l.label.nonEmpty)) and
+      expect(reFetched.links.exists(l => l.targetType == "property" && l.label.contains("Wardian")))
+  }
+
   test("seeded project + tasks are listable; a recurring task spawns its next occurrence on complete") { xa =>
     for {
       proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Test Project", None)).map(_.toOption.get)

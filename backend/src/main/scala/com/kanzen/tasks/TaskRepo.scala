@@ -1,5 +1,6 @@
 package com.kanzen.tasks
 
+import cats.data.NonEmptyList
 import cats.syntax.all._
 import com.kanzen.people.AssigneeScope
 import doobie._
@@ -23,6 +24,9 @@ object TaskService {
 
 final case class Task(id: UUID, title: String, status: String, recurrence: Option[String])
 final case class TaskProject(id: UUID, name: String, propertyId: Option[UUID])
+
+/** What a task is *about* — a linked asset or property, with its resolved display label. */
+final case class TaskLink(targetType: String, targetId: UUID, label: String)
 final case class TaskRow(
     id: UUID,
     projectId: Option[UUID],
@@ -105,4 +109,32 @@ object TaskRepo {
   /** owner + title of a task (for the F34 event envelope). */
   def ownerAndTitle(taskId: UUID): ConnectionIO[Option[(Option[UUID], String)]] =
     sql"select owner_id, title from tasks where id = $taskId".query[(Option[UUID], String)].option
+
+  // ── task ↔ asset/property links (F06: what the task is about) ───────────────
+  private val linkTypes = Set("asset", "property")
+
+  def addLink(taskId: UUID, targetType: String, targetId: UUID): ConnectionIO[Int] =
+    if (!linkTypes(targetType)) 0.pure[ConnectionIO]
+    else
+      sql"""insert into task_links (task_id, target_type, target_id) values ($taskId, $targetType, $targetId)
+            on conflict do nothing""".update.run
+
+  def removeLink(taskId: UUID, targetType: String, targetId: UUID): ConnectionIO[Int] =
+    sql"delete from task_links where task_id = $taskId and target_type = $targetType and target_id = $targetId".update.run
+
+  /** Links for a set of tasks, with labels resolved (asset title / property name); deleted targets are dropped. */
+  def linksFor(taskIds: List[UUID]): ConnectionIO[Map[UUID, List[TaskLink]]] =
+    NonEmptyList.fromList(taskIds) match {
+      case None => Map.empty[UUID, List[TaskLink]].pure[ConnectionIO]
+      case Some(ids) =>
+        (fr"""select tl.task_id, tl.target_type, tl.target_id, coalesce(a.title, p.name)
+              from task_links tl
+              left join assets a on tl.target_type = 'asset' and a.id = tl.target_id and a.deleted_at is null
+              left join properties p on tl.target_type = 'property' and p.id = tl.target_id and p.deleted_at is null
+              where """ ++ Fragments.in(fr"tl.task_id", ids))
+          .query[(UUID, String, UUID, Option[String])]
+          .to[List]
+          .map(_.collect { case (tid, typ, target, Some(label)) => tid -> TaskLink(typ, target, label) }
+            .groupMap(_._1)(_._2))
+    }
 }

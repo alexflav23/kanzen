@@ -1,12 +1,16 @@
 import * as stylex from "@stylexjs/stylex";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
+import { Avatar } from "../components/Avatar";
 import { PRIORITIES } from "../components/PriorityPill";
-import { Plus, Check } from "../components/icons";
+import { Plus, Check, Box, Home, X } from "../components/icons";
 import { completeTask, createTask, listProjects, listTasks, type Task } from "../services/tasks";
 import { listPeople } from "../services/people";
+import { listAssets } from "../services/assets";
+import { listProperties } from "../services/properties";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
@@ -49,8 +53,6 @@ const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, l
 // the priority lives in the checkbox ring (Todoist-style), not a pill
 const ringColor = (p: string) =>
   p === "urgent" ? colors.danger : p === "high" ? colors.warn : p === "low" ? colors.ink5 : colors.lineStrong;
-const initials = (name: string) =>
-  name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "20px", gap: "16px" },
@@ -76,7 +78,10 @@ const styles = stylex.create({
   dateOverdue: { color: colors.danger, fontWeight: 500 },
   dateToday: { color: colors.accent, fontWeight: 500 },
   recur: { color: colors.ink3 },
-  avatar: { width: "24px", height: "24px", borderRadius: "999px", backgroundColor: colors.accent, color: colors.accentInk, fontSize: "10.5px", fontWeight: 600, display: "grid", placeItems: "center", flexShrink: 0, marginTop: "1px" },
+  // chips for what the task is about (asset / property) — clickable through to the record
+  linksRow: { display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "7px" },
+  linkChip: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", borderRadius: "999px", backgroundColor: colors.bgSunken, color: colors.ink2, fontSize: "11.5px", textDecoration: "none", maxWidth: "240px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ":hover": { backgroundColor: colors.accentSoft, color: colors.accent } },
+  avatarWrap: { marginTop: "1px" },
   // completed section
   doneToggle: { display: "flex", alignItems: "center", gap: "8px", width: "100%", textAlign: "left", padding: "13px 18px", borderTop: `1px solid ${colors.line}`, background: "transparent", border: 0, cursor: "pointer", fontSize: "13px", color: colors.ink3, fontFamily: "inherit" },
   // modal
@@ -88,6 +93,9 @@ const styles = stylex.create({
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
   control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
   actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
+  pickChips: { display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" },
+  pickChip: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 6px 4px 10px", borderRadius: "999px", backgroundColor: colors.accentSoft, color: colors.accent, fontSize: "12px" },
+  chipX: { display: "inline-flex", alignItems: "center", border: 0, background: "transparent", cursor: "pointer", color: colors.accent, padding: 0 },
   ghost: { padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
   primary: { padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
   ring: (c: string) => ({ borderColor: c }),
@@ -106,8 +114,13 @@ function NewTaskModal({ token, projects, people, onClose }: {
   const [recurrence, setRecurrence] = useState("");
   const [priority, setPriority] = useState("normal");
   const [assigneeId, setAssigneeId] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [assetIds, setAssetIds] = useState<string[]>([]);
+  const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const assetsQ = useQuery({ queryKey: ["assets-all", token], queryFn: () => listAssets(token, {}) });
+  const assetTitle = (id: string) => (assetsQ.data ?? []).find((a) => a.id === id)?.title ?? id;
   const mut = useMutation({
-    mutationFn: () => createTask({ projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, priority, assigneeId: assigneeId || null }, token),
+    mutationFn: () => createTask({ projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, priority, assigneeId: assigneeId || null, propertyId: propertyId || null, assetIds }, token),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); onClose(); },
   });
   return (
@@ -136,6 +149,29 @@ function NewTaskModal({ token, projects, people, onClose }: {
             <select {...stylex.props(styles.control)} aria-label="Recurrence" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
               {RECURRENCES.map((r) => <option key={r || "none"} value={r}>{r || "one-off"}</option>)}
             </select></label>
+        </div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Related to — property (optional)</span>
+          <select {...stylex.props(styles.control)} aria-label="Related property" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">— no property</option>
+            {(propsQ.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+        <div {...stylex.props(styles.field)}>
+          <span {...stylex.props(styles.label)}>Related assets (optional) — e.g. the piece of furniture this is about</span>
+          <select {...stylex.props(styles.control)} aria-label="Add related asset" value=""
+            onChange={(e) => { const id = e.target.value; if (id) setAssetIds((a) => a.includes(id) ? a : [...a, id]); }}>
+            <option value="">+ link an asset…</option>
+            {(assetsQ.data ?? []).filter((a) => !assetIds.includes(a.id)).map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+          </select>
+          {assetIds.length > 0 && (
+            <div {...stylex.props(styles.pickChips)}>
+              {assetIds.map((id) => (
+                <span key={id} {...stylex.props(styles.pickChip)}>
+                  {assetTitle(id)}
+                  <button type="button" {...stylex.props(styles.chipX)} aria-label={`Remove ${assetTitle(id)}`} onClick={() => setAssetIds((a) => a.filter((x) => x !== id))}><X size={12} /></button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div {...stylex.props(styles.label)}>A due date makes the task show on the Calendar (read-only overlay).</div>
         <div {...stylex.props(styles.actions)}>
@@ -183,8 +219,19 @@ function TaskRow({ t, projectName, assignee, onComplete }: {
             ))}
           </div>
         )}
+        {t.links.length > 0 && (
+          <div {...stylex.props(styles.linksRow)} data-testid="task-links">
+            {t.links.map((l) => (
+              <Link key={`${l.targetType}:${l.targetId}`}
+                to={l.targetType === "asset" ? `/inventory/${l.targetId}` : `/properties/${l.targetId}`}
+                {...stylex.props(styles.linkChip)} title={l.label}>
+                {l.targetType === "asset" ? <Box size={12} /> : <Home size={12} />} {l.label}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
-      {assignee && <span {...stylex.props(styles.avatar)} title={assignee} aria-label={`Assigned to ${assignee}`}>{initials(assignee)}</span>}
+      {assignee && <span {...stylex.props(styles.avatarWrap)}><Avatar name={assignee} size={24} /></span>}
     </div>
   );
 }

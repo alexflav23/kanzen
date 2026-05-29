@@ -7,6 +7,10 @@ test("tasks page lists the seeded household tasks", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByText("Water the plants")).toBeVisible();
   await expect(page.getByText("Service the boiler")).toBeVisible();
+  // a task can be linked to what it's about — a clickable chip through to the asset/property
+  const link = page.getByTestId("task-links").getByRole("link").first();
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", /\/(inventory|properties)\//);
 });
 
 // W6.2 — the New-task modal: project · title · assignee · due date · recurrence.

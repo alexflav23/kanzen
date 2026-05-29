@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { api } from "./http";
 
+/** What a task is about — a linked asset or property, with its resolved display label. */
+export const TaskLinkSchema = z.object({ targetType: z.string(), targetId: z.string(), label: z.string() });
+export type TaskLink = z.infer<typeof TaskLinkSchema>;
+
 export const TaskSchema = z.object({
   id: z.string(),
   projectId: z.string().nullable(),
@@ -10,9 +14,19 @@ export const TaskSchema = z.object({
   recurrence: z.string().nullable(),
   priority: z.string(), // urgent | high | normal | low
   assigneeId: z.string().nullable(),
+  links: z.array(TaskLinkSchema),
 });
 export type Task = z.infer<typeof TaskSchema>;
-export type CreateTaskReq = { projectId: string; title: string; dueOn: string | null; recurrence: string | null; priority: string; assigneeId: string | null };
+export type CreateTaskReq = {
+  projectId: string;
+  title: string;
+  dueOn: string | null;
+  recurrence: string | null;
+  priority: string;
+  assigneeId: string | null;
+  propertyId?: string | null; // link to a property…
+  assetIds?: string[]; // …and/or one or more assets
+};
 
 export const ProjectSchema = z.object({ id: z.string(), name: z.string(), propertyId: z.string().nullable() });
 export type Project = z.infer<typeof ProjectSchema>;

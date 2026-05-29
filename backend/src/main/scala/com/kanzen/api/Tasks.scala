@@ -6,7 +6,7 @@ import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
-import com.kanzen.tasks.{TaskProject, TaskRepo, TaskRow}
+import com.kanzen.tasks.{TaskLink, TaskProject, TaskRepo, TaskRow}
 import io.circe.Json
 import io.circe.syntax._
 import doobie.ConnectionIO
@@ -29,6 +29,7 @@ object Tasks {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class ProjectView(id: UUID, name: String, propertyId: Option[UUID])
+  final case class LinkView(targetType: String, targetId: UUID, label: String)
   final case class TaskView(
       id: UUID,
       projectId: Option[UUID],
@@ -37,7 +38,8 @@ object Tasks {
       dueOn: Option[LocalDate],
       recurrence: Option[String],
       priority: String,
-      assigneeId: Option[UUID]
+      assigneeId: Option[UUID],
+      links: List[LinkView]
   )
   final case class CreateProjectReq(name: String, propertyId: Option[UUID])
   final case class CreateTaskReq(
@@ -46,17 +48,22 @@ object Tasks {
       dueOn: Option[LocalDate],
       recurrence: Option[String],
       priority: Option[String] = None,
-      assigneeId: Option[UUID] = None
+      assigneeId: Option[UUID] = None,
+      propertyId: Option[UUID] = None, // link the task to a property…
+      assetIds: Option[List[UUID]] = None // …and/or one or more assets (what the task is about)
   )
+  final case class LinkReq(targetType: String, targetId: UUID)
   final case class CompleteResult(completed: UUID, nextTaskId: Option[UUID])
+
+  private def lkv(l: TaskLink): LinkView = LinkView(l.targetType, l.targetId, l.label)
 
   // accepted priority levels (urgent → low); anything else normalises to normal
   private val priorities = Set("urgent", "high", "normal", "low")
   private def normPriority(p: Option[String]): String = p.map(_.toLowerCase).filter(priorities).getOrElse("normal")
 
   private def pv(p: TaskProject): ProjectView = ProjectView(p.id, p.name, p.propertyId)
-  private def tv(t: TaskRow): TaskView =
-    TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence, t.priority, t.assigneeId)
+  private def tv(t: TaskRow, links: List[LinkView] = Nil): TaskView =
+    TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence, t.priority, t.assigneeId, links)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to tasks"))
@@ -92,26 +99,40 @@ object Tasks {
     if (p.role == "staff") PeopleRepo.assigneeScope(p.userId) else Option.empty[AssigneeScope].pure[ConnectionIO]
 
   def list(xa: Transactor[IO], p: Principal, project: Option[UUID]): IO[Out[List[TaskView]]] =
-    read(p, staffScope(p).flatMap(sc => TaskRepo.listTasks(project, sc)).map(_.map(tv))).transact(xa)
+    read(
+      p,
+      for {
+        sc <- staffScope(p)
+        rows <- TaskRepo.listTasks(project, sc)
+        links <- TaskRepo.linksFor(rows.map(_.id))
+      } yield rows.map(t => tv(t, links.getOrElse(t.id, Nil).map(lkv)))
+    ).transact(xa)
   def create(xa: Transactor[IO], p: Principal, r: CreateTaskReq): IO[Out[TaskView]] =
     write(
       p,
-      TaskRepo
-        .createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
-        .map(t =>
-          TaskView(
-            t.id,
-            Some(r.projectId),
-            t.title,
-            t.status,
-            r.dueOn,
-            t.recurrence,
-            normPriority(r.priority),
-            r.assigneeId
-          )
-        ),
+      for {
+        t <- TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+        _ <- r.propertyId.traverse_(pid => TaskRepo.addLink(t.id, "property", pid))
+        _ <- r.assetIds.getOrElse(Nil).traverse_(aid => TaskRepo.addLink(t.id, "asset", aid))
+        links <- TaskRepo.linksFor(List(t.id))
+      } yield TaskView(
+        t.id,
+        Some(r.projectId),
+        t.title,
+        t.status,
+        r.dueOn,
+        t.recurrence,
+        normPriority(r.priority),
+        r.assigneeId,
+        links.getOrElse(t.id, Nil).map(lkv)
+      ),
       createA
     ).transact(xa)
+
+  def addLink(xa: Transactor[IO], p: Principal, id: UUID, r: LinkReq): IO[Out[Unit]] =
+    write(p, TaskRepo.addLink(id, r.targetType, r.targetId).void).transact(xa)
+  def removeLink(xa: Transactor[IO], p: Principal, id: UUID, targetType: String, targetId: UUID): IO[Out[Unit]] =
+    write(p, TaskRepo.removeLink(id, targetType, targetId).void).transact(xa)
   def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
@@ -183,6 +204,19 @@ object Tasks {
     .errorOut(err)
     .out(jsonBody[CompleteResult])
     .summary("Complete a task (recurring → next occurrence)")
+  val addLinkEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "tasks" / path[UUID]("id") / "links")
+    .in(jsonBody[LinkReq])
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Link a task to an asset/property")
+  val removeLinkEndpoint = sttp.tapir.endpoint.delete
+    .securityIn(bearer)
+    .in("api" / "tasks" / path[UUID]("id") / "links" / path[String]("targetType") / path[UUID]("targetId"))
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Unlink a task from an asset/property")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     projectsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => projects(xa, p)),
@@ -191,9 +225,21 @@ object Tasks {
       .serverLogic(p => (r: CreateProjectReq) => createProject(xa, p, r)),
     listEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (proj: Option[UUID]) => list(xa, p, proj)),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateTaskReq) => create(xa, p, r)),
-    completeEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => complete(xa, p, id))
+    completeEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => complete(xa, p, id)),
+    addLinkEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => addLink(xa, p, id, r) }),
+    removeLinkEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, tt, tid) => removeLink(xa, p, id, tt, tid) })
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(projectsEndpoint, createProjectEndpoint, listEndpoint, createEndpoint, completeEndpoint)
+    List(
+      projectsEndpoint,
+      createProjectEndpoint,
+      listEndpoint,
+      createEndpoint,
+      completeEndpoint,
+      addLinkEndpoint,
+      removeLinkEndpoint
+    )
 }
