@@ -1,5 +1,6 @@
 package com.kanzen.lists
 
+import com.kanzen.people.AssigneeScope
 import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -57,12 +58,20 @@ object ListRepo {
             cycle = $cycle, next_order = $nextOrder, type = $typ, priority = $priority, assignee_id = $assigneeId
           where id = $listId and deleted_at is null""".update.run
 
-  def lists: ConnectionIO[List[ShoppingList]] =
-    sql"""select id, name, vendor, property_id, type, cycle, next_order, status, priority, assignee_id
-          from shopping_lists where deleted_at is null
-          order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end, name"""
+  /** A Staff viewer sees only runs assigned to them, or unassigned runs in their property. */
+  def lists(scope: Option[AssigneeScope] = None): ConnectionIO[List[ShoppingList]] = {
+    val sc = scope match {
+      case None => Fragment.empty
+      case Some(AssigneeScope(person, Some(prop))) =>
+        fr"and (assignee_id = $person or (assignee_id is null and property_id = $prop))"
+      case Some(AssigneeScope(person, None)) => fr"and assignee_id = $person"
+    }
+    (fr"""select id, name, vendor, property_id, type, cycle, next_order, status, priority, assignee_id
+          from shopping_lists where deleted_at is null""" ++ sc ++
+      fr"order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end, name")
       .query[ShoppingList]
       .to[List]
+  }
 
   def listExists(listId: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from shopping_lists where id = $listId and deleted_at is null)".query[Boolean].unique

@@ -1,6 +1,7 @@
 package com.kanzen.tasks
 
 import cats.syntax.all._
+import com.kanzen.people.AssigneeScope
 import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -40,13 +41,31 @@ object TaskRepo {
   def listProjects: ConnectionIO[List[TaskProject]] =
     sql"select id, name, property_id from task_projects order by name".query[TaskProject].to[List]
 
-  def listTasks(projectId: Option[UUID]): ConnectionIO[List[TaskRow]] = {
-    val base = fr"select id, project_id, title, status, due_on, recurrence, priority, assignee_id from tasks"
-    val filtered = projectId.fold(base)(pid => base ++ fr"where project_id = $pid")
-    // Todoist-style ordering: by priority (urgent → low), then soonest due, then newest.
-    (filtered ++ fr"""order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
-                      due_on nulls last, created_at desc""").query[TaskRow].to[List]
+  /** A Staff viewer only sees tasks assigned to them, or unassigned tasks in their property: that scope as a SQL
+    * predicate over `tasks t` (+ `task_projects pr` for the property). `All` viewers (Manager/Principal) pass None.
+    */
+  private def scopePred(scope: Option[AssigneeScope]): Fragment = scope match {
+    case None => Fragment.empty
+    case Some(AssigneeScope(person, Some(prop))) =>
+      fr"and (t.assignee_id = $person or (t.assignee_id is null and pr.property_id = $prop))"
+    case Some(AssigneeScope(person, None)) => fr"and t.assignee_id = $person"
   }
+
+  def listTasks(projectId: Option[UUID], scope: Option[AssigneeScope] = None): ConnectionIO[List[TaskRow]] = {
+    val base =
+      fr"""select t.id, t.project_id, t.title, t.status, t.due_on, t.recurrence, t.priority, t.assignee_id
+           from tasks t left join task_projects pr on pr.id = t.project_id where true"""
+    val proj = projectId.fold(Fragment.empty)(pid => fr"and t.project_id = $pid")
+    // Todoist-style ordering: by priority (urgent → low), then soonest due, then newest.
+    (base ++ proj ++ scopePred(scope) ++
+      fr"""order by case t.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
+           t.due_on nulls last, t.created_at desc""").query[TaskRow].to[List]
+  }
+
+  /** Is this task within a Staff viewer's scope (assigned to them / unassigned in their property)? Gates writes. */
+  def inScope(taskId: UUID, scope: AssigneeScope): ConnectionIO[Boolean] =
+    (fr"""select exists(select 1 from tasks t left join task_projects pr on pr.id = t.project_id
+          where t.id = $taskId""" ++ scopePred(Some(scope)) ++ fr")").query[Boolean].unique
 
   def createTask(
       projectId: UUID,

@@ -5,6 +5,7 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.lists.{ListItem, ListRepo, ShoppingList}
+import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -115,8 +116,12 @@ object Lists {
       .forUser(p.userId, p.role)
       .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
+  // Staff are scoped to runs assigned to them (or unassigned in their property); Manager/Principal see all.
+  private def staffScope(p: Principal): ConnectionIO[Option[AssigneeScope]] =
+    if (p.role == "staff") PeopleRepo.assigneeScope(p.userId) else Option.empty[AssigneeScope].pure[ConnectionIO]
+
   def lists(xa: Transactor[IO], p: Principal): IO[Out[List[ListView]]] =
-    read(p, ListRepo.lists.map(_.map(lv))).transact(xa)
+    read(p, staffScope(p).flatMap(sc => ListRepo.lists(sc)).map(_.map(lv))).transact(xa)
   def createList(xa: Transactor[IO], p: Principal, r: CreateListReq): IO[Out[ListView]] =
     write(
       p,

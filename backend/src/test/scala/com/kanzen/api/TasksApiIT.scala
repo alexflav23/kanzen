@@ -4,6 +4,8 @@ import cats.effect.IO
 import com.kanzen.api.Tasks.{CreateProjectReq, CreateTaskReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import com.kanzen.people.PeopleRepo
+import doobie.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -19,6 +21,34 @@ object TasksApiIT extends IOSuite {
   private val marcia =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
   private val lorna = Principal(UUID.randomUUID(), "l", "lorna@kanzen.local", "manager")
+  private val toby =
+    Principal(UUID.fromString("10000000-0000-0000-0000-000000000001"), "t", "flavian@kanzen.local", "principal")
+
+  test(
+    "F02v2 — a Staff member sees only tasks assigned to them; another person's task is hidden (Principal sees all)"
+  ) { xa =>
+    for {
+      scope <- PeopleRepo.assigneeScope(marcia.userId).transact(xa) // Marcia's own person id
+      marciaPid = scope.get.personId
+      proj <- Tasks.createProject(xa, lorna, CreateProjectReq("Scope Project", None)).map(_.toOption.get)
+      mine <- Tasks
+        .create(xa, lorna, CreateTaskReq(proj.id, "Marcia's job", None, None, assigneeId = Some(marciaPid)))
+        .map(_.toOption.get)
+      theirs <- Tasks
+        .create(
+          xa,
+          lorna,
+          CreateTaskReq(proj.id, "Someone else's job", None, None, assigneeId = Some(UUID.randomUUID()))
+        )
+        .map(_.toOption.get)
+      staffList <- Tasks.list(xa, marcia, None).map(_.toOption.get)
+      principalList <- Tasks.list(xa, toby, None).map(_.toOption.get)
+      // a Staff completing a task that isn't theirs is forbidden
+      denied <- Tasks.complete(xa, marcia, theirs.id)
+    } yield expect(staffList.exists(_.id == mine.id)) and expect(!staffList.exists(_.id == theirs.id)) and
+      expect(principalList.exists(_.id == mine.id)) and expect(principalList.exists(_.id == theirs.id)) and
+      expect(denied.left.exists(_._1.code == 403))
+  }
 
   test("seeded project + tasks are listable; a recurring task spawns its next occurrence on complete") { xa =>
     for {

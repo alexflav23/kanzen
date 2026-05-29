@@ -27,8 +27,21 @@ final case class Person(
     notes: Option[String]
 )
 
+/** F02 v2 — a Staff member's record-level scope: the person row that *is* them (`personId`, the assignee id space) +
+  * their property. Tasks/Lists scope a Staff viewer to "assigned to me, or unassigned in my property".
+  */
+final case class AssigneeScope(personId: UUID, propertyId: Option[UUID])
+
 /** F10 — staff/HR records + permit-expiry surfacing. */
 object PeopleRepo {
+
+  /** Resolve the signed-in user's own person row → their assignee-scope (none if they have no employment record). */
+  def assigneeScope(userId: UUID): ConnectionIO[Option[AssigneeScope]] =
+    sql"""select id, property_id from employment_records
+          where user_id = $userId and deleted_at is null order by created_at limit 1"""
+      .query[AssigneeScope]
+      .option
+
   private val cols =
     fr"""id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due,
          contract_type, start_date, end_date, work_permit_no, emergency_contacts, payroll_ref, notes"""

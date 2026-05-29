@@ -5,6 +5,7 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
+import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import com.kanzen.tasks.{TaskProject, TaskRepo, TaskRow}
 import io.circe.Json
 import io.circe.syntax._
@@ -86,8 +87,12 @@ object Tasks {
         ),
       createA
     ).transact(xa)
+  // Staff are scoped to their own work (assigned to them / unassigned in their property); Manager/Principal see all.
+  private def staffScope(p: Principal): ConnectionIO[Option[AssigneeScope]] =
+    if (p.role == "staff") PeopleRepo.assigneeScope(p.userId) else Option.empty[AssigneeScope].pure[ConnectionIO]
+
   def list(xa: Transactor[IO], p: Principal, project: Option[UUID]): IO[Out[List[TaskView]]] =
-    read(p, TaskRepo.listTasks(project).map(_.map(tv))).transact(xa)
+    read(p, staffScope(p).flatMap(sc => TaskRepo.listTasks(project, sc)).map(_.map(tv))).transact(xa)
   def create(xa: Transactor[IO], p: Principal, r: CreateTaskReq): IO[Out[TaskView]] =
     write(
       p,
@@ -107,27 +112,40 @@ object Tasks {
         ),
       createA
     ).transact(xa)
-  def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =
-    write(
-      p,
-      for {
-        next <- TaskRepo.complete(id)
-        meta <- TaskRepo.ownerAndTitle(id)
-        // F34: emit task.completed in the same tx as the write (transactional outbox).
-        _ <- meta.traverse_ { case (owner, title) =>
-          EventRepo.emit(
-            Envelope(
-              "task.completed",
-              Actor.user(p.userId),
-              Subject("task", id),
-              owner.getOrElse(p.userId),
-              None,
-              Json.obj("title" -> title.asJson, "completed_by" -> p.email.asJson)
-            )
+  def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] = {
+    val tx = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      scope <- staffScope(p)
+      // a Staff member can only complete a task within their own scope (assigned to them / unassigned in their property)
+      inScope <- scope match {
+        case Some(sc) => TaskRepo.inScope(id, sc)
+        case None => true.pure[ConnectionIO]
+      }
+      res <-
+        if (!authz.can(editA) || !inScope) (Left(forbidden): Out[CompleteResult]).pure[ConnectionIO]
+        else doComplete(p, id).map(r => Right(r): Out[CompleteResult])
+    } yield res
+    tx.transact(xa)
+  }
+
+  private def doComplete(p: Principal, id: UUID): ConnectionIO[CompleteResult] =
+    for {
+      next <- TaskRepo.complete(id)
+      meta <- TaskRepo.ownerAndTitle(id)
+      // F34: emit task.completed in the same tx as the write (transactional outbox).
+      _ <- meta.traverse_ { case (owner, title) =>
+        EventRepo.emit(
+          Envelope(
+            "task.completed",
+            Actor.user(p.userId),
+            Subject("task", id),
+            owner.getOrElse(p.userId),
+            None,
+            Json.obj("title" -> title.asJson, "completed_by" -> p.email.asJson)
           )
-        }
-      } yield CompleteResult(id, next)
-    ).transact(xa)
+        )
+      }
+    } yield CompleteResult(id, next)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
