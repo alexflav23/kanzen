@@ -41,7 +41,8 @@ const styles = stylex.create({
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px", maxWidth: "560px" },
   mailboxTabs: { display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" },
   mbTab: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
-  mbTabOn: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
+  // selected state must outrank :hover (which has higher specificity than a plain class), so repeat the colour here
+  mbTabOn: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent, ":hover": { backgroundColor: colors.accent } },
   mbCount: { fontSize: "11px", fontVariantNumeric: "tabular-nums", opacity: 0.85 },
   pane: { display: "grid", gridTemplateColumns: "180px 340px 1fr", border: `1px solid ${colors.line}`, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.bgElev, minHeight: "640px", "@media (max-width: 1000px)": { gridTemplateColumns: "1fr" } },
   rail: { borderRight: `1px solid ${colors.line}`, padding: "10px", display: "flex", flexDirection: "column", gap: "1px", backgroundColor: colors.bgSunken },
@@ -56,7 +57,7 @@ const styles = stylex.create({
   folderTabOn: { backgroundColor: colors.bgElev, color: colors.ink, boxShadow: "0 1px 2px rgba(0,0,0,0.08)" },
   list: { overflowY: "auto", maxHeight: "720px" },
   trow: { display: "flex", flexDirection: "column", gap: "3px", width: "100%", textAlign: "left", border: 0, borderBottom: `1px solid ${colors.line}`, backgroundColor: "transparent", cursor: "pointer", padding: "12px 14px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
-  trowOn: { backgroundColor: colors.accentSoft },
+  trowOn: { backgroundColor: colors.accentSoft, ":hover": { backgroundColor: colors.accentSoft } },
   trowTop: { display: "flex", alignItems: "center", gap: "8px" },
   unreadDot: { width: "7px", height: "7px", borderRadius: "999px", backgroundColor: colors.accent, flexShrink: 0 },
   from: { fontSize: "13px", fontWeight: 600, color: colors.ink, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
