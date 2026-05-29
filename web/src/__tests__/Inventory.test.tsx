@@ -85,6 +85,7 @@ describe("Inventory", () => {
     ]);
     renderInv({ vertical: "vehicle", label: "Vehicles" });
     const card = await screen.findByTestId("vehicle-card");
+    expect(within(card).getByTestId("vehicle-photo-cell")).toBeInTheDocument(); // hero photo area (placeholder until a photo is set)
     expect(within(card).getByTestId("reg-plate")).toHaveTextContent("KA21 NZN");
     expect(within(card).getByText(/overdue/)).toBeInTheDocument(); // MOT 2020 → overdue (danger pill)
   });

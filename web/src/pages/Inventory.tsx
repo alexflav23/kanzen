@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Pill, type PillTone } from "../components/Pill";
 import { Card } from "../components/Card";
-import { Plus, Search, Filter, ChevronDown, X, Shield } from "../components/icons";
+import { Plus, Search, Filter, ChevronDown, X, Shield, Vehicle } from "../components/icons";
 import { createAsset, getTemplate, listAssets, type AssetView } from "../services/assets";
 import { listCategories, type Category } from "../services/categories";
 import { getRegistryHealth } from "../services/insights";
@@ -335,6 +335,11 @@ function VehicleCard({ a, onOpen }: { a: AssetView; onOpen: () => void }) {
   const meta: [string, ReturnType<typeof vDue>][] = [["MOT", vDue(at.mot_due)], ["Tax", vDue(at.tax_due)], ["Insurance", vDue(at.insurance_due)]];
   return (
     <button type="button" data-testid="vehicle-card" onClick={onOpen} {...stylex.props(styles.vcard)}>
+      <span {...stylex.props(styles.aphoto)} data-testid="vehicle-photo-cell">
+        {a.heroUrl
+          ? <img {...stylex.props(styles.aphotoImg)} src={a.heroUrl} alt="" loading="lazy" data-testid="vehicle-photo" />
+          : <span {...stylex.props(styles.aphotoEmpty)} aria-hidden="true"><Vehicle size={30} /></span>}
+      </span>
       <div {...stylex.props(styles.amaker)}>{a.maker ?? "Vehicle"}</div>
       <div {...stylex.props(styles.atitle)}>{a.title}</div>
       {sub && <div {...stylex.props(styles.vsub)}>{sub}</div>}
