@@ -27,6 +27,7 @@ import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
 import { Customization } from "./pages/Customization";
 import { CommandPalette } from "./components/CommandPalette";
+import { NotificationsBell } from "./components/NotificationsBell";
 import { BootSplash } from "./components/BootSplash";
 import { useTheme } from "./theme/ThemeContext";
 import * as I from "./components/icons";
@@ -203,7 +204,7 @@ function Shell() {
               <I.Search size={14} /> <span>Search Kanzen…</span><span {...stylex.props(styles.kbd)}>⌘K</span>
             </button>
             <span {...stylex.props(styles.topRight)}>
-              <Link to="/notifications" {...stylex.props(styles.iconBtn)} aria-label="Notifications"><I.Bell size={16} /></Link>
+              <NotificationsBell />
             </span>
           </div>
 

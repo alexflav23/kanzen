@@ -39,6 +39,11 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await page.keyboard.press("Meta+d");
   await scan(page, "Dashboard (dark)", v);
   await page.keyboard.press("Meta+d");
+  // the top-bar notifications bell popover (present on every route)
+  await page.getByTestId("notif-bell").click();
+  await expect(page.getByTestId("notif-popover")).toBeVisible();
+  await scan(page, "Notifications popover", v);
+  await page.getByRole("button", { name: "Close notifications" }).click();
 
   await go("Inbox", /^Inbox$/);
   await go("Notifications", /^Notifications$/);
