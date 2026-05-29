@@ -63,21 +63,22 @@ test("the list view renders rows", async ({ page }) => {
   expect(await page.getByTestId("asset-row").count()).toBeGreaterThanOrEqual(5);
 });
 
-test("opening an asset shows its detail + specifications", async ({ page }) => {
+test("opening an asset shows its detail across sub-tabs (Overview / Timeline / Provenance)", async ({ page }) => {
   await page.goto("/inventory");
   await page.getByText("Royal Oak 15500ST").click();
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
+  // Overview (default): specifications + in-collections
   await expect(page.getByText("Specifications")).toBeVisible();
   await expect(page.getByText("AP-15500")).toBeVisible(); // from the JSONB attributes
-  // F19 lifecycle timeline (seeded acquisition event) + lifetime cost — typed colour-coded event dots
+  await expect(page.getByTestId("asset-collections")).toContainText("Watches"); // F04 in "Watches"
+  // Timeline tab: F19 lifecycle (seeded acquisition event) + lifetime cost
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByText("Lifecycle")).toBeVisible();
   await expect(page.getByTestId("timeline-row").first()).toBeVisible();
   await expect(page.getByText("Lifetime cost")).toBeVisible();
-  // F21 provenance party-roles (seeded: Audemars Piguet as maker)
-  await page.getByText("Provenance").scrollIntoViewIfNeeded();
+  // Provenance tab: F21 party-roles (seeded Audemars Piguet as maker)
+  await page.getByRole("tab", { name: "Provenance" }).click();
   await expect(page.getByTestId("party-row").filter({ hasText: "Audemars Piguet" })).toBeVisible();
-  // F04 in-collections: Royal Oak is seeded in the "Watches" collection
-  await expect(page.getByTestId("asset-collections")).toContainText("Watches");
 });
 
 test("an asset is a living record — log a timeline event + record a valuation", async ({ page }) => {
@@ -85,7 +86,8 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await page.getByText("Royal Oak 15500ST").click();
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 
-  // log a lifecycle event → it appears on the timeline
+  // Timeline tab — log a lifecycle event → it appears on the timeline
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await page.getByRole("button", { name: "Log event" }).click();
   const ev = page.getByTestId("log-event");
   await expect(ev).toBeVisible();
@@ -99,7 +101,8 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await expect(serviceRow).toHaveAttribute("data-tone", "info");
   await expect(serviceRow).toContainText("AP Service Centre");
 
-  // record a valuation (Principal) → it appears in the Valuations history
+  // Value tab — record a valuation (Principal) → it appears in the Valuations history
+  await page.getByRole("tab", { name: "Value" }).click();
   await page.getByRole("button", { name: "Record valuation" }).click();
   const val = page.getByTestId("record-valuation");
   await expect(val).toBeVisible();
@@ -141,7 +144,7 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await page.getByText("Royal Oak 15500ST").click();
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 
-  // Move → the Location key fact resolves + a location-history row appears
+  // Move (Overview · Key facts) → the Location key fact resolves
   await page.getByTestId("move-btn").click();
   const mv = page.getByTestId("move-asset");
   await mv.getByLabel("Property").selectOption({ label: "Wardian — Apt 5206" });
@@ -149,27 +152,28 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await mv.getByRole("button", { name: "Move" }).click();
   await expect(page.getByTestId("move-asset")).toHaveCount(0); // modal closed → succeeded
   await expect(page.getByTestId("kv-location")).toContainText("Wardian"); // resolved property label
-  await expect(page.getByTestId("location-history-row").first()).toBeVisible();
 
-  // Change custody → the Custody key fact updates + a custody-history row appears
+  // Change custody (Overview) → the Custody key fact updates
   await page.getByTestId("custody-btn").click();
   const cu = page.getByTestId("change-custody");
   await cu.getByLabel("Custody").selectOption("with_repair_shop");
   await cu.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("kv-custody")).toContainText("With repair shop");
-  await expect(page.getByTestId("custody-history-row").first()).toBeVisible();
 
-  // Upload a photo, set it as hero → the hero banner renders; then remove it (cleanup)
+  // Timeline tab → location + custody history rows, and the audited move in the Activity feed
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByTestId("location-history-row").first()).toBeVisible();
+  await expect(page.getByTestId("custody-history-row").first()).toBeVisible();
+  await expect(page.getByText("asset move").first()).toBeVisible(); // audit action, humanised
+
+  // Overview tab → upload a photo, set it as hero → the hero banner renders; then remove it (cleanup)
+  await page.getByRole("tab", { name: "Overview" }).click();
   await page.getByLabel("Upload photos").setInputFiles({ name: "hero.png", mimeType: "image/png", buffer: uniquePng() });
   await expect(page.getByRole("img", { name: "hero.png" })).toBeVisible();
   await page.getByRole("button", { name: "Set hero.png as hero photo" }).click();
   await expect(page.getByTestId("asset-hero")).toBeVisible();
   await page.getByRole("button", { name: "Delete photo hero.png" }).click();
   await expect(page.getByTestId("asset-hero")).toHaveCount(0); // hero clears once its photo is gone
-
-  // F19/W2 — those audited actions surface in the asset's Activity feed (the per-entity audit trail)
-  await page.getByText("Activity").scrollIntoViewIfNeeded();
-  await expect(page.getByText("asset move").first()).toBeVisible(); // audit action, humanised (distinct from the "moved" lifecycle event)
 });
 
 // F04 (W1.5) — asset groups: peer groupings (create-or-reuse by name + kind) on the asset detail.

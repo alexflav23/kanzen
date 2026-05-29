@@ -31,6 +31,9 @@ import { Loading, EmptyState, ErrorState } from "../components/states";
 const styles = stylex.create({
   page: { maxWidth: "1100px" },
   back: { display: "inline-flex", alignItems: "center", gap: "6px", border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", marginBottom: "16px" },
+  tabBar: { display: "flex", gap: "4px", borderBottom: `1px solid ${colors.line}`, margin: "18px 0 22px", flexWrap: "wrap" },
+  tab: { appearance: "none", border: 0, background: "transparent", color: colors.ink3, padding: "10px 14px", borderBottom: "2px solid transparent", marginBottom: "-1px", fontSize: "13.5px", cursor: "pointer" },
+  tabActive: { color: colors.ink, borderBottomColor: colors.accent, fontWeight: 500 },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "6px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   pills: { display: "flex", gap: "6px", marginTop: "10px", marginBottom: "14px" },
@@ -348,6 +351,7 @@ export function AssetDetail() {
   const [moving, setMoving] = useState(false);
   const [changingCustody, setChangingCustody] = useState(false);
   const [restructuring, setRestructuring] = useState(false);
+  const [tab, setTab] = useState<"overview" | "timeline" | "provenance" | "value">("overview");
   const qc = useQueryClient();
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
   const catsQ = useQuery({ queryKey: ["categories", token], queryFn: () => listCategories(token), enabled: assetQ.isSuccess });
@@ -403,6 +407,13 @@ export function AssetDetail() {
         </div>
       </div>
 
+      <div {...stylex.props(styles.tabBar)} role="tablist" aria-label="Asset sections">
+        {([["overview", "Overview"], ["timeline", "Timeline"], ["provenance", "Provenance"], ["value", "Value"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} {...stylex.props(styles.tab, tab === k && styles.tabActive)} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "overview" && (<>
       <div {...stylex.props(styles.section)}>
         <Card>
           <CardHeader><CardTitle>Photos</CardTitle></CardHeader>
@@ -477,6 +488,9 @@ export function AssetDetail() {
         </Card>
       </div>
 
+      </>)}
+
+      {tab === "timeline" && (<>
       <div {...stylex.props(styles.section)}>
         <Card>
           <CardHeader>
@@ -503,13 +517,6 @@ export function AssetDetail() {
                 <div {...stylex.props(styles.lifetime)}><span>Lifetime cost</span><span>{money(timelineQ.data.lifetimeCostMinor, "GBP")}</span></div>
               </>
             )}
-        </Card>
-      </div>
-
-      <div {...stylex.props(styles.section)}>
-        <Card>
-          <CardHeader><CardTitle>Provenance</CardTitle></CardHeader>
-          <ProvenanceParties assetId={id} canEdit={canWrite} />
         </Card>
       </div>
 
@@ -546,6 +553,18 @@ export function AssetDetail() {
         </div>
       )}
 
+      </>)}
+
+      {tab === "provenance" && (
+        <div {...stylex.props(styles.section)}>
+          <Card>
+            <CardHeader><CardTitle>Provenance</CardTitle></CardHeader>
+            <ProvenanceParties assetId={id} canEdit={canWrite} />
+          </Card>
+        </div>
+      )}
+
+      {tab === "value" && (<>
       {isPrincipal && (
         <div {...stylex.props(styles.section)}>
           <Card>
@@ -599,6 +618,7 @@ export function AssetDetail() {
               ))}
         </Card>
       </div>
+      </>)}
     </div>
   );
 }
