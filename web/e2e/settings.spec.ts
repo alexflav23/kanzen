@@ -72,10 +72,22 @@ test("the Audit log records platform actions (action → log)", async ({ page })
   await expect(page.getByTestId("timeline-row").first()).toBeVisible();
   await expect(page.getByText(/rbac set create/).first()).toBeVisible();
 
-  // cleanup the probe set — back to the Builder mode (Permission sets is the Builder's default sub-tab)
+  // cleanup the probe set — back via the Permissions top tab, then the Builder sub-tab
+  await page.getByRole("tab", { name: "Permissions" }).click();
   await page.getByRole("tab", { name: "Builder" }).click();
   await page.getByRole("button", { name: new RegExp(name) }).click();
   await page.getByRole("button", { name: "Delete set" }).click();
+});
+
+// F-system (W8.5) — Settings is now a 4-tab screen; Integrations + Preferences are the new tabs.
+test("Settings has Integrations + Preferences tabs", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("tab", { name: "Integrations" }).click();
+  await expect(page.getByTestId("integration-row").first()).toBeVisible();
+  await expect(page.getByText("Google Calendar")).toBeVisible();
+  await page.getByRole("tab", { name: "Preferences" }).click();
+  await expect(page.getByText("Approval threshold · UK")).toBeVisible();
 });
 
 // Settings is admin-gated — it appears in the nav for the admin (Flavian) principal.

@@ -93,6 +93,17 @@ describe("Settings — role management", () => {
     await waitFor(() => expect(deletePermission).toHaveBeenCalledWith("t", "staff", "asset", null));
   });
 
+  it("the Integrations tab lists connected systems and the Preferences tab shows the financial policy", async () => {
+    (getMe as Mock).mockResolvedValue(me([{ resource: "*", field: null, level: "admin" }]));
+    renderSettings();
+    fireEvent.click(await screen.findByRole("tab", { name: "Integrations" }));
+    expect(screen.getAllByTestId("integration-row").length).toBeGreaterThan(3);
+    expect(screen.getByText("Google Calendar")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Preferences" }));
+    expect(screen.getByText("Approval threshold · UK")).toBeInTheDocument();
+    expect(screen.getByText(/Cognito/)).toBeInTheDocument(); // security policy
+  });
+
   it("a non-admin sees an administrators-only state, not the matrix", async () => {
     (getMe as Mock).mockResolvedValue(me([{ resource: "calendar", field: null, level: "read" }]));
     renderSettings();

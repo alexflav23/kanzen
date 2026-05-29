@@ -1,9 +1,10 @@
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
-import { Plus } from "../components/icons";
+import { Pill } from "../components/Pill";
+import { Plus, Mail, Tasks, Calendar, Documents, Star, Shield } from "../components/icons";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { useAuth } from "../state/AuthContext";
 import { createRole, deletePermission, deleteRole, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
@@ -48,7 +49,46 @@ const styles = stylex.create({
   modeBar: { display: "flex", gap: "4px", padding: "4px", borderRadius: radius.md, backgroundColor: colors.bgSunken, marginBottom: "20px", width: "fit-content" },
   modeTab: { appearance: "none", border: 0, background: "transparent", color: colors.ink3, padding: "7px 14px", borderRadius: radius.sm, fontSize: "13px", fontWeight: 500, cursor: "pointer" },
   modeTabActive: { backgroundColor: colors.bgElev, color: colors.ink },
+  // top-level Settings tabs (Integrations · Permissions · Preferences · Audit log)
+  tabBar: { display: "flex", gap: "4px", borderBottom: `1px solid ${colors.line}`, marginBottom: "24px", flexWrap: "wrap" },
+  tab: { appearance: "none", border: 0, background: "transparent", color: colors.ink3, padding: "10px 14px", borderBottom: "2px solid transparent", marginBottom: "-1px", fontSize: "13.5px", cursor: "pointer" },
+  tabActive: { color: colors.ink, borderBottomColor: colors.accent, fontWeight: 500 },
+  subHead: { marginBottom: "16px" },
+  subTitle: { fontSize: "18px", fontWeight: 600, color: colors.ink },
+  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", alignItems: "start" },
+  pad: { padding: "22px 24px" },
+  cardLabel: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, marginBottom: "16px" },
+  sysRow: { display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", backgroundColor: colors.bgSunken, borderRadius: radius.md, marginBottom: "8px" },
+  sysName: { flex: 1, minWidth: 0 },
+  sysTitle: { fontSize: "13px", fontWeight: 500, color: colors.ink },
+  sysStatus: { fontSize: "11.5px", color: colors.ink3, marginTop: "1px" },
+  metaGrid: { display: "grid", gridTemplateColumns: "auto 1fr", rowGap: "12px", columnGap: "18px", alignItems: "baseline" },
+  dt: { fontSize: "13px", color: colors.ink2 },
+  dd: { fontSize: "13px", color: colors.ink, textAlign: "right" },
 });
+
+// F-system — Integrations: connected systems (operator-configured; see SETUP.md) + the live stack summary.
+const CONNECTED: { name: string; status: string; icon: ComponentType<{ size?: number }> }[] = [
+  { name: "Gmail · operational inboxes", status: "Connected · 5 mailboxes", icon: Mail },
+  { name: "Todoist", status: "Connected · webhook live", icon: Tasks },
+  { name: "Google Calendar", status: "Two-way sync · 4 calendars", icon: Calendar },
+  { name: "Google Drive", status: "2 shared drives indexed", icon: Documents },
+  { name: "Amazon Bedrock · Claude", status: "Active · eu-west-1", icon: Star },
+  { name: "AWS SES", status: "Notifications · verified", icon: Mail },
+  { name: "1Password", status: "Reference only · 7 vaults", icon: Shield },
+];
+const SYSTEM: [string, string][] = [
+  ["Backend", "Scala · Tapir (OpenAPI)"], ["Database", "PostgreSQL · RDS"], ["LLM", "Claude on Bedrock"],
+  ["Region", "eu-west-1 (Ireland)"], ["Compute", "EC2 + NixOS"], ["Web", "React + StyleX"],
+];
+const FINANCIAL: [string, string][] = [
+  ["Approval threshold · UK", "£1,500.00"], ["Approval threshold · SG", "S$2,500.00"],
+  ["Display currency", "Native (no conversion)"], ["Variance flag", "±15% vs previous"], ["Bill lead reminders", "5 days before due"],
+];
+const SECURITY: [string, string][] = [
+  ["MFA", "Required · all users (Cognito)"], ["Session", "JWT · JWKS-validated"],
+  ["Backup", "Daily RDS snapshots · 30d"], ["Audit retention", "append-only, 7 years"], ["Email content", "stays in AWS · Bedrock"],
+];
 
 const isRoot = (role: string, resource: string, field: string | null) =>
   role === "principal" && resource === "*" && field == null;
@@ -59,7 +99,8 @@ export function Settings() {
   const roles = useQuery({ queryKey: ["roles", token], queryFn: () => getRoles(token), enabled: can("*", "admin") });
   const perms = useQuery({ queryKey: ["permissions", token], queryFn: () => getPermissions(token), enabled: can("*", "admin") });
 
-  const [mode, setMode] = useState<"builder" | "matrix" | "audit">("builder");
+  const [tab, setTab] = useState<"integrations" | "permissions" | "preferences" | "audit">("permissions");
+  const [mode, setMode] = useState<"builder" | "matrix">("builder");
   const [draft, setDraft] = useState({ role: "", resource: "", field: "", level: "read" });
   const [newRole, setNewRole] = useState({ name: "", description: "" });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["permissions"] });
@@ -118,31 +159,80 @@ export function Settings() {
   return (
     <div>
       <header {...stylex.props(styles.header)}>
-        <div {...stylex.props(styles.eyebrow)}>Finance &amp; system · access control</div>
-        <h1 {...stylex.props(styles.title)}>Roles &amp; permissions</h1>
-        <p {...stylex.props(styles.desc)}>
-          Compose reusable <strong>permission sets</strong> from individual actions, build <strong>roles</strong> (with
-          inheritance), nest <strong>teams</strong>, and assign people — then preview exactly what each person can do.
-          The server enforces every grant; each change is audited.
-        </p>
+        <div {...stylex.props(styles.eyebrow)}>System · settings</div>
+        <h1 {...stylex.props(styles.title)}>Settings</h1>
       </header>
 
-      <div {...stylex.props(styles.modeBar)} role="tablist" aria-label="Access control mode">
-        <button type="button" role="tab" aria-selected={mode === "builder"} {...stylex.props(styles.modeTab, mode === "builder" && styles.modeTabActive)} onClick={() => setMode("builder")}>
-          Builder
-        </button>
-        <button type="button" role="tab" aria-selected={mode === "matrix"} {...stylex.props(styles.modeTab, mode === "matrix" && styles.modeTabActive)} onClick={() => setMode("matrix")}>
-          Advanced matrix
-        </button>
-        <button type="button" role="tab" aria-selected={mode === "audit"} {...stylex.props(styles.modeTab, mode === "audit" && styles.modeTabActive)} onClick={() => setMode("audit")}>
-          Audit log
-        </button>
+      <div {...stylex.props(styles.tabBar)} role="tablist" aria-label="Settings sections">
+        {([["integrations", "Integrations"], ["permissions", "Permissions"], ["preferences", "Preferences"], ["audit", "Audit log"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} {...stylex.props(styles.tab, tab === k && styles.tabActive)} onClick={() => setTab(k)}>{label}</button>
+        ))}
       </div>
 
-      {mode === "builder" && <RbacBuilder />}
-      {mode === "audit" && <AuditLog />}
+      {tab === "integrations" && (
+        <div {...stylex.props(styles.grid2)}>
+          <Card style={styles.pad}>
+            <div {...stylex.props(styles.cardLabel)}>Connected systems</div>
+            {CONNECTED.map((c) => { const Ico = c.icon; return (
+              <div key={c.name} {...stylex.props(styles.sysRow)} data-testid="integration-row">
+                <Ico size={16} />
+                <div {...stylex.props(styles.sysName)}>
+                  <div {...stylex.props(styles.sysTitle)}>{c.name}</div>
+                  <div {...stylex.props(styles.sysStatus)}>{c.status}</div>
+                </div>
+                <Pill tone="accent">OK</Pill>
+              </div>
+            ); })}
+          </Card>
+          <Card style={styles.pad}>
+            <div {...stylex.props(styles.cardLabel)}>System summary</div>
+            <dl {...stylex.props(styles.metaGrid)}>
+              {SYSTEM.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}
+            </dl>
+          </Card>
+        </div>
+      )}
 
-      {mode === "matrix" && (<>
+      {tab === "preferences" && (
+        <div {...stylex.props(styles.grid2)}>
+          <Card style={styles.pad}>
+            <div {...stylex.props(styles.cardLabel)}>Financial</div>
+            <dl {...stylex.props(styles.metaGrid)}>{FINANCIAL.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
+          </Card>
+          <Card style={styles.pad}>
+            <div {...stylex.props(styles.cardLabel)}>Security</div>
+            <dl {...stylex.props(styles.metaGrid)}>{SECURITY.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
+          </Card>
+        </div>
+      )}
+
+      {tab === "audit" && <AuditLog />}
+
+      {tab === "permissions" && (
+        <div {...stylex.props(styles.subHead)}>
+          <h2 {...stylex.props(styles.subTitle)}>Roles &amp; permissions</h2>
+          <p {...stylex.props(styles.desc)}>
+            Compose reusable <strong>permission sets</strong> from individual actions, build <strong>roles</strong> (with
+            inheritance), nest <strong>teams</strong>, and assign people — then preview exactly what each person can do.
+            The server enforces every grant; each change is audited.
+          </p>
+        </div>
+      )}
+
+      {tab === "permissions" && (
+        <div {...stylex.props(styles.modeBar)} role="tablist" aria-label="Access control mode">
+          <button type="button" role="tab" aria-selected={mode === "builder"} {...stylex.props(styles.modeTab, mode === "builder" && styles.modeTabActive)} onClick={() => setMode("builder")}>
+            Builder
+          </button>
+          <button type="button" role="tab" aria-selected={mode === "matrix"} {...stylex.props(styles.modeTab, mode === "matrix" && styles.modeTabActive)} onClick={() => setMode("matrix")}>
+            Advanced matrix
+          </button>
+        </div>
+      )}
+
+      {tab === "permissions" && mode === "builder" && <RbacBuilder />}
+
+      {tab === "permissions" && mode === "matrix" && (<>
       <Card style={styles.rolesCard}>
         <CardHeader><CardTitle>Roles</CardTitle></CardHeader>
         {roles.isPending ? <Loading /> : roles.isError ? <ErrorState error={roles.error} /> : (

@@ -75,6 +75,11 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await expect(page.getByRole("heading", { name: "Entities" })).toBeVisible();
   await scan(page, "Entities", v);
   await go("Backup", /Backup/);
+  await go("Settings", /^Settings$/); // scans the default Permissions tab
+  await page.getByRole("tab", { name: "Integrations" }).click();
+  await scan(page, "Settings · Integrations", v);
+  await page.getByRole("tab", { name: "Preferences" }).click();
+  await scan(page, "Settings · Preferences", v);
 
   if (v.length) {
     console.log("\n=== A11Y VIOLATIONS (serious/critical) ===");
