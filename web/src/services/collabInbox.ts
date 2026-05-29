@@ -43,10 +43,10 @@ export type CProposal = z.infer<typeof CProposalSchema>;
 export type CThreadDetail = z.infer<typeof CThreadDetailSchema>;
 
 export const listInboxes = (token: string | null) => api("/api/inbox/inboxes", z.array(CInboxSchema), { token });
-export const listThreads = (token: string | null, q: { inbox?: string; status?: string; assignee?: string } = {}) => {
+export const listThreads = (token: string | null, q: { inbox?: string; folder?: string; assignee?: string } = {}) => {
   const qs = new URLSearchParams();
   if (q.inbox) qs.set("inbox", q.inbox);
-  if (q.status) qs.set("status", q.status);
+  if (q.folder) qs.set("folder", q.folder);
   if (q.assignee) qs.set("assignee", q.assignee);
   return api(`/api/inbox/threads?${qs.toString()}`, z.array(CThreadSchema), { token });
 };

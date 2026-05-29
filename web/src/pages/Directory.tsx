@@ -1,23 +1,11 @@
 import * as stylex from "@stylexjs/stylex";
 import { Fragment } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { colors, fonts } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
-
-// F-system — the household's operational directory. Communications config (the agent's operational
-// mailboxes + role/property addresses on the household domain); reference info, not data-backed.
-const MAILBOXES: [string, string][] = [
-  ["Deliveries", "deliveries@kanzen.family"],
-  ["Accounts", "accounts@kanzen.family"],
-  ["House", "house@kanzen.family"],
-  ["Vendors", "vendors@kanzen.family"],
-  ["Concierge", "concierge@kanzen.family"],
-];
-const ROLES: [string, string][] = [
-  ["Principal", "flavian@kanzen.family"],
-  ["Chief of Staff", "lorna@kanzen.family"],
-  ["Wardian", "wardian@kanzen.family"],
-  ["Singapore", "singapore@kanzen.family"],
-];
+import { Loading, ErrorState } from "../components/states";
+import { useAuth } from "../state/AuthContext";
+import { listInboxes, type CInbox } from "../services/collabInbox";
 
 const styles = stylex.create({
   page: { maxWidth: "920px" },
@@ -32,38 +20,41 @@ const styles = stylex.create({
   dd: { fontSize: "13px", color: colors.ink, fontFamily: fonts.mono, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis" },
 });
 
-/** F-system — Directory: operational mailboxes + role/property addresses (the household domain). */
+/** F-system — Directory: the household's mailboxes (the agent triages these). Reads the SAME set the inbox shows
+ *  (`/api/inbox/inboxes`), so the rail and the Directory can never drift. */
 export function Directory() {
+  const { token } = useAuth();
+  const q = useQuery({ queryKey: ["inbox-inboxes", token], queryFn: () => listInboxes(token) });
+  const boxes = q.data ?? [];
+  const shared = boxes.filter((i) => i.kind === "shared");
+  const role = boxes.filter((i) => i.kind !== "shared");
+
+  const card = (label: string, items: CInbox[]) => (
+    <Card style={styles.pad}>
+      <div {...stylex.props(styles.cardLabel)}>{label}</div>
+      <dl {...stylex.props(styles.metaGrid)}>
+        {items.map((i) => (
+          <Fragment key={i.id}>
+            <dt {...stylex.props(styles.dt)}>{i.label}</dt>
+            <dd {...stylex.props(styles.dd)} data-testid="dir-address">{i.address}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </Card>
+  );
+
   return (
     <div {...stylex.props(styles.page)}>
       <div {...stylex.props(styles.eyebrow)}>Communications</div>
       <h1 {...stylex.props(styles.title)}>Directory</h1>
-      <div {...stylex.props(styles.desc)}>The household's operational mailboxes (the agent triages these) and role &amp; property addresses on the household domain.</div>
+      <div {...stylex.props(styles.desc)}>The household's operational mailboxes (the agent triages these) and role &amp; property addresses on the household domain. The Inbox works these same mailboxes.</div>
 
-      <div {...stylex.props(styles.grid)}>
-        <Card style={styles.pad}>
-          <div {...stylex.props(styles.cardLabel)}>Operational mailboxes</div>
-          <dl {...stylex.props(styles.metaGrid)}>
-            {MAILBOXES.map(([label, addr]) => (
-              <Fragment key={addr}>
-                <dt {...stylex.props(styles.dt)}>{label}</dt>
-                <dd {...stylex.props(styles.dd)} data-testid="dir-address">{addr}</dd>
-              </Fragment>
-            ))}
-          </dl>
-        </Card>
-        <Card style={styles.pad}>
-          <div {...stylex.props(styles.cardLabel)}>Role &amp; property addresses</div>
-          <dl {...stylex.props(styles.metaGrid)}>
-            {ROLES.map(([label, addr]) => (
-              <Fragment key={addr}>
-                <dt {...stylex.props(styles.dt)}>{label}</dt>
-                <dd {...stylex.props(styles.dd)} data-testid="dir-address">{addr}</dd>
-              </Fragment>
-            ))}
-          </dl>
-        </Card>
-      </div>
+      {q.isPending ? <Loading /> : q.isError ? <ErrorState error={q.error} /> : (
+        <div {...stylex.props(styles.grid)}>
+          {card("Operational mailboxes", shared)}
+          {card("Role & property addresses", role)}
+        </div>
+      )}
     </div>
   );
 }

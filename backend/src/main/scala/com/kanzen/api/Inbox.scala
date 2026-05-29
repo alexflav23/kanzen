@@ -199,11 +199,12 @@ object Inbox {
   def inboxes(xa: Transactor[IO], p: Principal): IO[Out[List[InboxView]]] =
     read(p, staffScope(p).flatMap(CollabInboxRepo.inboxes).map(_.map(iv))).transact(xa)
 
+  private val validFolder = Set("inbox", "sent", "spam", "archive")
   def threads(
       xa: Transactor[IO],
       p: Principal,
       inbox: Option[UUID],
-      status: Option[String],
+      folder: Option[String],
       assignee: Option[String]
   ): IO[Out[List[ThreadView]]] =
     read(
@@ -213,7 +214,7 @@ object Inbox {
         me <-
           if (assignee.contains("me")) PeopleRepo.assigneeScope(p.userId).map(_.map(_.personId))
           else Option.empty[UUID].pure[ConnectionIO]
-        rows <- CollabInboxRepo.threads(inbox, status.filter(validStatus).getOrElse("open"), me, scope)
+        rows <- CollabInboxRepo.threads(inbox, folder.filter(validFolder).getOrElse("inbox"), me, scope)
       } yield rows.map(tv)
     ).transact(xa)
 
@@ -526,7 +527,7 @@ object Inbox {
     .securityIn(bearer)
     .in("api" / "inbox" / "threads")
     .in(query[Option[UUID]]("inbox"))
-    .in(query[Option[String]]("status"))
+    .in(query[Option[String]]("folder"))
     .in(query[Option[String]]("assignee"))
     .errorOut(err)
     .out(jsonBody[List[ThreadView]])

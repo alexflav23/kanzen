@@ -74,7 +74,8 @@ object CollabInboxRepo {
     case Some(AssigneeScope(person, Some(prop))) => fr"and (t.assignee_id = $person or i.property_id = $prop)"
     case Some(AssigneeScope(person, None)) => fr"and t.assignee_id = $person"
   }
-  // for the inbox-list count subquery, the threads are aliased `t2` against the outer inbox `i`
+  // for the inbox-list count subquery, the threads are aliased `t2` against the outer inbox `i`. The rail badge counts
+  // the Inbox folder (open, not spam).
   private def countScope(scope: Option[AssigneeScope]): Fragment = scope match {
     case None => Fragment.empty
     case Some(AssigneeScope(person, Some(prop))) => fr"and (t2.assignee_id = $person or i.property_id = $prop)"
@@ -87,7 +88,7 @@ object CollabInboxRepo {
       case _ => Fragment.empty
     }
     (fr"""select i.id, i.address, i.label, i.kind, i.property_id,
-            (select count(*) from email_threads t2 where t2.inbox_id = i.id and t2.status = 'open'""" ++ countScope(
+            (select count(*) from email_threads t2 where t2.inbox_id = i.id and t2.status = 'open' and t2.spam = false""" ++ countScope(
       scope
     ) ++ fr""")
           from mail_inboxes i where i.deleted_at is null""" ++ visible ++ fr"order by i.label")
@@ -95,9 +96,20 @@ object CollabInboxRepo {
       .to[List]
   }
 
+  /** Standard mailbox folders. Sent is derived (has an outbound message); Archive = done/archived; Spam = the flag;
+    * Inbox = open & not spam (also the default "open" view across mailboxes).
+    */
+  private def folderPred(folder: String): Fragment = folder match {
+    case "sent" =>
+      fr"and exists (select 1 from email_messages m where m.thread_id = t.id and m.direction = 'outbound')"
+    case "spam" => fr"and t.spam = true"
+    case "archive" => fr"and t.status in ('done','archived') and t.spam = false"
+    case _ => fr"and t.status = 'open' and t.spam = false" // inbox / default
+  }
+
   def threads(
       inboxId: Option[UUID],
-      status: String,
+      folder: String,
       assignedTo: Option[UUID],
       scope: Option[AssigneeScope]
   ): ConnectionIO[List[ThreadRow]] = {
@@ -107,7 +119,8 @@ object CollabInboxRepo {
             t.status, t.assignee_id,
             (select count(*) from agent_actions a where a.thread_id = t.id and a.status = 'proposed')
           from email_threads t join mail_inboxes i on i.id = t.inbox_id
-          where t.status = $status""" ++ inboxF ++ assignF ++ scopePred(scope) ++ fr"order by t.last_message_at desc")
+          where 1=1""" ++ folderPred(folder) ++ inboxF ++ assignF ++ scopePred(scope) ++
+      fr"order by t.last_message_at desc")
       .query[ThreadRow]
       .to[List]
   }

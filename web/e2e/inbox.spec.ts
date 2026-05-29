@@ -24,6 +24,18 @@ test("the collaborative inbox lists threads and surfaces the agent's proposal on
   await expect(modal.getByTestId("proposal-confirm")).toBeVisible();
 });
 
+test("a mailbox has standard folders — Inbox / Sent / Spam / Archive", async ({ page }) => {
+  await page.goto("/inbox");
+  await page.getByTestId("inbox-rail-item").filter({ hasText: "Deliveries" }).first().click();
+  // the spam tab shows the flagged phishing thread, not the real deliveries
+  await page.getByTestId("folder-spam").click();
+  await expect(page.getByTestId("thread-row").filter({ hasText: "redelivery" })).toBeVisible();
+  // back to Inbox — the phishing thread is NOT there
+  await page.getByTestId("folder-inbox").click();
+  await expect(page.getByTestId("thread-row").filter({ hasText: "Amazon" })).toBeVisible();
+  await expect(page.getByTestId("thread-row").filter({ hasText: "redelivery" })).toHaveCount(0);
+});
+
 test("reply from the inbox: the Lexical composer sends a rich outbound message", async ({ page }) => {
   await page.goto("/inbox");
   // a personal thread (no proposal) is a clean place to reply

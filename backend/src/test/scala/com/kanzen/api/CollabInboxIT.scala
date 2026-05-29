@@ -26,8 +26,8 @@ object CollabInboxIT extends IOSuite {
   test("inboxes + threads + detail surface the agent's proposal (financial stays proposed)") { xa =>
     for {
       inboxes <- Inbox.inboxes(xa, toby).map(_.toOption.get)
-      groceries = inboxes.find(_.address.startsWith("groceries")).get
-      threads <- Inbox.threads(xa, toby, Some(groceries.id), Some("open"), None).map(_.toOption.get)
+      deliveries = inboxes.find(_.address.startsWith("deliveries")).get
+      threads <- Inbox.threads(xa, toby, Some(deliveries.id), Some("inbox"), None).map(_.toOption.get)
       ocado = threads.find(_.subject.exists(_.contains("Ocado"))).get
       detail <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
     } yield expect(inboxes.sizeIs >= 4) and expect(ocado.proposalCount >= 1L) and
@@ -51,8 +51,8 @@ object CollabInboxIT extends IOSuite {
   test("W9.2 — confirming a proposal creates the real record + links it back; attachments surface") { xa =>
     for {
       inboxes <- Inbox.inboxes(xa, toby).map(_.toOption.get)
-      groceries = inboxes.find(_.address.startsWith("groceries")).get
-      threads <- Inbox.threads(xa, toby, Some(groceries.id), Some("open"), None).map(_.toOption.get)
+      deliveries = inboxes.find(_.address.startsWith("deliveries")).get
+      threads <- Inbox.threads(xa, toby, Some(deliveries.id), Some("inbox"), None).map(_.toOption.get)
       ocado = threads.find(_.subject.exists(_.contains("Ocado"))).get
       detail <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
       proposal = detail.proposals.head
@@ -165,7 +165,7 @@ object CollabInboxIT extends IOSuite {
       crystal = threads.find(_.subject.exists(_.contains("Pool service"))).get
       _ <- Inbox.send(xa, toby, crystal.id, SendReq("<p>Thanks</p><script>steal()</script>")).map(_.toOption.get)
       after <- Inbox.detail(xa, toby, crystal.id).map(_.toOption.get)
-      out = after.messages.find(_.direction == "outbound").get
+      out = after.messages.filter(_.direction == "outbound").last // the reply we just sent (a prior one is seeded)
     } yield expect(out.bodyHtml.exists(!_.contains("<script"))) and expect(out.bodyHtml.exists(_.contains("Thanks")))
   }
 
