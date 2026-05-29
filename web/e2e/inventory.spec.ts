@@ -86,9 +86,10 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await page.getByText("Royal Oak 15500ST").click();
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 
-  // Timeline tab — log a lifecycle event → it appears on the timeline
+  // Timeline tab — log a lifecycle event (via the Actions menu) → it appears on the timeline
   await page.getByRole("tab", { name: "Timeline" }).click();
-  await page.getByRole("button", { name: "Log event" }).click();
+  await page.getByTestId("asset-actions").click();
+  await page.getByRole("menuitem", { name: "Log event" }).click();
   const ev = page.getByTestId("log-event");
   await expect(ev).toBeVisible();
   await ev.getByLabel("Event type").selectOption("serviced");
@@ -101,9 +102,10 @@ test("an asset is a living record — log a timeline event + record a valuation"
   await expect(serviceRow).toHaveAttribute("data-tone", "info");
   await expect(serviceRow).toContainText("AP Service Centre");
 
-  // Value tab — record a valuation (Principal) → it appears in the Valuations history
+  // Value tab — record a valuation (Principal, via the Actions menu) → it appears in the Valuations history
   await page.getByRole("tab", { name: "Value" }).click();
-  await page.getByRole("button", { name: "Record valuation" }).click();
+  await page.getByTestId("asset-actions").click();
+  await page.getByRole("menuitem", { name: "Record valuation" }).click();
   const val = page.getByTestId("record-valuation");
   await expect(val).toBeVisible();
   await val.getByLabel("Amount").fill("38000");
@@ -144,7 +146,8 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await page.getByText("Royal Oak 15500ST").click();
   await expect(page.getByRole("heading", { name: "Royal Oak 15500ST" })).toBeVisible();
 
-  // Move (Overview · Key facts) → the Location key fact resolves
+  // Actions are consolidated into one header menu → open it, then Move; the Location key fact resolves
+  await page.getByTestId("asset-actions").click();
   await page.getByTestId("move-btn").click();
   const mv = page.getByTestId("move-asset");
   await mv.getByLabel("Property").selectOption({ label: "Wardian — Apt 5206" });
@@ -153,7 +156,8 @@ test("an asset can be moved, have its custody changed, and a hero photo set", as
   await expect(page.getByTestId("move-asset")).toHaveCount(0); // modal closed → succeeded
   await expect(page.getByTestId("kv-location")).toContainText("Wardian"); // resolved property label
 
-  // Change custody (Overview) → the Custody key fact updates
+  // Change custody (Actions menu) → the Custody key fact updates
+  await page.getByTestId("asset-actions").click();
   await page.getByTestId("custody-btn").click();
   const cu = page.getByTestId("change-custody");
   await cu.getByLabel("Custody").selectOption("with_repair_shop");
@@ -233,7 +237,8 @@ test("an asset's tags can be added and removed", async ({ page }) => {
 test("an asset's key facts can be edited", async ({ page }) => {
   await page.goto("/inventory");
   await page.getByText("Royal Oak 15500ST").click();
-  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByTestId("asset-actions").click();
+  await page.getByRole("menuitem", { name: "Edit details" }).click();
   const m = page.getByTestId("edit-asset");
   await expect(m).toBeVisible();
   const maker = `Audemars Piguet · ${Date.now() % 100000}`; // unique → no collision with other specs

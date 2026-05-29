@@ -14,7 +14,8 @@ test("an asset can be split into children and the op undone", async ({ page }) =
   await page.getByText(title).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 
-  // Split into 3 → result + cost allocation
+  // Split into 3 → result + cost allocation (Restructure lives in the header Actions menu)
+  await page.getByTestId("asset-actions").click();
   await page.getByTestId("restructure-btn").click();
   const r = page.getByTestId("restructure");
   await r.getByLabel("Split count").fill("3");

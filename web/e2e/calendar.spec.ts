@@ -33,6 +33,18 @@ test("Day view shows the hour-grid with the seeded timed events positioned", asy
   await expect(page.getByTestId("cal-block").filter({ hasText: "08:00" })).toBeVisible();
 });
 
+test("clicking an event chip opens its detail (and read-only overlays say so)", async ({ page }) => {
+  await page.goto("/calendar");
+  await page.getByTestId("cal-chip").first().click();
+  const detail = page.getByTestId("event-detail");
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText("Date")).toBeVisible();
+  await expect(detail.getByText("Category")).toBeVisible();
+  // a task/maintenance overlay surfaces the read-only note; close returns to the grid
+  await detail.getByRole("button", { name: "Close" }).click();
+  await expect(detail).toBeHidden();
+});
+
 test("clicking a day opens the new-event form pre-dated", async ({ page }) => {
   await page.goto("/calendar");
   await page.getByTestId("cal-day").nth(8).click();
@@ -47,7 +59,8 @@ test("the agenda lists the seeded events and the category filter narrows it", as
   await expect(page.getByTestId("cal-event").first()).toBeVisible();
   await expect(page.getByText("Plumber visit · Wardian")).toBeVisible();
   await expect(page.getByText("Waitrose delivery")).toBeVisible();
-  await page.getByRole("button", { name: "Delivery" }).click();
+  // exact match: event rows are now buttons whose names contain their category word ("Waitrose delivery")
+  await page.getByRole("button", { name: "Delivery", exact: true }).click();
   await expect(page.getByText("Waitrose delivery")).toBeVisible();
   await expect(page.getByText("Plumber visit · Wardian")).toBeHidden();
 });

@@ -19,6 +19,7 @@ const styles = stylex.create({
   tab: { padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", fontSize: "13.5px", color: colors.ink3, borderBottom: "2px solid transparent", marginBottom: "-1px" },
   tabActive: { color: colors.ink, borderBottomColor: colors.accent, fontWeight: 500 },
   row: { display: "flex", alignItems: "center", gap: "14px", padding: "14px 18px", borderBottom: `1px solid ${colors.line}` },
+  rowBtn: { width: "100%", textAlign: "left", border: 0, borderBottom: `1px solid ${colors.line}`, background: "transparent", cursor: "pointer", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
   date: { width: "92px", flexShrink: 0, fontSize: "12.5px", color: colors.ink3, fontVariantNumeric: "tabular-nums" },
   grow: { flex: 1, minWidth: 0 },
   evTitle: { fontSize: "14px", fontWeight: 500, color: colors.ink },
@@ -46,13 +47,27 @@ const styles = stylex.create({
   weekHead: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${colors.line}` },
   weekHeadCell: { padding: "8px 10px", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600 },
   grid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)" },
-  cell: { minHeight: "104px", textAlign: "left", padding: "6px 7px", border: 0, borderRight: `1px solid ${colors.line}`, borderBottom: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, cursor: "pointer", display: "flex", flexDirection: "column", gap: "3px", overflow: "hidden" },
+  // the cell is a non-interactive box; the full-bleed `cellAdd` button (behind the content) handles "new event on
+  // this day", while the content layer is pointer-transparent so empty space falls through to it — but the chips
+  // (pointer-events restored) capture their own clicks to open the event detail. This keeps both behaviours without
+  // nesting a button inside a button (which fails the a11y nested-interactive rule).
+  cellBox: { position: "relative", minHeight: "104px", borderRight: `1px solid ${colors.line}`, borderBottom: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, overflow: "hidden" },
   cellOut: { backgroundColor: colors.bgSunken },
   cellToday: { boxShadow: `inset 0 0 0 2px ${colors.accent}` },
+  cellAdd: { position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, background: "transparent", cursor: "pointer", padding: 0 },
+  cellContent: { position: "relative", zIndex: 1, pointerEvents: "none", display: "flex", flexDirection: "column", gap: "3px", padding: "6px 7px", height: "100%", boxSizing: "border-box" },
   dayNum: { fontSize: "12px", color: colors.ink3, fontVariantNumeric: "tabular-nums" },
   dayNumToday: { color: colors.accent, fontWeight: 700 },
   chip: (bg: string, fg: string) => ({ fontSize: "11px", lineHeight: 1.25, padding: "2px 6px", borderRadius: "5px", backgroundColor: bg, color: fg, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }),
-  more: { fontSize: "10.5px", color: colors.ink3, paddingLeft: "2px" },
+  // a chip rendered as a real button (so it's clickable + keyboard-focusable) — resets button chrome, restores
+  // pointer events (the content layer disables them), and the `chip(bg,fg)` tint is layered on top.
+  chipBtn: { pointerEvents: "auto", display: "block", width: "100%", textAlign: "left", border: 0, margin: 0, fontFamily: "inherit", cursor: "pointer" },
+  more: { pointerEvents: "auto", display: "block", textAlign: "left", border: 0, background: "transparent", fontSize: "10.5px", color: colors.ink3, paddingLeft: "2px", cursor: "pointer" },
+  // event-detail modal
+  dl: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 18px" },
+  dt: { fontSize: "12px", color: colors.ink3, marginBottom: "4px" },
+  dd: { fontSize: "14px", color: colors.ink, fontVariantNumeric: "tabular-nums" },
+  note: { marginTop: "16px", fontSize: "12.5px", color: colors.ink3, backgroundColor: colors.bgSunken, borderRadius: radius.sm, padding: "10px 12px", lineHeight: 1.4 },
   // timed hour-grid (week / day)
   tgHead: (cols: number) => ({ display: "grid", gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: `1px solid ${colors.line}` }),
   tgGutterCell: { padding: "8px 6px" },
@@ -70,6 +85,7 @@ const styles = stylex.create({
     position: "absolute", left: "3px", right: "3px", top: `${top}px`, height: `${height}px`,
     backgroundColor: bg, color: fg, borderRadius: "6px", padding: "3px 7px", fontSize: "11px", lineHeight: 1.3,
     overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.10)",
+    border: 0, textAlign: "left", fontFamily: "inherit", cursor: "pointer",
   }),
   tgEventTime: { fontWeight: 600, fontVariantNumeric: "tabular-nums" },
 });
@@ -146,9 +162,40 @@ function NewEventModal({ token, date, time, onClose }: { token: string | null; d
   );
 }
 
+// where a read-only overlay event can actually be edited (it isn't a native calendar event)
+const sourceHome = (s: string) => (s === "task" ? "Tasks" : s === "maintenance" ? "Maintenance" : s === "leave" ? "People" : null);
+
+/** Event detail — opened by clicking any event (chip / agenda row / timed block). Shows what we hold for the
+ * event; native events are editable from their source, read-only overlays point back to where they live. */
+function EventDetailModal({ event, onClose }: { event: CalEvent; onClose: () => void }) {
+  const time = event.startTime ? `${fmtTime(event.startTime)}${event.endTime ? `–${fmtTime(event.endTime)}` : ""}` : "All day";
+  const home = sourceHome(event.source);
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" aria-label="Event detail" onClick={onClose}>
+      <div {...stylex.props(styles.modal)} data-testid="event-detail" onClick={(e) => e.stopPropagation()}>
+        <div {...stylex.props(styles.modalTitle)}>{event.title}</div>
+        <dl {...stylex.props(styles.dl)}>
+          <div><dt {...stylex.props(styles.dt)}>Date</dt><dd {...stylex.props(styles.dd)}>{fmtDate(event.startOn)}</dd></div>
+          <div><dt {...stylex.props(styles.dt)}>Time</dt><dd {...stylex.props(styles.dd)}>{time}</dd></div>
+          <div><dt {...stylex.props(styles.dt)}>Category</dt><dd><Pill tone={catTone(event.category)}>{event.category}</Pill></dd></div>
+          <div><dt {...stylex.props(styles.dt)}>Source</dt><dd {...stylex.props(styles.dd)}>{event.source}</dd></div>
+        </dl>
+        {event.readOnly && (
+          <div {...stylex.props(styles.note)} data-testid="event-readonly">
+            Read-only overlay{home ? ` — manage it under ${home}` : ""}. Calendar dates for {event.source}s follow the underlying record.
+          </div>
+        )}
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** A timed hour-grid (07:00–22:00) for the Week (7 columns) and Day (1 column) views. Times are
  * property-local wall-clock; timeless events (tasks, maintenance, untimed) sit in the all-day strip. */
-function TimeGrid({ days, byDay, onSlot }: { days: Date[]; byDay: Map<string, CalEvent[]>; onSlot: (date: string, hour: number) => void }) {
+function TimeGrid({ days, byDay, onSlot, onEvent }: { days: Date[]; byDay: Map<string, CalEvent[]>; onSlot: (date: string, hour: number) => void; onEvent: (e: CalEvent) => void }) {
   const cols = days.length;
   const todayKey = ymd(new Date());
   return (
@@ -167,7 +214,7 @@ function TimeGrid({ days, byDay, onSlot }: { days: Date[]; byDay: Map<string, Ca
           const allDay = (byDay.get(ymd(d)) ?? []).filter((e) => !e.startTime);
           return (
             <div key={ymd(d)} {...stylex.props(styles.tgAllDayCell)} data-testid="cal-allday">
-              {allDay.map((e) => { const [bg, fg] = chipColors(e.category); return <span key={`${e.source}:${e.id}`} {...stylex.props(styles.chip(bg, fg))} title={e.title}>{e.title}</span>; })}
+              {allDay.map((e) => { const [bg, fg] = chipColors(e.category); return <button key={`${e.source}:${e.id}`} type="button" {...stylex.props(styles.chipBtn, styles.chip(bg, fg))} title={e.title} onClick={() => onEvent(e)}>{e.title}</button>; })}
             </div>
           );
         })}
@@ -193,9 +240,9 @@ function TimeGrid({ days, byDay, onSlot }: { days: Date[]; byDay: Map<string, Ca
                 const height = Math.max(22, ((Math.min(end, END_HOUR * 60) - start) / 60) * HOUR_H - 2);
                 const [bg, fg] = chipColors(e.category);
                 return (
-                  <div key={`${e.source}:${e.id}`} {...stylex.props(styles.tgEvent(top, height, bg, fg))} data-testid="cal-block" title={`${fmtTime(e.startTime!)} ${e.title}`}>
+                  <button key={`${e.source}:${e.id}`} type="button" {...stylex.props(styles.tgEvent(top, height, bg, fg))} data-testid="cal-block" title={`${fmtTime(e.startTime!)} ${e.title}`} onClick={() => onEvent(e)}>
                     <span {...stylex.props(styles.tgEventTime)}>{fmtTime(e.startTime!)}</span> {e.title}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -213,6 +260,7 @@ export function Calendar() {
   const { token } = useAuth();
   const [cat, setCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [detail, setDetail] = useState<CalEvent | null>(null);
   const [presetDate, setPresetDate] = useState<string | undefined>(undefined);
   const [presetTime, setPresetTime] = useState<string | undefined>(undefined);
   const [view, setView] = useState<View>("month");
@@ -242,6 +290,7 @@ export function Calendar() {
   }, [events.data]);
 
   const openNew = (date?: string, time?: string) => { setPresetDate(date); setPresetTime(time); setAdding(true); };
+  const openDetail = (e: CalEvent) => setDetail(e);
   const shift = (dir: number) => setCursor((c) =>
     view === "day" ? addDays(c, dir) : view === "week" ? addDays(c, dir * 7) : new Date(c.getFullYear(), c.getMonth() + dir, 1));
   const label = view === "day"
@@ -269,6 +318,7 @@ export function Calendar() {
       </header>
 
       {adding && <NewEventModal token={token} date={presetDate} time={presetTime} onClose={() => { setAdding(false); setPresetDate(undefined); setPresetTime(undefined); }} />}
+      {detail && <EventDetailModal event={detail} onClose={() => setDetail(null)} />}
 
       <div {...stylex.props(styles.filters)}>
         {CATS.map(([labelTxt, value]) => (
@@ -291,14 +341,15 @@ export function Calendar() {
           {events.isPending ? <Loading /> : events.isError ? <ErrorState error={events.error} />
             : events.data.length === 0 ? <EmptyState title="Nothing scheduled">No events in this window.</EmptyState>
             : events.data.map((e) => (
-              <div key={`${e.source}:${e.id}`} {...stylex.props(styles.row)} data-testid="cal-event">
+              <button key={`${e.source}:${e.id}`} type="button" {...stylex.props(styles.row, styles.rowBtn)} data-testid="cal-event"
+                aria-label={`${e.title}, ${fmtDate(e.startOn)} — view event`} onClick={() => openDetail(e)}>
                 <div {...stylex.props(styles.date)}>{fmtDate(e.startOn)}{e.startTime ? ` · ${fmtTime(e.startTime)}` : ""}</div>
                 <div {...stylex.props(styles.grow)}>
                   <div {...stylex.props(styles.evTitle)}>{e.title}</div>
                   {e.readOnly && <div {...stylex.props(styles.ro)}>from {e.source} · read-only</div>}
                 </div>
                 <Pill tone={catTone(e.category)}>{e.category}</Pill>
-              </div>
+              </button>
             ))}
         </Card>
       ) : view === "month" ? (
@@ -313,16 +364,19 @@ export function Calendar() {
                   const isToday = key === ymd(today);
                   const evs = byDay.get(key) ?? [];
                   return (
-                    <button key={key} type="button" data-testid="cal-day"
-                      aria-label={d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
-                      {...stylex.props(styles.cell, out && styles.cellOut, isToday && styles.cellToday)} onClick={() => openNew(key)}>
-                      <span {...stylex.props(styles.dayNum, isToday && styles.dayNumToday)}>{d.getDate()}</span>
-                      {evs.slice(0, 4).map((e) => {
-                        const [bg, fg] = chipColors(e.category);
-                        return <span key={`${e.source}:${e.id}`} {...stylex.props(styles.chip(bg, fg))} data-testid="cal-chip" title={e.title}>{e.startTime ? `${fmtTime(e.startTime)} ` : ""}{e.title}</span>;
-                      })}
-                      {evs.length > 4 && <span {...stylex.props(styles.more)}>+{evs.length - 4} more</span>}
-                    </button>
+                    <div key={key} {...stylex.props(styles.cellBox, out && styles.cellOut, isToday && styles.cellToday)}>
+                      <button type="button" data-testid="cal-day" {...stylex.props(styles.cellAdd)}
+                        aria-label={d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+                        onClick={() => openNew(key)} />
+                      <div {...stylex.props(styles.cellContent)}>
+                        <span {...stylex.props(styles.dayNum, isToday && styles.dayNumToday)}>{d.getDate()}</span>
+                        {evs.slice(0, 4).map((e) => {
+                          const [bg, fg] = chipColors(e.category);
+                          return <button key={`${e.source}:${e.id}`} type="button" {...stylex.props(styles.chipBtn, styles.chip(bg, fg))} data-testid="cal-chip" title={e.title} onClick={() => openDetail(e)}>{e.startTime ? `${fmtTime(e.startTime)} ` : ""}{e.title}</button>;
+                        })}
+                        {evs.length > 4 && <button type="button" {...stylex.props(styles.more)} onClick={() => { setCursor(d); setView("day"); }}>+{evs.length - 4} more</button>}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -331,7 +385,7 @@ export function Calendar() {
         </Card>
       ) : (
         <Card>
-          {events.isError ? <ErrorState error={events.error} /> : <TimeGrid days={gridDays} byDay={byDay} onSlot={(date, hour) => openNew(date, `${pad(hour)}:00`)} />}
+          {events.isError ? <ErrorState error={events.error} /> : <TimeGrid days={gridDays} byDay={byDay} onSlot={(date, hour) => openNew(date, `${pad(hour)}:00`)} onEvent={openDetail} />}
         </Card>
       )}
     </div>

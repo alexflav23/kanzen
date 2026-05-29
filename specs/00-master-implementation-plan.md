@@ -108,7 +108,7 @@ graph LR
   F & G --> H[Hardening & launch]
 ```
 
-## End-to-end UI completeness (audit — 2026-05-29, through NL-2a)
+## End-to-end UI completeness (audit — 2026-05-29, through NL-2b)
 Every feature below is **Done (sandbox)** at the backend (Tapir API + authz + migration + ITs). This audit is strictly about the **web UI**: is *every* UI surface the feature needs shipped, wired to the real API, live on :3020, and tested? Judged against the per-feature specs + `input/` prototype. Mobile (F31) is a separate surface, tracked on its own row. Honest bar — "tested endpoint exists" ≠ UI done.
 
 **Legend:** 🟢 UI complete (no web UI deferred) · 🟡 core workflow usable E2E, named UI extras deferred · 🔵 no dedicated web UI yet (backend-only, or surfaces only indirectly).

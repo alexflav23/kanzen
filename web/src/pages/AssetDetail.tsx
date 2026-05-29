@@ -47,8 +47,15 @@ const styles = stylex.create({
   cardPad: { padding: "16px 20px" },
   heroWrap: { width: "100%", height: "240px", borderRadius: radius.lg, overflow: "hidden", marginBottom: "20px", backgroundColor: colors.bgSunken, border: `1px solid ${colors.line}` },
   heroImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
-  kvActions: { display: "flex", gap: "8px", padding: "12px 20px", borderBottom: `1px solid ${colors.line}` },
-  kvBtn: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px" },
+  // one clear, always-reachable Actions menu in the page header (replaces the actions scattered across cards)
+  headerRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" },
+  menuWrap: { position: "relative", flexShrink: 0 },
+  actionsBtn: { display: "inline-flex", alignItems: "center", gap: "7px", padding: "9px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13.5px", fontWeight: 500 },
+  menuBackdrop: { position: "fixed", inset: 0, zIndex: 40, border: 0, background: "transparent", cursor: "default", padding: 0 },
+  menu: { position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 41, minWidth: "210px", backgroundColor: colors.bgElev, border: `1px solid ${colors.line}`, borderRadius: radius.md, boxShadow: "0 14px 36px rgba(0,0,0,0.18)", padding: "6px", display: "flex", flexDirection: "column", gap: "1px" },
+  menuItem: { display: "flex", alignItems: "center", gap: "9px", width: "100%", textAlign: "left", padding: "9px 12px", borderRadius: radius.sm, border: 0, background: "transparent", color: colors.ink, cursor: "pointer", fontSize: "13.5px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
+  menuSep: { height: "1px", backgroundColor: colors.line, margin: "5px 2px" },
+  caret: { fontSize: "10px", opacity: 0.9 },
   histRow: { display: "flex", gap: "12px", padding: "12px 20px", borderBottom: `1px solid ${colors.line}` },
   histGrow: { flex: 1, minWidth: 0 },
   histTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink },
@@ -60,7 +67,6 @@ const styles = stylex.create({
   evCost: { fontVariantNumeric: "tabular-nums", fontWeight: 500 },
   valBar: { marginTop: "7px", maxWidth: "240px" },
   lifetime: { display: "flex", justifyContent: "space-between", padding: "14px 20px", borderTop: `1px solid ${colors.line}`, fontSize: "13.5px", fontWeight: 600 },
-  action: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "12.5px" },
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
   modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
@@ -351,6 +357,7 @@ export function AssetDetail() {
   const [moving, setMoving] = useState(false);
   const [changingCustody, setChangingCustody] = useState(false);
   const [restructuring, setRestructuring] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [tab, setTab] = useState<"overview" | "timeline" | "provenance" | "value">("overview");
   const qc = useQueryClient();
   const assetQ = useQuery({ queryKey: ["asset", id, token], queryFn: () => getAsset(id, token) });
@@ -394,17 +401,41 @@ export function AssetDetail() {
           <img {...stylex.props(styles.heroImg)} src={heroUrl} alt={`${a.title} — hero photo`} />
         </div>
       )}
-      <div>
-        {a.maker && <div {...stylex.props(styles.eyebrow)}>{a.maker}</div>}
-        <h1 {...stylex.props(styles.title)}>{a.title}</h1>
-        <div {...stylex.props(styles.pills)}>
-          <Pill tone="accent">{categoryName}</Pill>
-          <Pill>{modeLabel}</Pill>
-          <Pill>{a.ownershipStatus}</Pill>
+      <div {...stylex.props(styles.headerRow)}>
+        <div>
+          {a.maker && <div {...stylex.props(styles.eyebrow)}>{a.maker}</div>}
+          <h1 {...stylex.props(styles.title)}>{a.title}</h1>
+          <div {...stylex.props(styles.pills)}>
+            <Pill tone="accent">{categoryName}</Pill>
+            <Pill>{modeLabel}</Pill>
+            <Pill>{a.ownershipStatus}</Pill>
+          </div>
+          <div {...stylex.props(styles.tagsRow)}>
+            <TagChips entityType="asset" entityId={id} readOnly={!can("asset", "write")} />
+          </div>
         </div>
-        <div {...stylex.props(styles.tagsRow)}>
-          <TagChips entityType="asset" entityId={id} readOnly={!can("asset", "write")} />
-        </div>
+        {(canWrite || isPrincipal) && (
+          <div {...stylex.props(styles.menuWrap)}>
+            <button type="button" data-testid="asset-actions" aria-haspopup="menu" aria-expanded={menuOpen}
+              {...stylex.props(styles.actionsBtn)} onClick={() => setMenuOpen((o) => !o)}>
+              Actions <span {...stylex.props(styles.caret)} aria-hidden="true">▾</span>
+            </button>
+            {menuOpen && (
+              <>
+                <button type="button" aria-label="Close menu" {...stylex.props(styles.menuBackdrop)} onClick={() => setMenuOpen(false)} />
+                <div role="menu" data-testid="asset-actions-menu" {...stylex.props(styles.menu)}>
+                  {canWrite && <button type="button" role="menuitem" {...stylex.props(styles.menuItem)} onClick={() => { setEditing(true); setMenuOpen(false); }}>Edit details</button>}
+                  {canWrite && <button type="button" role="menuitem" data-testid="move-btn" {...stylex.props(styles.menuItem)} onClick={() => { setMoving(true); setMenuOpen(false); }}><Move size={14} /> Move</button>}
+                  {canWrite && <button type="button" role="menuitem" data-testid="custody-btn" {...stylex.props(styles.menuItem)} onClick={() => { setChangingCustody(true); setMenuOpen(false); }}>Change custody</button>}
+                  {canWrite && <button type="button" role="menuitem" {...stylex.props(styles.menuItem)} onClick={() => { setLogging(true); setMenuOpen(false); }}><Plus size={14} /> Log event</button>}
+                  {isPrincipal && <button type="button" role="menuitem" {...stylex.props(styles.menuItem)} onClick={() => { setValuing(true); setMenuOpen(false); }}>Record valuation</button>}
+                  {canWrite && <div {...stylex.props(styles.menuSep)} aria-hidden="true" />}
+                  {canWrite && <button type="button" role="menuitem" data-testid="restructure-btn" {...stylex.props(styles.menuItem)} onClick={() => { setRestructuring(true); setMenuOpen(false); }}>Restructure…</button>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div {...stylex.props(styles.tabBar)} role="tablist" aria-label="Asset sections">
@@ -443,8 +474,6 @@ export function AssetDetail() {
         <Card>
           <CardHeader>
             <CardTitle>Key facts</CardTitle>
-            {can("asset", "write") && <button type="button" onClick={() => setEditing(true)} {...stylex.props(styles.action)}>Edit</button>}
-            {can("asset", "write") && <button type="button" data-testid="restructure-btn" onClick={() => setRestructuring(true)} {...stylex.props(styles.action)}>Restructure</button>}
           </CardHeader>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Category</span><span {...stylex.props(styles.kvV)}>{categoryName}</span></div>
           <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Tracking</span><span {...stylex.props(styles.kvV)}>{modeLabel}</span></div>
@@ -453,12 +482,6 @@ export function AssetDetail() {
           {a.acquisitionDate && <div {...stylex.props(styles.kv)}><span {...stylex.props(styles.kvK)}>Acquired</span><span {...stylex.props(styles.kvV)}>{new Date(`${a.acquisitionDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div>}
           <div {...stylex.props(styles.kv)} data-testid="kv-location"><span {...stylex.props(styles.kvK)}>Location</span><span {...stylex.props(styles.kvV)}>{locationLabel}</span></div>
           <div {...stylex.props(styles.kv)} data-testid="kv-custody"><span {...stylex.props(styles.kvK)}>Custody</span><span {...stylex.props(styles.kvV)}>{humanCustody(a.custodyStatus)}</span></div>
-          {canWrite && (
-            <div {...stylex.props(styles.kvActions)}>
-              <button type="button" {...stylex.props(styles.kvBtn)} data-testid="move-btn" onClick={() => setMoving(true)}><Move size={12} /> Move</button>
-              <button type="button" {...stylex.props(styles.kvBtn)} data-testid="custody-btn" onClick={() => setChangingCustody(true)}>Change custody</button>
-            </div>
-          )}
           {(collectionsQ.data?.length ?? 0) > 0 && (
             <div {...stylex.props(styles.kv)} data-testid="asset-collections">
               <span {...stylex.props(styles.kvK)}>Collections</span>
@@ -495,7 +518,6 @@ export function AssetDetail() {
         <Card>
           <CardHeader>
             <CardTitle>Lifecycle</CardTitle>
-            <button type="button" onClick={() => setLogging(true)} {...stylex.props(styles.action)}><Plus size={13} /> Log event</button>
           </CardHeader>
           {timelineQ.isPending ? <Loading label="Loading the timeline…" />
             : timelineQ.isError ? <ErrorState error={timelineQ.error} />
@@ -570,7 +592,6 @@ export function AssetDetail() {
           <Card>
             <CardHeader>
               <CardTitle>Valuations</CardTitle>
-              <button type="button" onClick={() => setValuing(true)} {...stylex.props(styles.action)}><Plus size={13} /> Record valuation</button>
             </CardHeader>
             {valuationsQ.isPending ? <Loading label="Loading valuations…" />
               : valuationsQ.isError ? <div {...stylex.props(styles.note)}>Valuations are Principal-only.</div>
