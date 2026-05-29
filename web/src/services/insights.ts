@@ -29,6 +29,7 @@ export const RegistryAnalyticsSchema = z.object({
   lifetimeSpendMinor: z.number(),
   byCategory: z.array(z.object({ category: z.string(), totalMinor: z.number() })),
   topAssets: z.array(z.object({ title: z.string(), maker: z.string().nullable(), valueMinor: z.number() })),
+  spendByMonth: z.array(z.object({ month: z.string(), currency: z.string(), totalMinor: z.number() })),
 });
 export type RegistryAnalytics = z.infer<typeof RegistryAnalyticsSchema>;
 

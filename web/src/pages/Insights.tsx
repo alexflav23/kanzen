@@ -32,6 +32,13 @@ const styles = stylex.create({
   kpiN: { fontSize: "28px", fontWeight: 700, color: colors.ink, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" },
   kpiL: { fontSize: "12px", color: colors.ink3, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: "2px" },
   cols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", marginBottom: "20px", alignItems: "start" },
+  cardMb: { marginBottom: "20px" },
+  trendNote: { fontSize: "11.5px", color: colors.ink3 },
+  chart: { display: "flex", alignItems: "flex-end", gap: "8px", height: "150px", padding: "20px 20px 0" },
+  barWrap: { flex: 1, height: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", minWidth: 0 },
+  spendBar: (pct: number) => ({ width: "62%", maxWidth: "30px", height: `${pct}%`, minHeight: "2px", backgroundColor: colors.accent, borderRadius: "4px 4px 0 0" }),
+  xaxis: { display: "flex", gap: "8px", padding: "8px 20px 18px" },
+  xlabel: { flex: 1, textAlign: "center", fontSize: "10.5px", color: colors.ink3, fontVariantNumeric: "tabular-nums", minWidth: 0, overflow: "hidden" },
   stack: { display: "flex", height: "14px", borderRadius: "7px", overflow: "hidden", margin: "4px 18px 16px" },
   seg: (pct: number, bg: string) => ({ height: "100%", width: `${pct}%`, backgroundColor: bg }),
   legendRow: { display: "flex", alignItems: "center", gap: "10px", padding: "6px 18px", fontSize: "13px" },
@@ -123,6 +130,31 @@ export function Insights() {
             ))}
         </Card>
       </div>
+
+      {analytics.data && (() => {
+        const gbp = analytics.data.spendByMonth.filter((p) => p.currency === "GBP");
+        const max = Math.max(1, ...gbp.map((p) => p.totalMinor));
+        const shortMonth = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("en-GB", { month: "short" });
+        return (
+          <Card style={styles.cardMb}>
+            <CardHeader><CardTitle>Spend · last 12 months</CardTitle><span {...stylex.props(styles.trendNote)}>Approved expenses · GBP (native, no conversion)</span></CardHeader>
+            {gbp.length === 0 ? <EmptyState title="No spend yet">Approved expenses will trend here by month.</EmptyState> : (
+              <div data-testid="spend-trend">
+                <div {...stylex.props(styles.chart)}>
+                  {gbp.map((p) => (
+                    <div key={p.month} {...stylex.props(styles.barWrap)} title={`${shortMonth(p.month)}: ${fmtMoney(p.totalMinor, "GBP")}`}>
+                      <div {...stylex.props(styles.spendBar((p.totalMinor / max) * 100))} data-testid="spend-bar" />
+                    </div>
+                  ))}
+                </div>
+                <div {...stylex.props(styles.xaxis)}>
+                  {gbp.map((p) => <span key={p.month} {...stylex.props(styles.xlabel)}>{shortMonth(p.month)}</span>)}
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       <Card>
         <CardHeader><CardTitle>Registry health{health.data ? ` · ${health.data.total} assets` : ""}</CardTitle></CardHeader>

@@ -10,6 +10,7 @@ vi.mock("../services/insights", () => ({
     lifetimeSpendMinor: 27500000,
     byCategory: [{ category: "Art", totalMinor: 9200000 }, { category: "Watches", totalMinor: 5165000 }],
     topAssets: [{ title: "La Colombe", maker: "Picasso", valueMinor: 9200000 }, { title: "Royal Oak", maker: "AP", valueMinor: 4200000 }],
+    spendByMonth: [{ month: "2026-04", currency: "GBP", totalMinor: 184020 }, { month: "2026-05", currency: "GBP", totalMinor: 320000 }],
   }),
   listQualityFlags: async () => [
     { id: "f1", assetId: "a1", assetTitle: "Royal Oak", kind: "missing_proof", severity: "medium" },
@@ -49,5 +50,8 @@ describe("Insights", () => {
     expect(screen.getByText("expensive no proof")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run scan" })).toBeInTheDocument();
+    // F29 spend-trend: a bar per GBP month
+    expect(screen.getByTestId("spend-trend")).toBeInTheDocument();
+    expect(screen.getAllByTestId("spend-bar")).toHaveLength(2);
   });
 });

@@ -41,4 +41,13 @@ object InsightsIT extends IOSuite {
         expect(spend > 0L) and expect(total > 0L)
     }
   }
+
+  test("F29 — spend-by-month returns chronological per-currency approved-expense totals (last 12 months)") { xa =>
+    InsightsRepo.spendByMonth.transact(xa).map { rows =>
+      expect(rows.nonEmpty) and // seeded approved expenses
+        expect(rows.forall(_._3 >= 0L)) and
+        expect(rows.forall { case (m, _, _) => m.matches("\\d{4}-\\d{2}") }) and // YYYY-MM
+        expect(rows.map(_._1) == rows.map(_._1).sorted) // chronological
+    }
+  }
 }

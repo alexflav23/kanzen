@@ -23,11 +23,13 @@ object Insights {
 
   final case class CategorySpend(category: String, totalMinor: Long)
   final case class TopAsset(title: String, maker: Option[String], valueMinor: Long)
+  final case class SpendPoint(month: String, currency: String, totalMinor: Long)
   final case class RegistryAnalytics(
       assetTotal: Long,
       lifetimeSpendMinor: Long,
       byCategory: List[CategorySpend],
-      topAssets: List[TopAsset]
+      topAssets: List[TopAsset],
+      spendByMonth: List[SpendPoint]
   )
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access"))
@@ -43,12 +45,14 @@ object Insights {
             spend <- InsightsRepo.lifetimeSpendMinor
             byCat <- InsightsRepo.valueByCategory
             top <- InsightsRepo.topAssets(6)
+            trend <- InsightsRepo.spendByMonth
           } yield Right(
             RegistryAnalytics(
               total,
               spend,
               byCat.map { case (c, t) => CategorySpend(c, t) },
-              top.map { case (title, maker, v) => TopAsset(title, maker, v) }
+              top.map { case (title, maker, v) => TopAsset(title, maker, v) },
+              trend.map { case (m, ccy, t) => SpendPoint(m, ccy, t) }
             )
           ): Out[RegistryAnalytics]
       }

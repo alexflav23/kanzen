@@ -39,4 +39,13 @@ object InsightsRepo {
     sql"""select title, maker, coalesce(acquisition_cost_minor, 0)
           from assets where deleted_at is null and acquisition_cost_minor is not null
           order by acquisition_cost_minor desc limit $limit""".query[(String, Option[String], Long)].to[List]
+
+  /** F29 — approved-expense spend per month per currency over the last 12 months (native, no FX). */
+  def spendByMonth: ConnectionIO[List[(String, String, Long)]] =
+    sql"""select to_char(date_trunc('month', coalesce(incurred_on, created_at::date)), 'YYYY-MM') as m,
+                 currency, coalesce(sum(amount_minor), 0)
+          from expenses
+          where status = 'approved'
+            and coalesce(incurred_on, created_at::date) >= date_trunc('month', current_date) - interval '11 months'
+          group by m, currency order by m""".query[(String, String, Long)].to[List]
 }

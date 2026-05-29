@@ -15,6 +15,9 @@ test("insights shows real analytics: KPIs, value-by-category and top assets (F29
   await expect(page.getByTestId("by-category")).toBeVisible();        // aggregated from real seeded assets
   expect(await page.getByTestId("cat-row").count()).toBeGreaterThanOrEqual(1);
   expect(await page.getByTestId("top-asset").count()).toBeGreaterThanOrEqual(1);
+  // F29 spend-trend: monthly approved-expense bars (seeded GBP expenses)
+  await expect(page.getByTestId("spend-trend")).toBeVisible();
+  expect(await page.getByTestId("spend-bar").count()).toBeGreaterThanOrEqual(1);
 });
 
 test("running a scan surfaces data-quality flags", async ({ page }) => {
