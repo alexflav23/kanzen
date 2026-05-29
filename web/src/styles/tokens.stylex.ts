@@ -19,6 +19,10 @@ export const colors = stylex.defineVars({
   accent: "#4F46E5",
   accentSoft: "rgba(79, 70, 229, .10)",
   accentInk: "#FFFFFF",
+  // "Apple-note" warm paper yellow — for internal/private surfaces (inbox notes) so they read as
+  // pinned notes, distinct from the email body. Low-contrast vs bg; ink2/ink3 still clear AA on it.
+  note: "#FBF3CE",
+  noteLine: "rgba(146, 110, 14, .22)",
   positive: "#15803D",
   positiveSoft: "rgba(21, 128, 61, .10)",
   warn: "#92400E", // one shade darker than the design's #B45309 so warn-on-warnSoft clears WCAG AA (4.5:1)

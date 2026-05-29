@@ -7,7 +7,8 @@ import { Pill } from "../components/Pill";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { Avatar } from "../components/Avatar";
 import { AgentRibbon } from "../components/AgentRibbon";
-import { Check, X, Inbox as InboxIcon, Documents } from "../components/icons";
+import { ProposalReviewModal } from "../components/ProposalReviewModal";
+import { Check, Inbox as InboxIcon, Documents } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
@@ -56,26 +57,27 @@ const styles = stylex.create({
   btn: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "6px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit" },
   assignSel: { padding: "6px 8px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "12.5px" },
   body: { padding: "18px 20px", display: "flex", flexDirection: "column", gap: "16px" },
-  prop: { border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, boxShadow: `inset 3px 0 0 ${colors.accent}`, borderRadius: radius.md, padding: "14px 16px" },
+  prop: { display: "block", width: "100%", textAlign: "left", fontFamily: "inherit", cursor: "pointer", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, boxShadow: `inset 3px 0 0 ${colors.accent}`, borderRadius: radius.md, padding: "14px 16px", ":hover": { backgroundColor: colors.bgSunken } },
   propHead: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" },
   propTitle: { fontSize: "14px", fontWeight: 600, color: colors.ink },
   propSummary: { fontSize: "13px", color: colors.ink2, lineHeight: 1.45 },
   conf: { fontSize: "11px", color: colors.accent, fontWeight: 600, marginLeft: "auto" },
-  propActions: { display: "flex", gap: "8px", marginTop: "12px" },
-  confirm: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "7px 13px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "12.5px", fontWeight: 500 },
-  reject: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "7px 13px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px" },
+  propReview: { fontSize: "12px", fontWeight: 600, color: colors.accent, marginTop: "10px" },
   msg: { borderTop: `1px solid ${colors.line}`, paddingTop: "14px" },
   msgFrom: { fontSize: "12.5px", fontWeight: 500, color: colors.ink },
   msgTime: { fontSize: "11px", color: colors.ink3, marginLeft: "8px" },
   msgBody: { fontSize: "13.5px", color: colors.ink2, lineHeight: 1.55, marginTop: "8px", whiteSpace: "pre-wrap" },
-  commentsHead: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, borderTop: `1px solid ${colors.line}`, paddingTop: "16px" },
-  comment: { display: "flex", flexDirection: "column", gap: "2px", padding: "8px 0" },
+  // internal notes live on the warm "Apple-note" surface — visibly private, distinct from the email body
+  notes: { backgroundColor: colors.note, border: `1px solid ${colors.noteLine}`, borderRadius: radius.md, padding: "14px 16px", marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" },
+  notesHead: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 700, marginBottom: "4px" },
+  comment: { display: "flex", flexDirection: "column", gap: "2px", padding: "6px 0" },
   cAuthor: { fontSize: "12px", fontWeight: 600, color: colors.ink },
   cBody: { fontSize: "13px", color: colors.ink2 },
   cTime: { fontSize: "11px", color: colors.ink3, marginLeft: "6px" },
-  addRow: { display: "flex", gap: "8px", marginTop: "4px" },
-  addInput: { flex: 1, padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13px", boxSizing: "border-box" },
-  note: { fontSize: "11.5px", color: colors.ink3, marginTop: "4px" },
+  addRow: { display: "flex", gap: "8px", marginTop: "6px" },
+  addInput: { flex: 1, padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.noteLine}`, backgroundColor: colors.bgElev, color: colors.ink, fontSize: "13px", boxSizing: "border-box" },
+  noteBtn: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "6px 11px", borderRadius: radius.sm, border: `1px solid ${colors.noteLine}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit" },
+  note: { fontSize: "11.5px", color: colors.ink3, marginTop: "6px" },
   empty: { display: "grid", placeItems: "center", color: colors.ink3, fontSize: "13.5px", padding: "60px 20px" },
   attachRow: { display: "flex", flexWrap: "wrap", gap: "8px", borderTop: `1px solid ${colors.line}`, paddingTop: "14px" },
   attach: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "5px 10px", borderRadius: radius.sm, backgroundColor: colors.bgSunken, color: colors.ink2, fontSize: "12px", border: `1px solid ${colors.line}` },
@@ -90,6 +92,7 @@ export function Inbox() {
   const [selected, setSelected] = useState<string | null>(params.get("thread"));
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null); // proposal id under review
   const canReassign = role != null && role !== "staff";
 
   const inboxesQ = useQuery({ queryKey: ["inbox-inboxes", token], queryFn: () => listInboxes(token) });
@@ -107,9 +110,9 @@ export function Inbox() {
   const comment = useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => addThreadComment(id, body, token), onSuccess: () => { setDraft(""); invalidate(); } });
   const confirm = useMutation({
     mutationFn: (id: string) => confirmProposal(id, token),
-    onSuccess: (r) => { setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
+    onSuccess: (r) => { setReviewing(null); setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
   });
-  const reject = useMutation({ mutationFn: (id: string) => rejectProposal(id, token), onSuccess: invalidate });
+  const reject = useMutation({ mutationFn: (id: string) => rejectProposal(id, token), onSuccess: () => { setReviewing(null); invalidate(); } });
 
   const threads = threadsQ.data ?? [];
   const railItem = (label: string, on: boolean, onClick: () => void, count?: number) => (
@@ -186,18 +189,15 @@ export function Inbox() {
 
                 <div {...stylex.props(styles.body)}>
                   {detail.proposals.filter((p) => p.status === "proposed").map((p) => (
-                    <div key={p.id} {...stylex.props(styles.prop)} data-testid="agent-proposal">
+                    <button key={p.id} type="button" {...stylex.props(styles.prop)} data-testid="agent-proposal" onClick={() => setReviewing(p.id)}>
                       <div {...stylex.props(styles.propHead)}>
                         <AgentRibbon>Kanzen</AgentRibbon>
                         <span {...stylex.props(styles.propTitle)}>{p.title}</span>
                         {p.confidence != null && <span {...stylex.props(styles.conf)}>{Math.round(p.confidence * 100)}% sure</span>}
                       </div>
                       <div {...stylex.props(styles.propSummary)}>{p.summary}</div>
-                      <div {...stylex.props(styles.propActions)}>
-                        <button type="button" {...stylex.props(styles.confirm)} disabled={confirm.isPending} onClick={() => confirm.mutate(p.id)}><Check size={13} /> Confirm</button>
-                        <button type="button" {...stylex.props(styles.reject)} onClick={() => reject.mutate(p.id)}><X size={13} /> Dismiss</button>
-                      </div>
-                    </div>
+                      <div {...stylex.props(styles.propReview)}>Review &amp; confirm →</div>
+                    </button>
                   ))}
 
                   {detail.messages.map((m) => (
@@ -215,23 +215,34 @@ export function Inbox() {
                     </div>
                   )}
 
-                  <div {...stylex.props(styles.commentsHead)}>Internal notes</div>
-                  {detail.comments.map((c) => (
-                    <div key={c.id} {...stylex.props(styles.comment)}>
-                      <div><span {...stylex.props(styles.cAuthor)}>{c.authorName ?? "Someone"}</span><span {...stylex.props(styles.cTime)}>{ago(c.createdAt)}</span></div>
-                      <div {...stylex.props(styles.cBody)}>{c.body}</div>
+                  <section {...stylex.props(styles.notes)} aria-label="Internal notes" data-testid="internal-notes">
+                    <div {...stylex.props(styles.notesHead)}>Internal notes</div>
+                    {detail.comments.map((c) => (
+                      <div key={c.id} {...stylex.props(styles.comment)}>
+                        <div><span {...stylex.props(styles.cAuthor)}>{c.authorName ?? "Someone"}</span><span {...stylex.props(styles.cTime)}>{ago(c.createdAt)}</span></div>
+                        <div {...stylex.props(styles.cBody)}>{c.body}</div>
+                      </div>
+                    ))}
+                    <div {...stylex.props(styles.addRow)}>
+                      <input {...stylex.props(styles.addInput)} aria-label="Add an internal note" placeholder="Add an internal note…" value={draft} onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) comment.mutate({ id: detail.thread.id, body: draft.trim() }); }} />
+                      <button type="button" {...stylex.props(styles.noteBtn)} disabled={!draft.trim() || comment.isPending} onClick={() => comment.mutate({ id: detail.thread.id, body: draft.trim() })}>Note</button>
                     </div>
-                  ))}
-                  <div {...stylex.props(styles.addRow)}>
-                    <input {...stylex.props(styles.addInput)} aria-label="Add an internal note" placeholder="Add an internal note…" value={draft} onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) comment.mutate({ id: detail.thread.id, body: draft.trim() }); }} />
-                    <button type="button" {...stylex.props(styles.btn)} disabled={!draft.trim() || comment.isPending} onClick={() => comment.mutate({ id: detail.thread.id, body: draft.trim() })}>Note</button>
-                  </div>
-                  <div {...stylex.props(styles.note)}>Notes stay inside Kanzen — they're never sent to the sender.</div>
+                    <div {...stylex.props(styles.note)}>Notes stay inside Kanzen — they're never sent to the sender.</div>
+                  </section>
                 </div>
               </div>
             )}
         </div>
+      )}
+      {reviewing && (
+        <ProposalReviewModal
+          proposalId={reviewing}
+          confirming={confirm.isPending}
+          onConfirm={() => confirm.mutate(reviewing)}
+          onDismiss={() => reject.mutate(reviewing)}
+          onClose={() => setReviewing(null)}
+        />
       )}
       {toast && <div {...stylex.props(styles.toast)} role="status" data-testid="inbox-toast">{toast}</div>}
     </div>

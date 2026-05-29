@@ -13,7 +13,15 @@ test("the collaborative inbox lists threads and surfaces the agent's proposal on
   const proposal = page.getByTestId("agent-proposal").first();
   await expect(proposal).toBeVisible();
   await expect(proposal).toContainText("% sure"); // confidence — the auto-suggested intelligence
-  await expect(proposal.getByRole("button", { name: "Confirm" })).toBeVisible();
+  // internal notes sit on their own (warm "Apple-note") surface, distinct from the email body
+  await expect(page.getByTestId("internal-notes")).toBeVisible();
+  // clicking the suggestion opens the review popup with the itemised receipt + total, then Confirm
+  await proposal.click();
+  const modal = page.getByTestId("proposal-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByTestId("proposal-total")).toContainText("142.50");
+  await expect(modal).toContainText("never moves money"); // F27 surfaced before confirming
+  await expect(modal.getByTestId("proposal-confirm")).toBeVisible();
 });
 
 test("⌘K opens the command palette and returns permission-filtered hits", async ({ page }) => {

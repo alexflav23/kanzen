@@ -19,6 +19,14 @@ vi.mock("../services/collabInbox", () => ({
   assignThread: vi.fn(), setThreadStatus: vi.fn(), addThreadComment: vi.fn(),
   confirmProposal: vi.fn(async () => ({ created: "expense", recordType: "expense", label: "Ocado — logged for approval" })),
   rejectProposal: vi.fn(),
+  proposalDetail: vi.fn(async () => ({
+    id: "p1", threadId: "t1", actionType: "create_receipt", kind: "receipt", status: "proposed",
+    title: "Log the Ocado receipt + expense", summary: null, confidence: 0.93,
+    willCreate: "an expense, logged for approval — Kanzen never moves money.",
+    payee: "Ocado", description: null, currency: "GBP", totalMinor: 14250, category: "Groceries",
+    lineItems: [{ description: "Whole milk 2L ×2", amountMinor: 380 }, { description: "Sourdough loaf", amountMinor: 320 }],
+    date: "2026-05-29", time: null, location: null, links: [],
+  })),
 }));
 vi.mock("../services/people", () => ({ listPeople: async () => [{ id: "u1", name: "Marcia", role: "staff", jurisdiction: null, propertyId: null }] }));
 
@@ -47,9 +55,16 @@ describe("Inbox (collaborative)", () => {
     expect(proposal).toHaveTextContent("93% sure"); // the intelligence + confidence
     // the forwarded receipt is attached
     expect(await screen.findByTestId("thread-attachments")).toHaveTextContent("ocado-receipt.pdf");
-    // confirming the proposal calls through to create the record
+    // clicking the suggestion opens the review popup with the itemised receipt + total
+    fireEvent.click(proposal);
+    const modal = await screen.findByTestId("proposal-modal");
+    // wait for the detail to load, then assert the itemised receipt + the F27 reassurance
+    expect(await within(modal).findByTestId("proposal-total")).toHaveTextContent("142.50");
+    expect(modal).toHaveTextContent("never moves money");
+    expect(modal).toHaveTextContent("Whole milk");
+    // confirming from the popup calls through to create the record
     const { confirmProposal } = await import("../services/collabInbox");
-    fireEvent.click(within(proposal).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(modal).getByTestId("proposal-confirm"));
     await waitFor(() => expect(confirmProposal).toHaveBeenCalledWith("p1", "t"));
   });
 });

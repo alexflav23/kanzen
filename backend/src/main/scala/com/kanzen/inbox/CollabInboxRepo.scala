@@ -165,6 +165,10 @@ object CollabInboxRepo {
   def proposal(id: UUID): ConnectionIO[Option[ProposalFull]] =
     sql"select id, thread_id, action_type, status, payload from agent_actions where id = $id".query[ProposalFull].option
 
+  /** Title for a linked asset (the review popup labels what an event will be attached to). */
+  def assetTitle(id: UUID): ConnectionIO[Option[String]] =
+    sql"select title from assets where id = $id".query[String].option
+
   /** The thread's inbox property (for scoping the created record). */
   def threadProperty(threadId: UUID): ConnectionIO[Option[UUID]] =
     sql"""select i.property_id from email_threads t join mail_inboxes i on i.id = t.inbox_id

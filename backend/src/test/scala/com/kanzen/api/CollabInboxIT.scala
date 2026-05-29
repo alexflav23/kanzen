@@ -67,6 +67,25 @@ object CollabInboxIT extends IOSuite {
       expect(expenses.exists(_.payee.contains("Ocado"))) // a real expense (for approval) was created
   }
 
+  test("W9.4 — the review popup gets the itemised receipt; the event gets date/time + its linked car") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      ocado = threads.find(_.subject.exists(_.contains("Ocado"))).get
+      ocadoDetail <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
+      receipt <- Inbox.proposalDetail(xa, toby, ocadoDetail.proposals.head.id).map(_.toOption.get)
+      service = threads.find(_.subject.exists(_.contains("Range Rover"))).get
+      serviceDetail <- Inbox.detail(xa, toby, service.id).map(_.toOption.get)
+      event <- Inbox.proposalDetail(xa, toby, serviceDetail.proposals.head.id).map(_.toOption.get)
+    } yield expect(receipt.kind == "receipt") and
+      expect(receipt.lineItems.sizeIs == 18) and // the itemised receipt
+      expect(receipt.lineItems.flatMap(_.amountMinor).sum == 14250L) and // items reconcile to the total
+      expect(receipt.totalMinor.contains(14250L)) and
+      expect(receipt.willCreate.contains("never moves money")) and // F27 surfaced in the popup
+      expect(event.kind == "event") and
+      expect(event.time.contains("09:00")) and
+      expect(event.links.exists(_.label.contains("Range Rover"))) // the event shows what it links to
+  }
+
   test("W9.2 — confirming a delivery proposal creates a calendar event") { xa =>
     for {
       threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)

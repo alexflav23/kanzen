@@ -23,6 +23,19 @@ export const CThreadDetailSchema = z.object({
   thread: CThreadSchema, messages: z.array(CMessageSchema), proposals: z.array(CProposalSchema), comments: z.array(CCommentSchema), attachments: z.array(CAttachmentSchema),
 });
 export const ConfirmResultSchema = z.object({ created: z.string(), recordType: z.string().nullable(), label: z.string().nullable() });
+
+/** W9.4 — the itemised detail behind a proposal, for the review popup. */
+export const CProposalLineItemSchema = z.object({ description: z.string(), amountMinor: z.number().nullable() });
+export const CProposalLinkSchema = z.object({ targetType: z.string(), label: z.string() });
+export const CProposalDetailSchema = z.object({
+  id: z.string(), threadId: z.string().nullable(), actionType: z.string(), kind: z.string(), status: z.string(),
+  title: z.string().nullable(), summary: z.string().nullable(), confidence: z.number().nullable(), willCreate: z.string(),
+  payee: z.string().nullable(), description: z.string().nullable(), currency: z.string().nullable(),
+  totalMinor: z.number().nullable(), category: z.string().nullable(), lineItems: z.array(CProposalLineItemSchema),
+  date: z.string().nullable(), time: z.string().nullable(), location: z.string().nullable(),
+  links: z.array(CProposalLinkSchema),
+});
+export type CProposalDetail = z.infer<typeof CProposalDetailSchema>;
 export type CProposal = z.infer<typeof CProposalSchema>;
 export type CThreadDetail = z.infer<typeof CThreadDetailSchema>;
 
@@ -41,6 +54,8 @@ export const setThreadStatus = (id: string, status: string, token: string | null
   api(`/api/inbox/threads/${id}/status`, z.unknown(), { method: "POST", body: { status }, token });
 export const addThreadComment = (id: string, body: string, token: string | null) =>
   api(`/api/inbox/threads/${id}/comments`, CCommentSchema, { method: "POST", body: { body, mentions: [] }, token });
+export const proposalDetail = (id: string, token: string | null) =>
+  api(`/api/inbox/proposals/${id}`, CProposalDetailSchema, { token });
 export const confirmProposal = (id: string, token: string | null) =>
   api(`/api/inbox/proposals/${id}/confirm`, ConfirmResultSchema, { method: "POST", token });
 export const rejectProposal = (id: string, token: string | null) =>

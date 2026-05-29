@@ -19,6 +19,8 @@ export const darkTheme = stylex.createTheme(colors, {
   accent: "#8B85FF",
   accentSoft: "rgba(139, 133, 255, .12)", // .12 not the design's .18 → accent-on-accentSoft pills clear WCAG AA in dark
   accentInk: "#0A0B0F",
+  note: "#2A2614", // warm dark amber paper — the dark-mode "note" surface; ink2/ink3 clear AA on it
+  noteLine: "rgba(251, 191, 36, .18)",
   positive: "#5EE39A",
   positiveSoft: "rgba(94, 227, 154, .14)",
   warn: "#FBBF24",

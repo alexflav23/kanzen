@@ -82,6 +82,34 @@ object Inbox {
   /** What confirming a proposal created (for the success toast). */
   final case class ConfirmResult(created: String, recordType: Option[String], label: Option[String])
 
+  // ── proposal review detail (W9.4): the itemised receipt / dated event behind a proposal, for the confirm popup ──
+  final case class ProposalLineItem(description: String, amountMinor: Option[Long])
+  final case class ProposalLink(targetType: String, label: String)
+  final case class ProposalDetail(
+      id: UUID,
+      threadId: Option[UUID],
+      actionType: String,
+      kind: String, // "receipt" | "event" | "other" — drives the popup layout
+      status: String,
+      title: Option[String],
+      summary: Option[String],
+      confidence: Option[Double],
+      willCreate: String, // plain-English "what pressing Confirm does"
+      // receipt
+      payee: Option[String],
+      description: Option[String],
+      currency: Option[String],
+      totalMinor: Option[Long],
+      category: Option[String],
+      lineItems: List[ProposalLineItem],
+      // event
+      date: Option[String],
+      time: Option[String],
+      location: Option[String],
+      // records it will create / attach to
+      links: List[ProposalLink]
+  )
+
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to the inbox"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such thread."))
@@ -188,6 +216,77 @@ object Inbox {
   /** Back-reference: threads linked to a record (asset/expense/calendar), scope-filtered. */
   def linked(xa: Transactor[IO], p: Principal, targetType: String, targetId: UUID): IO[Out[List[ThreadView]]] =
     read(p, staffScope(p).flatMap(CollabInboxRepo.linkedThreads(targetType, targetId, _)).map(_.map(tv))).transact(xa)
+
+  /** The itemised detail behind a proposal (receipt line items / dated event + what Confirm will do), for the review
+    * popup. Read-gated + scope-checked like the thread it belongs to.
+    */
+  def proposalDetail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ProposalDetail]] = {
+    val tx = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      scope <- staffScope(p)
+      prOpt <- CollabInboxRepo.proposal(id)
+      res <- prOpt match {
+        case None => (Left(notFound): Out[ProposalDetail]).pure[ConnectionIO]
+        case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ProposalDetail]).pure[ConnectionIO]
+        case Some(pr) =>
+          val tid = pr.threadId.get
+          CollabInboxRepo.visible(tid, scope).flatMap { vis =>
+            if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ProposalDetail]).pure[ConnectionIO]
+            else
+              for {
+                rowOpt <- CollabInboxRepo.proposals(tid).map(_.find(_.id == id))
+                c = pr.payload.getOrElse(Json.Null).hcursor
+                items = c.downField("items").as[List[ProposalLineItem]].getOrElse(Nil)
+                assetLink <- c
+                  .get[UUID]("assetId")
+                  .toOption
+                  .flatTraverse(aid => CollabInboxRepo.assetTitle(aid).map(_.map(t => ProposalLink("asset", t))))
+              } yield {
+                val kind = pr.actionType match {
+                  case "create_receipt" | "reconcile_bill" => "receipt"
+                  case "create_event" => "event"
+                  case _ => "other"
+                }
+                val total = c.get[Long]("amountMinor").toOption.orElse {
+                  val s = items.flatMap(_.amountMinor).sum
+                  if (items.nonEmpty) Some(s) else None
+                }
+                val links = assetLink.toList
+                val willCreate = kind match {
+                  case "receipt" => "an expense, logged for approval — Kanzen never moves money."
+                  case "event" =>
+                    if (links.nonEmpty) s"a calendar event, linked to ${links.head.label}." else "a calendar event."
+                  case _ => "the proposed action."
+                }
+                Right(
+                  ProposalDetail(
+                    id = pr.id,
+                    threadId = pr.threadId,
+                    actionType = pr.actionType,
+                    kind = kind,
+                    status = pr.status,
+                    title = rowOpt.flatMap(_.title),
+                    summary = rowOpt.flatMap(_.summary),
+                    confidence = rowOpt.flatMap(_.confidence.map(_.toDouble)),
+                    willCreate = willCreate,
+                    payee = c.get[String]("payee").toOption,
+                    description = c.get[String]("description").toOption,
+                    currency = c.get[String]("currency").toOption,
+                    totalMinor = total,
+                    category = c.get[String]("category").toOption,
+                    lineItems = items,
+                    date = c.get[String]("date").toOption,
+                    time = c.get[String]("time").toOption,
+                    location = c.get[String]("location").toOption,
+                    links = links
+                  )
+                ): Out[ProposalDetail]
+              }
+          }
+      }
+    } yield res
+    tx.transact(xa)
+  }
 
   def assign(xa: Transactor[IO], p: Principal, id: UUID, r: AssignReq): IO[Out[Unit]] =
     onThread(p, id, assignA)(CollabInboxRepo.assign(id, r.assigneeId).void).transact(xa)
@@ -363,6 +462,12 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[CommentView])
     .summary("Internal comment (never outbound)")
+  val proposalDetailEndpoint = endpoint.get
+    .securityIn(bearer)
+    .in("api" / "inbox" / "proposals" / path[UUID]("id"))
+    .errorOut(err)
+    .out(jsonBody[ProposalDetail])
+    .summary("Itemised detail behind a proposal (for the review popup)")
   val confirmEndpoint = endpoint.post
     .securityIn(bearer)
     .in("api" / "inbox" / "proposals" / path[UUID]("id") / "confirm")
@@ -377,6 +482,9 @@ object Inbox {
     .summary("Dismiss a proposal")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
+    proposalDetailEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => (id: UUID) => proposalDetail(xa, p, id)),
     confirmEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => confirmProposal(xa, p, id)),
     rejectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => rejectProposal(xa, p, id)),
     inboxesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => inboxes(xa, p)),
@@ -398,6 +506,7 @@ object Inbox {
     threadsEndpoint,
     detailEndpoint,
     linkedEndpoint,
+    proposalDetailEndpoint,
     assignEndpoint,
     statusEndpoint,
     readEndpoint,
