@@ -46,10 +46,11 @@ describe("Tasks", () => {
     fireEvent.change(within(modal).getByLabelText("Assignee"), { target: { value: "u1" } });
     fireEvent.change(within(modal).getByLabelText("Due date"), { target: { value: "2026-06-10" } });
     fireEvent.change(within(modal).getByLabelText("Recurrence"), { target: { value: "monthly" } });
+    fireEvent.change(within(modal).getByLabelText("Priority"), { target: { value: "high" } });
     fireEvent.click(within(modal).getByRole("button", { name: "Add task" }));
     await waitFor(() =>
       expect(createTask).toHaveBeenCalledWith(
-        { projectId: "p1", title: "Polish silver", dueOn: "2026-06-10", recurrence: "monthly", assigneeId: "u1" },
+        { projectId: "p1", title: "Polish silver", dueOn: "2026-06-10", recurrence: "monthly", priority: "high", assigneeId: "u1" },
         "t",
       ),
     );

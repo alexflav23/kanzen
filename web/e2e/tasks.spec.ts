@@ -18,9 +18,12 @@ test("adding a task with an assignee + due date + recurrence makes it appear", a
   await modal.getByLabel("Title").fill(title);
   await modal.getByLabel("Assignee").selectOption({ index: 1 }); // first real person
   await modal.getByLabel("Due date").fill("2026-06-15");
-  await modal.getByLabel("Recurrence").selectOption("weekly");
+  await modal.getByLabel("Recurrence").selectOption("fortnightly"); // W-Todoist: extended cadence
+  await modal.getByLabel("Priority").selectOption("urgent");
   await modal.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByTestId("new-task")).toHaveCount(0);
   await expect(page.getByTestId("task-row").filter({ hasText: title })).toBeVisible(); // created
   await expect(page.getByText("due 2026-06-15")).toBeVisible(); // the due date round-tripped through the real backend
+  // an urgent task sorts to the top and shows its priority flag
+  await expect(page.getByText("urgent").first()).toBeVisible();
 });

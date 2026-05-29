@@ -29,7 +29,9 @@ final case class ShoppingList(
     `type`: String,
     cycle: Option[String],
     nextOrder: Option[LocalDate],
-    status: String
+    status: String,
+    priority: String,
+    assigneeId: Option[UUID]
 )
 
 /** F08 — shopping lists + items with the propose/approve/roll-forward workflow. */
@@ -39,7 +41,7 @@ object ListRepo {
       .query[UUID]
       .unique
 
-  /** Reconfigure a list — its property, vendor, ordering cadence + next-order day, type, name. */
+  /** Reconfigure a list — its property, vendor, ordering cadence + next-order day, type, name, priority, assignee. */
   def update(
       listId: UUID,
       name: String,
@@ -47,15 +49,18 @@ object ListRepo {
       vendor: Option[String],
       cycle: Option[String],
       nextOrder: Option[LocalDate],
-      typ: String
+      typ: String,
+      priority: String,
+      assigneeId: Option[UUID]
   ): ConnectionIO[Int] =
     sql"""update shopping_lists set name = $name, property_id = $propertyId, vendor = $vendor,
-            cycle = $cycle, next_order = $nextOrder, type = $typ
+            cycle = $cycle, next_order = $nextOrder, type = $typ, priority = $priority, assignee_id = $assigneeId
           where id = $listId and deleted_at is null""".update.run
 
   def lists: ConnectionIO[List[ShoppingList]] =
-    sql"""select id, name, vendor, property_id, type, cycle, next_order, status
-          from shopping_lists where deleted_at is null order by name"""
+    sql"""select id, name, vendor, property_id, type, cycle, next_order, status, priority, assignee_id
+          from shopping_lists where deleted_at is null
+          order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end, name"""
       .query[ShoppingList]
       .to[List]
 

@@ -8,10 +8,11 @@ export const TaskSchema = z.object({
   status: z.string(),
   dueOn: z.string().nullable(),
   recurrence: z.string().nullable(),
+  priority: z.string(), // urgent | high | normal | low
   assigneeId: z.string().nullable(),
 });
 export type Task = z.infer<typeof TaskSchema>;
-export type CreateTaskReq = { projectId: string; title: string; dueOn: string | null; recurrence: string | null; assigneeId: string | null };
+export type CreateTaskReq = { projectId: string; title: string; dueOn: string | null; recurrence: string | null; priority: string; assigneeId: string | null };
 
 export const ProjectSchema = z.object({ id: z.string(), name: z.string(), propertyId: z.string().nullable() });
 export type Project = z.infer<typeof ProjectSchema>;

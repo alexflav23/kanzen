@@ -19,6 +19,8 @@ import {
   type ShoppingList,
 } from "../services/lists";
 import { listProperties } from "../services/properties";
+import { listPeople } from "../services/people";
+import { PriorityPill, PRIORITIES } from "../components/PriorityPill";
 import { useAuth } from "../state/AuthContext";
 import { fmtMoney } from "../data/money";
 import { Loading, EmptyState, ErrorState } from "../components/states";
@@ -68,6 +70,9 @@ const styles = stylex.create({
   photoPanel: { padding: "6px 18px 12px 52px" },
   iconBtnOn: { color: colors.accent },
   addCard: { display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px" },
+  toggle: { padding: "5px 11px", borderRadius: "999px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink3, cursor: "pointer", fontSize: "12px", fontWeight: 500, flexShrink: 0 },
+  toggleOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft, color: colors.accent },
+  twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   addInput: { flex: 1, border: 0, backgroundColor: "transparent", color: colors.ink, fontSize: "14px", outline: { default: "none", ":focus": "none" } },
   catHeader: { padding: "12px 18px 8px", backgroundColor: colors.bg, borderBottom: `1px solid ${colors.line}` },
   checkbox: { width: "22px", height: "22px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "6px", border: `1.5px solid ${colors.line}`, backgroundColor: "transparent", cursor: "pointer", flexShrink: 0, color: colors.accentInk },
@@ -159,14 +164,18 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
   const { token } = useAuth();
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  const [staple, setStaple] = useState(false); // off = one-off for this run (e.g. "extra toilet paper"); on = repeats
   const [editing, setEditing] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const itemsQ = useQuery({ queryKey: ["list-items", list.id, token], queryFn: () => listItems(list.id, token) });
+  const peopleQ = useQuery({ queryKey: ["people", token], queryFn: () => listPeople(token) });
+  const peopleById = useMemo(() => new Map((peopleQ.data ?? []).map((p) => [p.id, p.name])), [peopleQ.data]);
+  const assigneeName = list.assigneeId ? peopleById.get(list.assigneeId) : undefined;
 
-  useEffect(() => setChecked({}), [list.id]);
+  useEffect(() => { setChecked({}); setStaple(false); }, [list.id]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["list-items", list.id] });
-  const add = useMutation({ mutationFn: () => addItem(list.id, { name: name.trim() }, token), onSuccess: () => { setName(""); invalidate(); } });
+  const add = useMutation({ mutationFn: () => addItem(list.id, { name: name.trim(), recurring: staple }, token), onSuccess: () => { setName(""); setStaple(false); invalidate(); } });
   const addSub = useMutation({ mutationFn: (v: { parent: string; name: string }) => addItem(list.id, { name: v.name.trim(), substituteFor: v.parent }, token), onSuccess: invalidate });
   const approve = useMutation({ mutationFn: (id: string) => approveItem(id, token), onSuccess: invalidate });
   const decline = useMutation({ mutationFn: (id: string) => declineItem(id, token), onSuccess: invalidate });
@@ -213,6 +222,8 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
           )}
         </div>
         <div {...stylex.props(styles.chipsRow)}>
+          <PriorityPill priority={list.priority} />
+          <span {...stylex.props(styles.chip)} data-testid="list-assignee">{assigneeName ? `Run · ${assigneeName}` : "Run · unassigned"}</span>
           <span {...stylex.props(styles.chip)}><Check size={12} /> {confirmed.length} confirmed</span>
           {needsApproval.length > 0 && (
             <span {...stylex.props(styles.chip, styles.chipWarn)}><Alert size={12} /> {needsApproval.length} need approval</span>
@@ -275,11 +286,15 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
             <input
               {...stylex.props(styles.addInput)}
               aria-label={`Add to ${list.name}`}
-              placeholder="Add an item to this list…"
+              placeholder={staple ? "Add a staple that repeats every run…" : "Add to this run (e.g. extra toilet paper)…"}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) add.mutate(); }}
             />
+            {/* off = one-off for this run; on = a staple that re-appears each cycle */}
+            <button type="button" {...stylex.props(styles.toggle, staple && styles.toggleOn)} aria-pressed={staple} data-testid="staple-toggle" onClick={() => setStaple((s) => !s)}>
+              {staple ? "Staple" : "One-off"}
+            </button>
             <button type="button" {...stylex.props(styles.btn, styles.btnSm)} disabled={!name.trim() || add.isPending} onClick={() => add.mutate()}>Add</button>
           </Card>
 
@@ -309,7 +324,7 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
         </>
       )}
 
-      {editing && <EditListModal list={list} onClose={() => setEditing(false)} />}
+      {editing && <EditListModal list={list} people={peopleQ.data ?? []} onClose={() => setEditing(false)} />}
     </div>
   );
 }
@@ -317,7 +332,7 @@ function ListDetail({ list, propName, canDecide }: { list: ShoppingList; propNam
 const CYCLES = ["weekly", "fortnightly", "monthly"];
 const LIST_TYPES = ["grocery", "supplies", "other"];
 
-function EditListModal({ list, onClose }: { list: ShoppingList; onClose: () => void }) {
+function EditListModal({ list, people, onClose }: { list: ShoppingList; people: { id: string; name: string }[]; onClose: () => void }) {
   const { token } = useAuth();
   const qc = useQueryClient();
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
@@ -327,8 +342,10 @@ function EditListModal({ list, onClose }: { list: ShoppingList; onClose: () => v
   const [cycle, setCycle] = useState(list.cycle ?? "weekly");
   const [nextOrder, setNextOrder] = useState(list.nextOrder ?? "");
   const [type, setType] = useState(list.type);
+  const [priority, setPriority] = useState(list.priority ?? "normal");
+  const [assigneeId, setAssigneeId] = useState(list.assigneeId ?? "");
   const save = useMutation({
-    mutationFn: () => editList(list.id, { name: name.trim(), vendor: vendor.trim() || null, propertyId: propertyId || null, cycle: cycle || null, nextOrder: nextOrder || null, type }, token),
+    mutationFn: () => editList(list.id, { name: name.trim(), vendor: vendor.trim() || null, propertyId: propertyId || null, cycle: cycle || null, nextOrder: nextOrder || null, type, priority, assigneeId: assigneeId || null }, token),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["lists"] }); onClose(); },
   });
   return (
@@ -354,6 +371,17 @@ function EditListModal({ list, onClose }: { list: ShoppingList; onClose: () => v
           <select {...stylex.props(styles.control)} aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
             {LIST_TYPES.map((t) => <option key={t} value={t}>{cap(t)}</option>)}
           </select></label>
+        <div {...stylex.props(styles.field, styles.twoCol)}>
+          <label><span {...stylex.props(styles.label)}>Priority</span>
+            <select {...stylex.props(styles.control)} aria-label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+              {PRIORITIES.map((p) => <option key={p} value={p}>{cap(p)}</option>)}
+            </select></label>
+          <label><span {...stylex.props(styles.label)}>Assign run to</span>
+            <select {...stylex.props(styles.control)} aria-label="Assign run to" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+              <option value="">— unassigned</option>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></label>
+        </div>
         <div {...stylex.props(styles.actions)}>
           <button type="button" {...stylex.props(styles.btn)} onClick={onClose}>Cancel</button>
           <button type="submit" {...stylex.props(styles.btn, styles.btnAccent)} disabled={!name.trim() || save.isPending}>{save.isPending ? "Saving…" : "Save"}</button>

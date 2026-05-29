@@ -35,6 +35,7 @@ object Tasks {
       status: String,
       dueOn: Option[LocalDate],
       recurrence: Option[String],
+      priority: String,
       assigneeId: Option[UUID]
   )
   final case class CreateProjectReq(name: String, propertyId: Option[UUID])
@@ -43,13 +44,18 @@ object Tasks {
       title: String,
       dueOn: Option[LocalDate],
       recurrence: Option[String],
+      priority: Option[String] = None,
       assigneeId: Option[UUID] = None
   )
   final case class CompleteResult(completed: UUID, nextTaskId: Option[UUID])
 
+  // accepted priority levels (urgent → low); anything else normalises to normal
+  private val priorities = Set("urgent", "high", "normal", "low")
+  private def normPriority(p: Option[String]): String = p.map(_.toLowerCase).filter(priorities).getOrElse("normal")
+
   private def pv(p: TaskProject): ProjectView = ProjectView(p.id, p.name, p.propertyId)
   private def tv(t: TaskRow): TaskView =
-    TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence, t.assigneeId)
+    TaskView(t.id, t.projectId, t.title, t.status, t.dueOn, t.recurrence, t.priority, t.assigneeId)
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to tasks"))
@@ -86,8 +92,19 @@ object Tasks {
     write(
       p,
       TaskRepo
-        .createTask(r.projectId, r.title, r.dueOn, r.recurrence, r.assigneeId)
-        .map(t => TaskView(t.id, Some(r.projectId), t.title, t.status, r.dueOn, t.recurrence, r.assigneeId)),
+        .createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+        .map(t =>
+          TaskView(
+            t.id,
+            Some(r.projectId),
+            t.title,
+            t.status,
+            r.dueOn,
+            t.recurrence,
+            normPriority(r.priority),
+            r.assigneeId
+          )
+        ),
       createA
     ).transact(xa)
   def complete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[CompleteResult]] =

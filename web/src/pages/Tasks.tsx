@@ -4,13 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill } from "../components/Pill";
+import { PriorityPill, PRIORITIES } from "../components/PriorityPill";
 import { Plus, Check } from "../components/icons";
 import { completeTask, createTask, listProjects, listTasks } from "../services/tasks";
 import { listPeople } from "../services/people";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 
-const RECURRENCES = ["", "daily", "weekly", "monthly"]; // "" = one-off (matches backend nextDue)
+const RECURRENCES = ["", "daily", "weekly", "fortnightly", "monthly", "quarterly"]; // "" = one-off (matches backend nextDue)
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "20px" },
@@ -29,6 +30,7 @@ const styles = stylex.create({
   modal: { width: "440px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
   field: { display: "block", marginBottom: "14px" },
+  twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
   control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
   actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
@@ -47,9 +49,10 @@ function NewTaskModal({ token, projects, people, onClose }: {
   const [title, setTitle] = useState("");
   const [dueOn, setDueOn] = useState("");
   const [recurrence, setRecurrence] = useState("");
+  const [priority, setPriority] = useState("normal");
   const [assigneeId, setAssigneeId] = useState("");
   const mut = useMutation({
-    mutationFn: () => createTask({ projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, assigneeId: assigneeId || null }, token),
+    mutationFn: () => createTask({ projectId, title: title.trim(), dueOn: dueOn || null, recurrence: recurrence || null, priority, assigneeId: assigneeId || null }, token),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); onClose(); },
   });
   return (
@@ -69,10 +72,16 @@ function NewTaskModal({ token, projects, people, onClose }: {
           </select></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Due date (optional)</span>
           <input {...stylex.props(styles.control)} aria-label="Due date" type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} /></label>
-        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Recurrence</span>
-          <select {...stylex.props(styles.control)} aria-label="Recurrence" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
-            {RECURRENCES.map((r) => <option key={r || "none"} value={r}>{r || "one-off"}</option>)}
-          </select></label>
+        <div {...stylex.props(styles.field, styles.twoCol)}>
+          <label><span {...stylex.props(styles.label)}>Priority</span>
+            <select {...stylex.props(styles.control)} aria-label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select></label>
+          <label><span {...stylex.props(styles.label)}>Recurrence</span>
+            <select {...stylex.props(styles.control)} aria-label="Recurrence" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+              {RECURRENCES.map((r) => <option key={r || "none"} value={r}>{r || "one-off"}</option>)}
+            </select></label>
+        </div>
         <div {...stylex.props(styles.label)}>A due date makes the task show on the Calendar (read-only overlay).</div>
         <div {...stylex.props(styles.actions)}>
           <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
@@ -119,6 +128,7 @@ export function Tasks() {
                   <div {...stylex.props(styles.sub)}>{[t.dueOn ? `due ${t.dueOn.slice(0, 10)}` : null, t.recurrence, t.assigneeId ? `· ${peopleById.get(t.assigneeId) ?? "assigned"}` : null].filter(Boolean).join(" · ") || "—"}</div>
                 </div>
                 <div {...stylex.props(styles.meta)}>
+                  <PriorityPill priority={t.priority} />
                   {t.assigneeId && <Pill>{peopleById.get(t.assigneeId) ?? "assigned"}</Pill>}
                   {t.recurrence && <Pill tone="accent">{t.recurrence}</Pill>}
                   {t.status !== "done"

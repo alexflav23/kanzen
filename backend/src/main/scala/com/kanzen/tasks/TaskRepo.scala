@@ -13,7 +13,9 @@ object TaskService {
   def nextDue(current: LocalDate, freq: String): LocalDate = freq match {
     case "daily" => current.plusDays(1)
     case "weekly" => current.plusWeeks(1)
+    case "fortnightly" => current.plusWeeks(2)
     case "monthly" => current.plusMonths(1)
+    case "quarterly" => current.plusMonths(3)
     case _ => current.plusWeeks(1)
   }
 }
@@ -27,6 +29,7 @@ final case class TaskRow(
     status: String,
     dueOn: Option[LocalDate],
     recurrence: Option[String],
+    priority: String,
     assigneeId: Option[UUID]
 )
 
@@ -38,9 +41,11 @@ object TaskRepo {
     sql"select id, name, property_id from task_projects order by name".query[TaskProject].to[List]
 
   def listTasks(projectId: Option[UUID]): ConnectionIO[List[TaskRow]] = {
-    val base = fr"select id, project_id, title, status, due_on, recurrence, assignee_id from tasks"
+    val base = fr"select id, project_id, title, status, due_on, recurrence, priority, assignee_id from tasks"
     val filtered = projectId.fold(base)(pid => base ++ fr"where project_id = $pid")
-    (filtered ++ fr"order by due_on nulls last, created_at desc").query[TaskRow].to[List]
+    // Todoist-style ordering: by priority (urgent → low), then soonest due, then newest.
+    (filtered ++ fr"""order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
+                      due_on nulls last, created_at desc""").query[TaskRow].to[List]
   }
 
   def createTask(
@@ -48,24 +53,26 @@ object TaskRepo {
       title: String,
       dueOn: Option[LocalDate],
       recurrence: Option[String],
+      priority: String = "normal",
       assigneeId: Option[UUID] = None
   ): ConnectionIO[Task] =
-    sql"""insert into tasks (project_id, title, due_on, recurrence, assignee_id)
-          values ($projectId, $title, $dueOn, $recurrence, $assigneeId)
+    sql"""insert into tasks (project_id, title, due_on, recurrence, priority, assignee_id)
+          values ($projectId, $title, $dueOn, $recurrence, $priority, $assigneeId)
           returning id, title, status, recurrence""".query[Task].unique
 
   /** Complete a task; if recurring, materialise the next occurrence and return its id. */
   def complete(taskId: UUID): ConnectionIO[Option[UUID]] =
     for {
-      row <- sql"select recurrence, due_on, project_id, title, assignee_id from tasks where id = $taskId"
-        .query[(Option[String], Option[LocalDate], UUID, String, Option[UUID])]
+      row <- sql"select recurrence, due_on, project_id, title, assignee_id, priority from tasks where id = $taskId"
+        .query[(Option[String], Option[LocalDate], UUID, String, Option[UUID], String)]
         .unique
       _ <- sql"update tasks set status = 'done', completed_at = now() where id = $taskId".update.run
       next <- row._1 match {
         case Some(freq) =>
           val nd = row._2.map(d => TaskService.nextDue(d, freq))
-          sql"""insert into tasks (project_id, title, due_on, recurrence, assignee_id)
-                values (${row._3}, ${row._4}, $nd, $freq, ${row._5}) returning id"""
+          // the next occurrence inherits the assignee AND the priority
+          sql"""insert into tasks (project_id, title, due_on, recurrence, assignee_id, priority)
+                values (${row._3}, ${row._4}, $nd, $freq, ${row._5}, ${row._6}) returning id"""
             .query[UUID]
             .unique
             .map(Option(_))

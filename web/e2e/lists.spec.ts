@@ -21,6 +21,8 @@ test("lists page shows the seeded grocery list with its approval queue", async (
   await expect(page.getByText(/need approval/)).toBeVisible(); // chip count for the seeded staff proposals
   await expect(page.getByTestId("approval-row").filter({ hasText: "Truffle" })).toBeVisible();
   await expect(page.getByText(/est\. £95/)).toBeVisible();
+  // Todoist-grade: the run is assigned to the on-site Housekeeper (seeded V2_87)
+  await expect(page.getByTestId("list-assignee")).toContainText("Run ·");
 });
 
 test("a list can be reconfigured (property · frequency · vendor)", async ({ page }) => {
@@ -35,11 +37,28 @@ test("a list can be reconfigured (property · frequency · vendor)", async ({ pa
   const m = page.getByTestId("edit-list");
   await m.getByLabel("Frequency").selectOption("fortnightly");
   await m.getByLabel("Vendor").fill("Ocado");
+  await m.getByLabel("Priority").selectOption("high");
+  await m.getByLabel("Assign run to").selectOption({ index: 1 }); // first real person
   await m.getByRole("button", { name: "Save" }).click();
 
   // the detail header re-renders from the refetched list — proves the config persisted
   // ("Delivers via …" is detail-only; the rail shows just the vendor name)
   await expect(page.getByText("Delivers via Ocado")).toBeVisible();
+  await expect(page.getByText("high").first()).toBeVisible(); // priority flag
+  await expect(page.getByTestId("list-assignee")).not.toContainText("unassigned"); // run now owned
+});
+
+test("an item can be added as a one-off for this run, or marked a repeating staple", async ({ page }) => {
+  const oneOff = `Extra TP ${Date.now()}`;
+  await page.goto("/lists");
+  await page.getByRole("button", { name: /Grocery — Wardian/ }).click();
+  // default is one-off ("this run") — exactly "add extra toilet paper to this week's run"
+  await expect(page.getByTestId("staple-toggle")).toHaveText("One-off");
+  await page.getByLabel("Add to Grocery — Wardian").fill(oneOff);
+  await page.getByRole("button", { name: "Add" }).first().click();
+  const row = page.getByTestId("list-item-row").filter({ hasText: oneOff });
+  await expect(row).toBeVisible();
+  await expect(row.getByText("staple")).toHaveCount(0); // a one-off carries no staple pill
 });
 
 test("adding an item to a list makes it appear", async ({ page }) => {

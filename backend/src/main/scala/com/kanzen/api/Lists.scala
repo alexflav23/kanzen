@@ -32,7 +32,9 @@ object Lists {
       `type`: String,
       cycle: Option[String],
       nextOrder: Option[LocalDate],
-      status: String
+      status: String,
+      priority: String,
+      assigneeId: Option[UUID]
   )
   final case class ItemView(
       id: UUID,
@@ -55,8 +57,14 @@ object Lists {
       propertyId: Option[UUID],
       cycle: Option[String],
       nextOrder: Option[LocalDate],
-      `type`: String
+      `type`: String,
+      priority: Option[String] = None,
+      assigneeId: Option[UUID] = None
   )
+
+  // accepted priority levels (urgent → low); anything else normalises to normal
+  private val priorities = Set("urgent", "high", "normal", "low")
+  private def normPriority(p: Option[String]): String = p.map(_.toLowerCase).filter(priorities).getOrElse("normal")
   final case class AddItemReq(
       name: String,
       qty: Option[Int],
@@ -69,7 +77,7 @@ object Lists {
   )
 
   private def lv(l: ShoppingList): ListView =
-    ListView(l.id, l.name, l.vendor, l.propertyId, l.`type`, l.cycle, l.nextOrder, l.status)
+    ListView(l.id, l.name, l.vendor, l.propertyId, l.`type`, l.cycle, l.nextOrder, l.status, l.priority, l.assigneeId)
   private def iv(i: ListItem): ItemView =
     ItemView(
       i.id,
@@ -114,7 +122,7 @@ object Lists {
       p,
       ListRepo
         .createList(r.propertyId, r.name, r.vendor)
-        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active")),
+        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active", "normal", None)),
       createA
     ).transact(xa)
 
@@ -126,14 +134,27 @@ object Lists {
       res <-
         if (!authz.can(editA)) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[ListView]).pure[ConnectionIO]
-        else
+        else {
+          val pr = normPriority(r.priority)
           ListRepo
-            .update(listId, r.name, r.propertyId, r.vendor, r.cycle, r.nextOrder, r.`type`)
+            .update(listId, r.name, r.propertyId, r.vendor, r.cycle, r.nextOrder, r.`type`, pr, r.assigneeId)
             .as(
-              Right(ListView(listId, r.name, r.vendor, r.propertyId, r.`type`, r.cycle, r.nextOrder, "active")): Out[
-                ListView
-              ]
+              Right(
+                ListView(
+                  listId,
+                  r.name,
+                  r.vendor,
+                  r.propertyId,
+                  r.`type`,
+                  r.cycle,
+                  r.nextOrder,
+                  "active",
+                  pr,
+                  r.assigneeId
+                )
+              ): Out[ListView]
             )
+        }
     } yield res
     tx.transact(xa)
   }

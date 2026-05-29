@@ -56,13 +56,22 @@ object TasksApiIT extends IOSuite {
         .create(
           xa,
           lorna,
-          CreateTaskReq(proj.id, "Water the plants", Some(LocalDate.now), Some("weekly"), Some(marciaId))
+          CreateTaskReq(
+            proj.id,
+            "Water the plants",
+            Some(LocalDate.now),
+            Some("weekly"),
+            priority = Some("high"),
+            assigneeId = Some(marciaId)
+          )
         )
         .map(_.toOption.get)
       done <- Tasks.complete(xa, lorna, t.id).map(_.toOption.get)
       list <- Tasks.list(xa, lorna, Some(proj.id)).map(_.toOption.get)
       next = list.find(x => x.title == "Water the plants" && x.status == "todo")
     } yield expect(t.assigneeId.contains(marciaId)) and expect(t.dueOn.contains(LocalDate.now)) and
-      expect(next.exists(_.assigneeId.contains(marciaId))) // assignee carried to the spawned occurrence
+      expect(t.priority == "high") and
+      // assignee AND priority carry to the spawned occurrence
+      expect(next.exists(_.assigneeId.contains(marciaId))) and expect(next.exists(_.priority == "high"))
   }
 }

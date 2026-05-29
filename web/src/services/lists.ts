@@ -10,6 +10,8 @@ export const ListSchema = z.object({
   cycle: z.string().nullable(),
   nextOrder: z.string().nullable(), // ISO date (LocalDate) or null
   status: z.string(),
+  priority: z.string(), // urgent | high | normal | low
+  assigneeId: z.string().nullable(), // the person who owns this run (person id)
 });
 export type ShoppingList = z.infer<typeof ListSchema>;
 
@@ -71,8 +73,8 @@ export const createList = (
   token: string | null,
 ) => api("/api/lists", ListSchema, { method: "POST", body, token });
 
-export type EditListReq = { name: string; vendor: string | null; propertyId: string | null; cycle: string | null; nextOrder: string | null; type: string };
+export type EditListReq = { name: string; vendor: string | null; propertyId: string | null; cycle: string | null; nextOrder: string | null; type: string; priority: string; assigneeId: string | null };
 
-/** Reconfigure a list — property, vendor, ordering cadence + next-order, type (Manager+). */
+/** Reconfigure a list — property, vendor, ordering cadence + next-order, type, priority, assignee (Manager+). */
 export const editList = (id: string, body: EditListReq, token: string | null) =>
   api(`/api/lists/${id}`, ListSchema, { method: "PATCH", body, token });
