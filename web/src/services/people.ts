@@ -18,6 +18,24 @@ export function listPeople(token: string | null): Promise<Person[]> {
   return api("/api/people", z.array(PersonSchema), { token });
 }
 
+// F10 detail (W7.1) — the richer HR record behind a person row.
+export const EmergencyContactSchema = z.object({ name: z.string(), relation: z.string().nullable(), phone: z.string().nullable() });
+export type EmergencyContact = z.infer<typeof EmergencyContactSchema>;
+export const PersonDetailSchema = PersonSchema.extend({
+  contractType: z.string().nullable(),
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
+  workPermitNo: z.string().nullable(),
+  emergencyContacts: z.array(EmergencyContactSchema),
+  payrollRef: z.string().nullable(),
+  notes: z.string().nullable(),
+});
+export type PersonDetail = z.infer<typeof PersonDetailSchema>;
+
+export function getPerson(id: string, token: string | null): Promise<PersonDetail> {
+  return api(`/api/people/${id}`, PersonDetailSchema, { token });
+}
+
 export type CreatePersonReq = {
   name: string;
   role: string | null;

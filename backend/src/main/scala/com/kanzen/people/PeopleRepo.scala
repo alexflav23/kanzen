@@ -3,6 +3,8 @@ package com.kanzen.people
 import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
+import doobie.postgres.circe.jsonb.implicits._
+import io.circe.Json
 
 import java.time.LocalDate
 import java.util.UUID
@@ -15,12 +17,21 @@ final case class Person(
     jurisdiction: Option[String],
     propertyId: Option[UUID],
     permitExpiry: Option[LocalDate],
-    reviewDue: Option[LocalDate]
+    reviewDue: Option[LocalDate],
+    contractType: Option[String],
+    startDate: Option[LocalDate],
+    endDate: Option[LocalDate],
+    workPermitNo: Option[String],
+    emergencyContacts: Json,
+    payrollRef: Option[String],
+    notes: Option[String]
 )
 
 /** F10 — staff/HR records + permit-expiry surfacing. */
 object PeopleRepo {
-  private val cols = fr"id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due"
+  private val cols =
+    fr"""id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due,
+         contract_type, start_date, end_date, work_permit_no, emergency_contacts, payroll_ref, notes"""
 
   def insert(
       ownerId: UUID,

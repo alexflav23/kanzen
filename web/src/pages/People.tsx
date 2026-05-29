@@ -1,10 +1,11 @@
 import * as stylex from "@stylexjs/stylex";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { Pill, type PillTone } from "../components/Pill";
-import { Alert, Plus, Check } from "../components/icons";
+import { Alert, Plus, Check, ChevronRight } from "../components/icons";
 import { createPerson, daysUntil, listPeople, type Person } from "../services/people";
 import { listProperties } from "../services/properties";
 import { useAuth } from "../state/AuthContext";
@@ -25,6 +26,8 @@ const styles = stylex.create({
   attnCard: { padding: 0, overflow: "hidden", display: "flex", marginBottom: "24px" },
   attnBody: { flex: 1 },
   rowHead: { display: "flex", alignItems: "center", gap: "10px", padding: "14px 18px", borderBottom: `1px solid ${colors.line}` },
+  rowLink: { display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: `1px solid ${colors.line}`, textDecoration: "none", color: "inherit", cursor: "pointer", ":hover": { backgroundColor: colors.bgSunken } },
+  chev: { color: colors.ink4, display: "inline-flex", flexShrink: 0 },
   small: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12.5px", color: colors.ink3 },
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
   modal: { width: "440px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
@@ -154,7 +157,7 @@ export function People() {
               {people.map((p) => {
                 const chips = complianceChips(p, true);
                 return (
-                  <CardRow key={p.id}>
+                  <Link key={p.id} to={`/people/${p.id}`} {...stylex.props(styles.rowLink)} aria-label={`Open ${p.name}'s record`}>
                     <span {...stylex.props(styles.avatar)} data-testid="person-row">{initials(p.name)}</span>
                     <div {...stylex.props(styles.grow)}>
                       <div {...stylex.props(styles.name)}>{p.name}</div>
@@ -165,7 +168,8 @@ export function People() {
                     <span {...stylex.props(styles.pills)}>
                       {chips.length > 0 ? chips : <span {...stylex.props(styles.small)}><Check size={12} /> compliant</span>}
                     </span>
-                  </CardRow>
+                    <span {...stylex.props(styles.chev)}><ChevronRight size={14} /></span>
+                  </Link>
                 );
               })}
             </Card>

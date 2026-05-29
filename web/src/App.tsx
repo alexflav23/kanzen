@@ -10,6 +10,7 @@ import { Finance } from "./pages/Finance";
 import { Properties } from "./pages/Properties";
 import { PropertyBible } from "./pages/PropertyBible";
 import { People } from "./pages/People";
+import { PersonDetail } from "./pages/PersonDetail";
 import { Documents } from "./pages/Documents";
 import { Vendors } from "./pages/Vendors";
 import { Tasks } from "./pages/Tasks";
@@ -228,6 +229,7 @@ function Shell() {
                 <Route path="/properties" element={<Properties />} />
                 <Route path="/properties/:id" element={<PropertyBible />} />
                 <Route path="/people" element={<People />} />
+                <Route path="/people/:id" element={<PersonDetail />} />
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/vendors" element={<Vendors />} />
                 <Route path="/tasks" element={<Tasks />} />

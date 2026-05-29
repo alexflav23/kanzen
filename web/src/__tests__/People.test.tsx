@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
@@ -19,17 +20,20 @@ import { People } from "../pages/People";
 
 const renderPeople = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <AuthProvider><People /></AuthProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <AuthProvider><People /></AuthProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
 describe("People", () => {
-  it("lists the household team from the API", async () => {
+  it("lists the household team from the API, each row linking to the detail", async () => {
     renderPeople();
     expect(await screen.findAllByTestId("person-row")).toHaveLength(3);
+    expect(screen.getByRole("link", { name: "Open Siti's record" })).toHaveAttribute("href", "/people/3");
   });
 
   it("warns about an expiring work permit in the attention section", async () => {

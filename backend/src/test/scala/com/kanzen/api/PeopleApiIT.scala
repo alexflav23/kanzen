@@ -49,6 +49,18 @@ object PeopleApiIT extends IOSuite {
     } yield expect(self.toOption.exists(_.name == "Siti"))
   }
 
+  test("W7.1 — the detail view carries the rich HR fields (contract, permit no, emergency contacts)") { xa =>
+    People.detail(xa, lorna, sitiRecord).map {
+      case Right(v) =>
+        expect(v.contractType.contains("Full-time")) and
+          expect(v.workPermitNo.contains("S1234567X")) and
+          expect(v.payrollRef.isDefined) and
+          expect(v.startDate.isDefined) and
+          expect(v.emergencyContacts.exists(_.name == "Ahmad Rahmat"))
+      case Left((sc, _)) => failure(s"expected 200, got $sc")
+    }
+  }
+
   test("AC1 — Siti's expiring permit surfaces to the Manager") { xa =>
     People.expiring(xa, lorna, 60).map {
       case Right(rows) => expect(rows.exists(p => p.name == "Siti" && p.permitExpiry.isDefined))

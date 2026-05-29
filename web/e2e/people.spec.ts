@@ -14,6 +14,16 @@ test("people page lists the team with roles + flags expiring permits/reviews", a
   await expect(main.getByText(/Review · \d+d/).first()).toBeVisible(); // Lorna/Marcia reviews
 });
 
+test("opening a person shows their HR record (contract, permit, emergency contact)", async ({ page }) => {
+  await page.goto("/people");
+  await page.getByRole("link", { name: "Open Siti's record" }).click();
+  await expect(page.getByTestId("person-name")).toHaveText("Siti");
+  await expect(page.getByText("Full-time")).toBeVisible(); // contract
+  await expect(page.getByText("S1234567X")).toBeVisible(); // work permit no.
+  await expect(page.getByTestId("emergency-contact")).toContainText("Ahmad Rahmat");
+  await expect(page.getByText("HR documents")).toBeVisible(); // documents section (card title)
+});
+
 test("a team member can be added (Manager+)", async ({ page }) => {
   const name = `Tomas ${Date.now()}`;
   await page.goto("/people");

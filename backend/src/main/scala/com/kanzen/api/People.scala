@@ -9,6 +9,7 @@ import com.kanzen.property.PropertyRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.{Decoder, Json}
 import io.circe.generic.auto._
 import sttp.model.StatusCode
 import sttp.tapir._
@@ -26,6 +27,7 @@ import java.util.UUID
 object People {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
+  final case class EmergencyContact(name: String, relation: Option[String], phone: Option[String])
   final case class PersonView(
       id: UUID,
       userId: Option[UUID],
@@ -34,7 +36,14 @@ object People {
       jurisdiction: Option[String],
       propertyId: Option[UUID],
       permitExpiry: Option[LocalDate],
-      reviewDue: Option[LocalDate]
+      reviewDue: Option[LocalDate],
+      contractType: Option[String],
+      startDate: Option[LocalDate],
+      endDate: Option[LocalDate],
+      workPermitNo: Option[String],
+      emergencyContacts: List[EmergencyContact],
+      payrollRef: Option[String],
+      notes: Option[String]
   )
   final case class CreateReq(
       name: String,
@@ -46,8 +55,27 @@ object People {
       reviewDue: Option[LocalDate]
   )
 
+  private def contacts(j: Json): List[EmergencyContact] =
+    Decoder[List[EmergencyContact]].decodeJson(j).getOrElse(Nil)
+
   private def view(p: Person): PersonView =
-    PersonView(p.id, p.userId, p.name, p.role, p.jurisdiction, p.propertyId, p.permitExpiry, p.reviewDue)
+    PersonView(
+      p.id,
+      p.userId,
+      p.name,
+      p.role,
+      p.jurisdiction,
+      p.propertyId,
+      p.permitExpiry,
+      p.reviewDue,
+      p.contractType,
+      p.startDate,
+      p.endDate,
+      p.workPermitNo,
+      contacts(p.emergencyContacts),
+      p.payrollRef,
+      p.notes
+    )
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to people"))

@@ -51,6 +51,10 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await go("Supplies", /^Supplies$/);
   await go("Maintenance", /^Maintenance$/);
   await go("People", /^People$/);
+  // person detail (sub-route, reached by clicking a roster row)
+  await page.getByRole("link", { name: "Open Siti's record" }).click();
+  await expect(page.getByTestId("person-name")).toBeVisible();
+  await scan(page, "Person detail", v);
   await go("Vendors", /^Vendors$/);
   await go("Documents", /^Documents$/);
   await go("Finance", /Bills, expenses/);
