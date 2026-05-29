@@ -24,6 +24,25 @@ test("the collaborative inbox lists threads and surfaces the agent's proposal on
   await expect(modal.getByTestId("proposal-confirm")).toBeVisible();
 });
 
+test("reply from the inbox: the Lexical composer sends a rich outbound message", async ({ page }) => {
+  await page.goto("/inbox");
+  // a personal thread (no proposal) is a clean place to reply
+  await page.getByTestId("thread-row").filter({ hasText: "Eleanor" }).first().click();
+  await expect(page.getByTestId("thread-detail")).toBeVisible();
+  await page.getByTestId("reply-open").click();
+  const editor = page.locator('[data-testid="reply-composer"] [contenteditable="true"]');
+  await editor.click();
+  const stamp = `e2e-reply-${Date.now()}`;
+  await editor.pressSequentially(`${stamp} `);
+  await page.getByRole("button", { name: "Bold" }).first().click();
+  await editor.pressSequentially("done");
+  await expect(page.getByTestId("reply-send")).toBeEnabled();
+  await page.getByTestId("reply-send").click();
+  // the outbound message appears in the thread with the typed text
+  await expect(page.getByTestId("msg-outbound").filter({ hasText: stamp })).toBeVisible();
+  await expect(page.getByTestId("inbox-toast")).toContainText("Reply sent");
+});
+
 test("⌘K opens the command palette and returns permission-filtered hits", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Meta+k"); // (Control+k also bound for non-mac)

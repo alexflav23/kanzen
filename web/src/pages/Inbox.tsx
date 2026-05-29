@@ -1,21 +1,25 @@
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import DOMPurify from "dompurify";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Pill } from "../components/Pill";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { Avatar } from "../components/Avatar";
 import { AgentRibbon } from "../components/AgentRibbon";
 import { ProposalReviewModal } from "../components/ProposalReviewModal";
-import { Check, Inbox as InboxIcon, Documents } from "../components/icons";
+import { ReplyComposer } from "../components/ReplyComposer";
+import { Check, Inbox as InboxIcon, Documents, Mail } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
 import {
-  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, setThreadStatus, threadDetail,
+  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail,
   type CInbox, type CThread,
 } from "../services/collabInbox";
+
+const sanitize = (html: string) => DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -64,9 +68,13 @@ const styles = stylex.create({
   conf: { fontSize: "11px", color: colors.accent, fontWeight: 600, marginLeft: "auto" },
   propReview: { fontSize: "12px", fontWeight: 600, color: colors.accent, marginTop: "10px" },
   msg: { borderTop: `1px solid ${colors.line}`, paddingTop: "14px" },
+  msgOut: { borderLeft: `2px solid ${colors.accent}`, paddingLeft: "12px", marginLeft: "2px" },
   msgFrom: { fontSize: "12.5px", fontWeight: 500, color: colors.ink },
   msgTime: { fontSize: "11px", color: colors.ink3, marginLeft: "8px" },
+  msgVia: { fontSize: "11px", color: colors.accent, marginLeft: "6px", fontWeight: 500 },
   msgBody: { fontSize: "13.5px", color: colors.ink2, lineHeight: 1.55, marginTop: "8px", whiteSpace: "pre-wrap" },
+  replyRow: { display: "flex" },
+  replyBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
   // internal notes live on the warm "Apple-note" surface — visibly private, distinct from the email body
   notes: { backgroundColor: colors.note, border: `1px solid ${colors.noteLine}`, borderRadius: radius.md, padding: "14px 16px", marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" },
   notesHead: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 700, marginBottom: "4px" },
@@ -93,6 +101,8 @@ export function Inbox() {
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null); // proposal id under review
+  const [replying, setReplying] = useState(false);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const canReassign = role != null && role !== "staff";
 
   const inboxesQ = useQuery({ queryKey: ["inbox-inboxes", token], queryFn: () => listInboxes(token) });
@@ -113,6 +123,14 @@ export function Inbox() {
     onSuccess: (r) => { setReviewing(null); setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
   });
   const reject = useMutation({ mutationFn: (id: string) => rejectProposal(id, token), onSuccess: () => { setReviewing(null); invalidate(); } });
+  const send = useMutation({
+    mutationFn: ({ id, html }: { id: string; html: string }) => sendReply(id, html, token),
+    onSuccess: () => { setReplying(false); setToast("Reply sent"); setTimeout(() => setToast(null), 3500); invalidate(); },
+  });
+  const autosaveDraft = (id: string, html: string) => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => { void saveDraft(id, html, token); }, 700);
+  };
 
   const threads = threadsQ.data ?? [];
   const railItem = (label: string, on: boolean, onClick: () => void, count?: number) => (
@@ -147,7 +165,7 @@ export function Inbox() {
           <div {...stylex.props(styles.list)}>
             {threadsQ.isPending ? <Loading /> : threads.length === 0 ? <EmptyState title="Inbox zero">Nothing here.</EmptyState>
               : threads.map((t: CThread) => (
-                <button key={t.id} type="button" {...stylex.props(styles.trow, t.id === selected && styles.trowOn)} data-testid="thread-row" onClick={() => setSelected(t.id)}>
+                <button key={t.id} type="button" {...stylex.props(styles.trow, t.id === selected && styles.trowOn)} data-testid="thread-row" onClick={() => { setReplying(false); setSelected(t.id); }}>
                   <div {...stylex.props(styles.trowTop)}>
                     {t.unread && <span {...stylex.props(styles.unreadDot)} aria-label="unread" />}
                     <span {...stylex.props(styles.from)}>{t.fromName ?? "—"}</span>
@@ -201,9 +219,13 @@ export function Inbox() {
                   ))}
 
                   {detail.messages.map((m) => (
-                    <div key={m.id} {...stylex.props(styles.msg)}>
-                      <span {...stylex.props(styles.msgFrom)}>{m.fromAddr}</span><span {...stylex.props(styles.msgTime)}>{ago(m.sentAt)}</span>
-                      <div {...stylex.props(styles.msgBody)}>{m.bodyText}</div>
+                    <div key={m.id} {...stylex.props(styles.msg, m.direction === "outbound" && styles.msgOut)} data-testid={m.direction === "outbound" ? "msg-outbound" : "msg-inbound"}>
+                      <span {...stylex.props(styles.msgFrom)}>{m.direction === "outbound" ? "You" : m.fromAddr}</span>
+                      <span {...stylex.props(styles.msgTime)}>{ago(m.sentAt)}</span>
+                      {m.direction === "outbound" && <span {...stylex.props(styles.msgVia)}>· sent from Kanzen</span>}
+                      {m.bodyHtml
+                        ? <div {...stylex.props(styles.msgBody)} dangerouslySetInnerHTML={{ __html: sanitize(m.bodyHtml) }} />
+                        : <div {...stylex.props(styles.msgBody)}>{m.bodyText}</div>}
                     </div>
                   ))}
 
@@ -212,6 +234,23 @@ export function Inbox() {
                       {detail.attachments.map((a) => (
                         <span key={a.id} {...stylex.props(styles.attach)} title={a.filename}><Documents size={13} /> {a.filename}</span>
                       ))}
+                    </div>
+                  )}
+
+                  {replying ? (
+                    <ReplyComposer
+                      key={detail.thread.id}
+                      initialHtml={detail.draft?.bodyHtml ?? ""}
+                      sending={send.isPending}
+                      onSaveDraft={(html) => autosaveDraft(detail.thread.id, html)}
+                      onSend={(html) => send.mutate({ id: detail.thread.id, html })}
+                      onCancel={() => setReplying(false)}
+                    />
+                  ) : (
+                    <div {...stylex.props(styles.replyRow)}>
+                      <button type="button" {...stylex.props(styles.replyBtn)} data-testid="reply-open" onClick={() => setReplying(true)}>
+                        <Mail size={13} /> Reply{detail.draft ? " (draft saved)" : ""}
+                      </button>
                     </div>
                   )}
 

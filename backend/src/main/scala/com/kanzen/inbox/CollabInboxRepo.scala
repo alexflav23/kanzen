@@ -40,8 +40,10 @@ final case class MessageRow(
     direction: String,
     fromAddr: Option[String],
     sentAt: Instant,
-    bodyText: Option[String]
+    bodyText: Option[String],
+    bodyHtml: Option[String]
 )
+final case class DraftRow(id: UUID, bodyHtml: String, authorName: Option[String], updatedAt: Instant)
 final case class ProposalRow(
     id: UUID,
     actionType: String,
@@ -122,7 +124,7 @@ object CollabInboxRepo {
           from email_threads t where t.id = $threadId""".query[ThreadRow].option
 
   def messages(threadId: UUID): ConnectionIO[List[MessageRow]] =
-    sql"""select id, direction, from_addr, sent_at, body_text from email_messages
+    sql"""select id, direction, from_addr, sent_at, body_text, body_html from email_messages
           where thread_id = $threadId order by sent_at""".query[MessageRow].to[List]
 
   def proposals(threadId: UUID): ConnectionIO[List[ProposalRow]] =
@@ -168,6 +170,52 @@ object CollabInboxRepo {
   /** Title for a linked asset (the review popup labels what an event will be attached to). */
   def assetTitle(id: UUID): ConnectionIO[Option[String]] =
     sql"select title from assets where id = $id".query[String].option
+
+  // ── reply / send + shared drafts (W9.4a) ────────────────────────────────────
+  /** The address a reply is sent *from* (the thread's inbox) and *to* (the latest inbound sender). */
+  def replyEnvelope(threadId: UUID): ConnectionIO[Option[(String, Option[String])]] =
+    sql"""select i.address,
+            (select m.from_addr from email_messages m
+              where m.thread_id = t.id and m.direction = 'inbound' order by m.sent_at desc limit 1)
+          from email_threads t join mail_inboxes i on i.id = t.inbox_id
+          where t.id = $threadId""".query[(String, Option[String])].option
+
+  def draft(threadId: UUID): ConnectionIO[Option[DraftRow]] =
+    sql"""select d.id, d.body_html, u.display_name, d.updated_at
+          from email_drafts d left join users u on u.id = d.author_id
+          where d.thread_id = $threadId""".query[DraftRow].option
+
+  /** Upsert the single shared draft on a thread (last writer wins). */
+  def upsertDraft(ownerId: UUID, threadId: UUID, authorId: UUID, html: String): ConnectionIO[Int] =
+    sql"""insert into email_drafts (owner_id, thread_id, author_id, body_html)
+          values ($ownerId, $threadId, $authorId, $html)
+          on conflict (thread_id) do update set body_html = excluded.body_html,
+            author_id = excluded.author_id, updated_at = now()""".update.run
+
+  def deleteDraft(threadId: UUID): ConnectionIO[Int] =
+    sql"delete from email_drafts where thread_id = $threadId".update.run
+
+  /** Record an outbound reply on the thread (sandbox: the message row is the artifact; live: GmailSender also
+    * dispatches — see the EmailSender seam). Bumps the thread's last activity and marks it read.
+    */
+  def sendMessage(
+      ownerId: UUID,
+      threadId: UUID,
+      fromAddr: String,
+      toAddr: Option[String],
+      subject: Option[String],
+      html: String,
+      text: String,
+      sentBy: UUID
+  ): ConnectionIO[UUID] =
+    for {
+      id <-
+        sql"""insert into email_messages (owner_id, thread_id, direction, from_addr, to_addrs, subject, body_text, body_html, sent_by)
+                  values ($ownerId, $threadId, 'outbound', $fromAddr, $toAddr, $subject, $text, $html, $sentBy)
+                  returning id""".query[UUID].unique
+      _ <- sql"update email_threads set last_message_at = now(), unread = false where id = $threadId".update.run
+      _ <- deleteDraft(threadId)
+    } yield id
 
   /** The thread's inbox property (for scoping the created record). */
   def threadProperty(threadId: UUID): ConnectionIO[Option[UUID]] =

@@ -55,8 +55,10 @@ object Inbox {
       direction: String,
       fromAddr: Option[String],
       sentAt: String,
-      bodyText: Option[String]
+      bodyText: Option[String],
+      bodyHtml: Option[String]
   )
+  final case class DraftView(id: UUID, bodyHtml: String, authorName: Option[String], updatedAt: String)
   final case class ProposalView(
       id: UUID,
       actionType: String,
@@ -72,12 +74,15 @@ object Inbox {
       messages: List[MessageView],
       proposals: List[ProposalView],
       comments: List[CommentView],
-      attachments: List[AttachmentView]
+      attachments: List[AttachmentView],
+      draft: Option[DraftView]
   )
   final case class AssignReq(assigneeId: Option[UUID])
   final case class StatusReq(status: String)
   final case class ReadReq(unread: Boolean)
   final case class CommentReq(body: String, mentions: Option[List[UUID]])
+  final case class DraftReq(bodyHtml: String)
+  final case class SendReq(bodyHtml: String)
 
   /** What confirming a proposal created (for the success toast). */
   final case class ConfirmResult(created: String, recordType: Option[String], label: Option[String])
@@ -119,6 +124,7 @@ object Inbox {
   private val assignA = Actions.byKey("thread:assign")
   private val statusA = Actions.byKey("thread:status")
   private val commentA = Actions.byKey("thread:comment")
+  private val mailSendA = Actions.byKey("mail:send")
   private val calendarCreateA = Actions.byKey("calendar:create")
   private val expenseCreateA = Actions.byKey("expense:create")
   private val validStatus = Set("open", "snoozed", "done", "archived")
@@ -140,7 +146,21 @@ object Inbox {
   private def iv(i: InboxRow): InboxView = InboxView(i.id, i.address, i.label, i.kind, i.propertyId, i.openCount)
   private def pv(p: ProposalRow): ProposalView =
     ProposalView(p.id, p.actionType, p.status, p.title, p.summary, p.confidence.map(_.toDouble))
-  private def mv(m: MessageRow): MessageView = MessageView(m.id, m.direction, m.fromAddr, m.sentAt.toString, m.bodyText)
+  private def mv(m: MessageRow): MessageView =
+    MessageView(m.id, m.direction, m.fromAddr, m.sentAt.toString, m.bodyText, m.bodyHtml)
+  private def dv(d: DraftRow): DraftView = DraftView(d.id, d.bodyHtml, d.authorName, d.updatedAt.toString)
+
+  /** Defence-in-depth scrub for reply HTML (the web also runs DOMPurify): drop script/style blocks, inline event
+    * handlers, and `javascript:` URLs. We only ever emit Lexical-generated markup, so this is a backstop.
+    */
+  private def sanitizeHtml(html: String): String =
+    html
+      .replaceAll("(?is)<\\s*(script|style|iframe|object|embed)[^>]*>.*?<\\s*/\\s*\\1\\s*>", "")
+      .replaceAll("(?is)\\son\\w+\\s*=\\s*\"[^\"]*\"", "")
+      .replaceAll("(?is)\\son\\w+\\s*=\\s*'[^']*'", "")
+      .replaceAll("(?is)javascript:", "")
+  private def htmlToText(html: String): String =
+    html.replaceAll("(?is)<br\\s*/?>", "\n").replaceAll("(?is)</p>", "\n").replaceAll("(?is)<[^>]+>", "").trim
   private def cv(c: CommentRow): CommentView = CommentView(c.id, c.authorName, c.body, c.createdAt.toString)
   private def av(a: AttachmentRow): AttachmentView = AttachmentView(a.id, a.filename, a.contentType, a.sizeBytes)
 
@@ -203,8 +223,9 @@ object Inbox {
               ps <- CollabInboxRepo.proposals(id)
               cs <- CollabInboxRepo.comments("email_thread", id)
               ats <- CollabInboxRepo.attachments(id)
+              dr <- CollabInboxRepo.draft(id)
             } yield Right(
-              ThreadDetail(tv(row.copy(unread = false)), ms.map(mv), ps.map(pv), cs.map(cv), ats.map(av))
+              ThreadDetail(tv(row.copy(unread = false)), ms.map(mv), ps.map(pv), cs.map(cv), ats.map(av), dr.map(dv))
             ): Out[
               ThreadDetail
             ]
@@ -309,6 +330,29 @@ object Inbox {
             .map(_.find(_.id == cid).map(cv).getOrElse(CommentView(cid, None, r.body.trim, "")))
         )
     ).transact(xa)
+
+  /** Save/replace the thread's shared draft (collaborators can co-author; gated like a comment). */
+  def saveDraft(xa: Transactor[IO], p: Principal, id: UUID, r: DraftReq): IO[Out[Unit]] =
+    onThread(p, id, commentA)(CollabInboxRepo.upsertDraft(p.userId, id, p.userId, sanitizeHtml(r.bodyHtml)).void)
+      .transact(xa)
+
+  /** Send a reply from the thread's inbox (W9.4a). Sandbox: records the outbound message + clears the draft; live: the
+    * GmailSender seam also dispatches. Kanzen never sends without an explicit human action (`mail:send`).
+    */
+  def send(xa: Transactor[IO], p: Principal, id: UUID, r: SendReq): IO[Out[Unit]] =
+    if (r.bodyHtml.trim.isEmpty)
+      IO.pure(Left((StatusCode.UnprocessableEntity, ApiError(422, "empty", "Nothing to send."))))
+    else
+      onThread(p, id, mailSendA) {
+        for {
+          env <- CollabInboxRepo.replyEnvelope(id)
+          t <- CollabInboxRepo.thread(id)
+          (from, to) = env.getOrElse(("", Option.empty[String]))
+          subject = t.flatMap(_.subject).map(s => if (s.startsWith("Re:")) s else s"Re: $s")
+          html = sanitizeHtml(r.bodyHtml)
+          _ <- CollabInboxRepo.sendMessage(p.userId, id, from, to, subject, html, htmlToText(html), p.userId)
+        } yield ()
+      }.transact(xa)
 
   /** Execute a confirmed proposal: create the real record (calendar event / expense for approval — money-safe), link it
     * back to the thread (provenance), mark the proposal confirmed. Runs under the actor's authz.
@@ -462,6 +506,20 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[CommentView])
     .summary("Internal comment (never outbound)")
+  val draftEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "threads" / path[UUID]("id") / "draft")
+    .in(jsonBody[DraftReq])
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Save the shared draft on a thread")
+  val sendEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "threads" / path[UUID]("id") / "send")
+    .in(jsonBody[SendReq])
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Send a reply from the thread's inbox (human-initiated)")
   val proposalDetailEndpoint = endpoint.get
     .securityIn(bearer)
     .in("api" / "inbox" / "proposals" / path[UUID]("id"))
@@ -498,7 +556,9 @@ object Inbox {
     assignEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => assign(xa, p, id, r) }),
     statusEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => setStatus(xa, p, id, r) }),
     readEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => markRead(xa, p, id, r) }),
-    commentEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => comment(xa, p, id, r) })
+    commentEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => comment(xa, p, id, r) }),
+    draftEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => saveDraft(xa, p, id, r) }),
+    sendEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => send(xa, p, id, r) })
   )
 
   val endpoints: List[AnyEndpoint] = List(
@@ -511,6 +571,8 @@ object Inbox {
     statusEndpoint,
     readEndpoint,
     commentEndpoint,
+    draftEndpoint,
+    sendEndpoint,
     confirmEndpoint,
     rejectEndpoint
   )

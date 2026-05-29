@@ -1,7 +1,7 @@
 package com.kanzen.api
 
 import cats.effect.IO
-import com.kanzen.api.Inbox.{AssignReq, CommentReq, StatusReq}
+import com.kanzen.api.Inbox.{AssignReq, CommentReq, DraftReq, SendReq, StatusReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.people.PeopleRepo
@@ -110,6 +110,34 @@ object CollabInboxIT extends IOSuite {
       expect(before.isEmpty) and
       expect(linked.exists(_.id == service.id)) and
       expect(linked.forall(_.subject.exists(_.contains("Range Rover"))))
+  }
+
+  test("W9.4 — shared draft round-trips, then sends as an outbound reply from the inbox") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get // a personal thread, no proposal
+      _ <- Inbox.saveDraft(xa, toby, eleanor.id, DraftReq("<p>Lovely — Saturday works.</p>")).map(_.toOption.get)
+      withDraft <- Inbox.detail(xa, toby, eleanor.id).map(_.toOption.get)
+      _ <- Inbox
+        .send(xa, toby, eleanor.id, SendReq("<p>Lovely — <strong>Saturday</strong> works.</p>"))
+        .map(_.toOption.get)
+      after <- Inbox.detail(xa, toby, eleanor.id).map(_.toOption.get)
+      out = after.messages.filter(_.direction == "outbound")
+    } yield expect(withDraft.draft.exists(_.bodyHtml.contains("Saturday"))) and // the shared draft persisted
+      expect(out.sizeIs == 1) and
+      expect(out.head.bodyHtml.exists(_.contains("<strong>"))) and // rich HTML retained
+      expect(out.head.fromAddr.exists(_.contains("@kanzen.family"))) and // sent from the inbox
+      expect(after.draft.isEmpty) // draft consumed on send
+  }
+
+  test("W9.4 — send sanitizes injected markup (defence in depth)") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      crystal = threads.find(_.subject.exists(_.contains("Pool service"))).get
+      _ <- Inbox.send(xa, toby, crystal.id, SendReq("<p>Thanks</p><script>steal()</script>")).map(_.toOption.get)
+      after <- Inbox.detail(xa, toby, crystal.id).map(_.toOption.get)
+      out = after.messages.find(_.direction == "outbound").get
+    } yield expect(out.bodyHtml.exists(!_.contains("<script"))) and expect(out.bodyHtml.exists(_.contains("Thanks")))
   }
 
   test("assign · comment · done round-trip") { xa =>

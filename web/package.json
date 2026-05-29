@@ -12,8 +12,16 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@lexical/html": "^0.45.0",
+    "@lexical/link": "^0.45.0",
+    "@lexical/list": "^0.45.0",
+    "@lexical/react": "^0.45.0",
+    "@lexical/rich-text": "^0.45.0",
+    "@lexical/utils": "^0.45.0",
     "@stylexjs/stylex": "^0.10.1",
     "@tanstack/react-query": "^5.100.14",
+    "dompurify": "^3.4.7",
+    "lexical": "^0.45.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.15.1",

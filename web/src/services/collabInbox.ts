@@ -15,12 +15,14 @@ export const CThreadSchema = z.object({
 });
 export type CThread = z.infer<typeof CThreadSchema>;
 
-export const CMessageSchema = z.object({ id: z.string(), direction: z.string(), fromAddr: z.string().nullable(), sentAt: z.string(), bodyText: z.string().nullable() });
+export const CMessageSchema = z.object({ id: z.string(), direction: z.string(), fromAddr: z.string().nullable(), sentAt: z.string(), bodyText: z.string().nullable(), bodyHtml: z.string().nullable() });
+export const CDraftSchema = z.object({ id: z.string(), bodyHtml: z.string(), authorName: z.string().nullable(), updatedAt: z.string() });
 export const CProposalSchema = z.object({ id: z.string(), actionType: z.string(), status: z.string(), title: z.string().nullable(), summary: z.string().nullable(), confidence: z.number().nullable() });
 export const CCommentSchema = z.object({ id: z.string(), authorName: z.string().nullable(), body: z.string(), createdAt: z.string() });
 export const CAttachmentSchema = z.object({ id: z.string(), filename: z.string(), contentType: z.string().nullable(), sizeBytes: z.number().nullable() });
 export const CThreadDetailSchema = z.object({
   thread: CThreadSchema, messages: z.array(CMessageSchema), proposals: z.array(CProposalSchema), comments: z.array(CCommentSchema), attachments: z.array(CAttachmentSchema),
+  draft: CDraftSchema.nullable(),
 });
 export const ConfirmResultSchema = z.object({ created: z.string(), recordType: z.string().nullable(), label: z.string().nullable() });
 
@@ -54,6 +56,10 @@ export const setThreadStatus = (id: string, status: string, token: string | null
   api(`/api/inbox/threads/${id}/status`, z.unknown(), { method: "POST", body: { status }, token });
 export const addThreadComment = (id: string, body: string, token: string | null) =>
   api(`/api/inbox/threads/${id}/comments`, CCommentSchema, { method: "POST", body: { body, mentions: [] }, token });
+export const saveDraft = (id: string, bodyHtml: string, token: string | null) =>
+  api(`/api/inbox/threads/${id}/draft`, z.unknown(), { method: "POST", body: { bodyHtml }, token });
+export const sendReply = (id: string, bodyHtml: string, token: string | null) =>
+  api(`/api/inbox/threads/${id}/send`, z.unknown(), { method: "POST", body: { bodyHtml }, token });
 export const proposalDetail = (id: string, token: string | null) =>
   api(`/api/inbox/proposals/${id}`, CProposalDetailSchema, { token });
 export const confirmProposal = (id: string, token: string | null) =>

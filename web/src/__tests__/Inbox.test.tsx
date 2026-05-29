@@ -11,12 +11,13 @@ vi.mock("../services/collabInbox", () => ({
   ],
   threadDetail: async () => ({
     thread: { id: "t1", inboxId: "i1", subject: "Your Ocado order is on its way", snippet: "", fromName: "Ocado", lastMessageAt: new Date().toISOString(), unread: false, hasAttachments: true, status: "open", assigneeId: null, proposalCount: 1 },
-    messages: [{ id: "m1", direction: "inbound", fromAddr: "orders@ocado.com", sentAt: new Date().toISOString(), bodyText: "Your order totalling £142.50 will be delivered Friday." }],
+    messages: [{ id: "m1", direction: "inbound", fromAddr: "orders@ocado.com", sentAt: new Date().toISOString(), bodyText: "Your order totalling £142.50 will be delivered Friday.", bodyHtml: null }],
     proposals: [{ id: "p1", actionType: "create_receipt", status: "proposed", title: "Log the Ocado receipt + expense", summary: "£142.50 grocery receipt → expense + add to the Grocery list.", confidence: 0.93 }],
     comments: [],
     attachments: [{ id: "at1", filename: "ocado-receipt.pdf", contentType: "application/pdf", sizeBytes: 84210 }],
+    draft: null,
   }),
-  assignThread: vi.fn(), setThreadStatus: vi.fn(), addThreadComment: vi.fn(),
+  assignThread: vi.fn(), setThreadStatus: vi.fn(), addThreadComment: vi.fn(), saveDraft: vi.fn(), sendReply: vi.fn(),
   confirmProposal: vi.fn(async () => ({ created: "expense", recordType: "expense", label: "Ocado — logged for approval" })),
   rejectProposal: vi.fn(),
   proposalDetail: vi.fn(async () => ({

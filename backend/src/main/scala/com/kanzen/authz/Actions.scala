@@ -59,7 +59,8 @@ object Actions {
         Action("inbox", "view", Read),
         Action("thread", "assign", Write),
         Action("thread", "status", Write),
-        Action("thread", "comment", Write)
+        Action("thread", "comment", Write),
+        Action("mail", "send", Write)
       ) ++
       // ── Finance ── (the pay queue + payment methods are authorized as part of `bill`; bank sync/reconcile as part
       // of `bank_account` — matching the real gating resources, so grants bite without a separate seed mapping)
