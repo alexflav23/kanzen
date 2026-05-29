@@ -185,6 +185,10 @@ object Inbox {
       } yield res
     ).transact(xa).map(_.flatten)
 
+  /** Back-reference: threads linked to a record (asset/expense/calendar), scope-filtered. */
+  def linked(xa: Transactor[IO], p: Principal, targetType: String, targetId: UUID): IO[Out[List[ThreadView]]] =
+    read(p, staffScope(p).flatMap(CollabInboxRepo.linkedThreads(targetType, targetId, _)).map(_.map(tv))).transact(xa)
+
   def assign(xa: Transactor[IO], p: Principal, id: UUID, r: AssignReq): IO[Out[Unit]] =
     onThread(p, id, assignA)(CollabInboxRepo.assign(id, r.assigneeId).void).transact(xa)
 
@@ -228,6 +232,11 @@ object Inbox {
               .getOrElse(LocalDate.now)
             eid <- CalendarRepo.createNative(p.userId, title, date, str("category", "manual"), prop, "agent", Some(tid))
             _ <- CollabInboxRepo.link(p.userId, tid, "calendar", eid, p.userId)
+            // a service/maintenance event may also concern an asset (e.g. the car) — link the thread to it too
+            _ <- c
+              .get[UUID]("assetId")
+              .toOption
+              .traverse_(aid => CollabInboxRepo.link(p.userId, tid, "asset", aid, p.userId))
             _ <- CollabInboxRepo.confirmProposal(pr.id)
           } yield Right(ConfirmResult("event", Some("calendar"), Some(title)))
       case "create_receipt" | "reconcile_bill" =>
@@ -318,6 +327,14 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[ThreadDetail])
     .summary("Thread detail (messages, proposals, comments)")
+  val linkedEndpoint = endpoint.get
+    .securityIn(bearer)
+    .in("api" / "inbox" / "links")
+    .in(query[String]("targetType"))
+    .in(query[UUID]("targetId"))
+    .errorOut(err)
+    .out(jsonBody[List[ThreadView]])
+    .summary("Email threads linked to a record (back-reference)")
   val assignEndpoint = endpoint.post
     .securityIn(bearer)
     .in("api" / "inbox" / "threads" / path[UUID]("id") / "assign")
@@ -367,6 +384,9 @@ object Inbox {
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (i, s, asg) => threads(xa, p, i, s, asg) }),
     detailEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => detail(xa, p, id)),
+    linkedEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (tt, tid) => linked(xa, p, tt, tid) }),
     assignEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => assign(xa, p, id, r) }),
     statusEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => setStatus(xa, p, id, r) }),
     readEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => markRead(xa, p, id, r) }),
@@ -377,6 +397,7 @@ object Inbox {
     inboxesEndpoint,
     threadsEndpoint,
     detailEndpoint,
+    linkedEndpoint,
     assignEndpoint,
     statusEndpoint,
     readEndpoint,

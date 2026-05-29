@@ -76,6 +76,23 @@ object CollabInboxIT extends IOSuite {
     } yield expect(result.created == "event") and expect(result.recordType.contains("calendar"))
   }
 
+  test("W9.2 — confirming the service links the thread to the car; its page back-references the email") { xa =>
+    val rangeRover = UUID.fromString("40000000-0000-0000-0000-000000000006")
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      service = threads.find(_.subject.exists(_.contains("Range Rover"))).get
+      detail <- Inbox.detail(xa, toby, service.id).map(_.toOption.get)
+      // before: the car has no linked mail
+      before <- Inbox.linked(xa, toby, "asset", rangeRover).map(_.toOption.get)
+      result <- Inbox.confirmProposal(xa, toby, detail.proposals.head.id).map(_.toOption.get)
+      // after: the back-reference loop is closed — the car's page now shows the booking email
+      linked <- Inbox.linked(xa, toby, "asset", rangeRover).map(_.toOption.get)
+    } yield expect(result.created == "event") and
+      expect(before.isEmpty) and
+      expect(linked.exists(_.id == service.id)) and
+      expect(linked.forall(_.subject.exists(_.contains("Range Rover"))))
+  }
+
   test("assign · comment · done round-trip") { xa =>
     for {
       marciaPid <- PeopleRepo.assigneeScope(marcia.userId).transact(xa).map(_.get.personId)

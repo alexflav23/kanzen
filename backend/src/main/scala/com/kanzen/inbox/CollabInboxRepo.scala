@@ -180,4 +180,17 @@ object CollabInboxRepo {
     sql"""insert into entity_links (owner_id, source_type, source_id, target_type, target_id, role, created_by)
           values ($ownerId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
           on conflict do nothing""".update.run
+
+  /** Back-reference: the email threads linked to a record (e.g. an asset/expense/calendar event), so its page can
+    * answer "what mail concerns this?". Scope-filtered — Staff never see threads outside their own/property (no leak).
+    */
+  def linkedThreads(targetType: String, targetId: UUID, scope: Option[AssigneeScope]): ConnectionIO[List[ThreadRow]] =
+    (fr"""select t.id, t.inbox_id, t.subject, t.snippet, t.from_name, t.last_message_at, t.unread, t.has_attachments,
+            t.status, t.assignee_id,
+            (select count(*) from agent_actions a where a.thread_id = t.id and a.status = 'proposed')
+          from entity_links l
+            join email_threads t on t.id = l.source_id and l.source_type = 'email_thread'
+            join mail_inboxes i on i.id = t.inbox_id
+          where l.target_type = $targetType and l.target_id = $targetId""" ++ scopePred(scope) ++
+      fr"order by t.last_message_at desc").query[ThreadRow].to[List]
 }

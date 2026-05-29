@@ -12,6 +12,7 @@ import { AssetGroups } from "../components/AssetGroups";
 import { Timeline } from "../components/Timeline";
 import { Bar } from "../components/Bar";
 import { ActivityFeed } from "../features/audit/ActivityFeed";
+import { LinkedEmails } from "../components/LinkedEmails";
 import { ProvenanceParties } from "../components/ProvenanceParties";
 import {
   changeCustody, editAsset, getAsset, getAssetHistory, getAssetTimeline, getInsurance, getValuations, listAssets,
@@ -469,6 +470,8 @@ export function AssetDetail() {
           </div>
         </Card>
       </div>
+
+      <LinkedEmails targetType="asset" targetId={id} />
 
       <div {...stylex.props(styles.layout)}>
         <Card>

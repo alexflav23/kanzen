@@ -45,3 +45,6 @@ export const confirmProposal = (id: string, token: string | null) =>
   api(`/api/inbox/proposals/${id}/confirm`, ConfirmResultSchema, { method: "POST", token });
 export const rejectProposal = (id: string, token: string | null) =>
   api(`/api/inbox/proposals/${id}/reject`, z.unknown(), { method: "POST", token });
+/** Back-reference: the email threads linked to a record (asset/expense/calendar). Scope-filtered server-side. */
+export const linkedThreads = (targetType: string, targetId: string, token: string | null) =>
+  api(`/api/inbox/links?targetType=${targetType}&targetId=${targetId}`, z.array(CThreadSchema), { token });

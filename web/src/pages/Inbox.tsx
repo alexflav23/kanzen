@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Pill } from "../components/Pill";
@@ -84,8 +85,9 @@ const styles = stylex.create({
 export function Inbox() {
   const { token, role } = useAuth();
   const qc = useQueryClient();
+  const [params] = useSearchParams();
   const [view, setView] = useState<View>({ kind: "all" });
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(params.get("thread"));
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const canReassign = role != null && role !== "staff";
