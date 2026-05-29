@@ -146,4 +146,25 @@ object WealthApiIT extends IOSuite {
     } yield expect(list.left.exists(_._1.code == 403)) and
       expect(nw.left.exists(_._1.code == 403)) and expect(mk.left.exists(_._1.code == 403))
   }
+
+  test("F42 — create a child entity (ownership), then edit it; Manager cannot edit (403)") { xa =>
+    for {
+      parent <- entity(xa, "Holdco")
+      child <- Wealth
+        .createEntity(xa, toby, CreateEntityReq("Subsidiary", "company", Some("UK"), Some("GBP"), Some(parent)))
+        .map(_.toOption.get)
+      // rename + re-kind + clear parent
+      edited <- Wealth
+        .updateEntity(xa, toby, child.id, UpdateEntityReq("Subsidiary Ltd", "trust", Some("JE"), None))
+        .map(_.toOption.get)
+      // self-parent is rejected; Manager cannot edit
+      selfParent <- Wealth.updateEntity(xa, toby, child.id, UpdateEntityReq("X", "company", None, Some(child.id)))
+      mgr <- Wealth.updateEntity(xa, lorna, child.id, UpdateEntityReq("Nope", "company", None, None))
+    } yield expect(child.parentEntityId.contains(parent)) and
+      expect(edited.name == "Subsidiary Ltd") and expect(edited.kind == "trust") and
+      expect(edited.jurisdiction.contains("JE")) and expect(edited.parentEntityId.isEmpty) and
+      expect(edited.baseCurrency == "GBP") and // base currency is immutable
+      expect(selfParent.left.exists(_._1.code == 400)) and
+      expect(mgr.left.exists(_._1.code == 403))
+  }
 }

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
@@ -19,9 +20,11 @@ import { Wealth } from "../pages/Wealth";
 
 const renderWealth = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <AuthProvider><Wealth /></AuthProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <AuthProvider><Wealth /></AuthProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));

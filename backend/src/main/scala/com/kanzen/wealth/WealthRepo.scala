@@ -46,8 +46,25 @@ object WealthRepo {
     sql"""select id, name, kind, jurisdiction, base_currency, parent_entity_id from wealth_entities
           where owner_id = $ownerId order by name""".query[Entity].to[List]
 
+  /** F42 — edit an entity's particulars + ownership parent (base currency is immutable; it anchors the entity's books).
+    * Owner-scoped so a Principal can only touch their own entities.
+    */
+  def updateEntity(
+      id: UUID,
+      ownerId: UUID,
+      name: String,
+      kind: String,
+      jurisdiction: Option[String],
+      parent: Option[UUID]
+  ): ConnectionIO[Int] =
+    sql"""update wealth_entities set name = $name, kind = $kind, jurisdiction = $jurisdiction,
+          parent_entity_id = $parent where id = $id and owner_id = $ownerId""".update.run
+
   def entityExists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from wealth_entities where id = $id)".query[Boolean].unique
+
+  def entityOwnedBy(id: UUID, ownerId: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from wealth_entities where id = $id and owner_id = $ownerId)".query[Boolean].unique
 
   def createAccount(
       ownerId: UUID,

@@ -58,6 +58,15 @@ export type Holding = z.infer<typeof HoldingSchema>;
 const entityQs = (entity?: string | null) => (entity ? `?entity=${encodeURIComponent(entity)}` : "");
 
 export const listEntities = (token: string | null) => api("/api/wealth/entities", z.array(EntitySchema), { token });
+
+// F42 — entity management (Principal-private). Base currency is set at creation and immutable thereafter.
+export type CreateEntityReq = { name: string; kind: string; jurisdiction: string | null; baseCurrency: string | null; parentEntityId: string | null };
+export type UpdateEntityReq = { name: string; kind: string; jurisdiction: string | null; parentEntityId: string | null };
+
+export const createEntity = (req: CreateEntityReq, token: string | null) =>
+  api("/api/wealth/entities", EntitySchema, { method: "POST", body: req, token });
+export const updateEntity = (id: string, req: UpdateEntityReq, token: string | null) =>
+  api(`/api/wealth/entities/${id}`, EntitySchema, { method: "PATCH", body: req, token });
 export const getNetWorth = (token: string | null, entity?: string | null) =>
   api(`/api/wealth/net-worth${entityQs(entity)}`, NetWorthSchema, { token });
 export const getBalanceSheet = (token: string | null, entity?: string | null) =>

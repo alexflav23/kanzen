@@ -42,6 +42,12 @@ object Wealth {
       baseCurrency: Option[String],
       parentEntityId: Option[UUID]
   )
+  final case class UpdateEntityReq(
+      name: String,
+      kind: String,
+      jurisdiction: Option[String],
+      parentEntityId: Option[UUID]
+  )
   final case class AccountView(
       id: UUID,
       code: String,
@@ -124,6 +130,24 @@ object Wealth {
           .createEntity(p.userId, r.name, r.kind, r.jurisdiction, r.baseCurrency.getOrElse("GBP"), r.parentEntityId)
           .map(id => EntityView(id, r.name, r.kind, r.jurisdiction, r.baseCurrency.getOrElse("GBP"), r.parentEntityId))
       ).transact(xa)
+
+  def updateEntity(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateEntityReq): IO[Out[EntityView]] = {
+    if (r.name.trim.isEmpty) IO.pure(Left(badReq("name required")))
+    else if (r.parentEntityId.contains(id)) IO.pure(Left(badReq("an entity cannot own itself")))
+    else {
+      val tx = for {
+        authz <- Authz.forUser(p.userId, p.role)
+        owned <- WealthRepo.entityOwnedBy(id, p.userId)
+        res <-
+          if (!authz.can(editA)) (Left(forbidden): Out[EntityView]).pure[ConnectionIO]
+          else if (!owned) (Left(notFound): Out[EntityView]).pure[ConnectionIO]
+          else
+            WealthRepo.updateEntity(id, p.userId, r.name, r.kind, r.jurisdiction, r.parentEntityId) *>
+              WealthRepo.entities(p.userId).map(_.find(_.id == id).map(ev).toRight(notFound))
+      } yield res
+      tx.transact(xa)
+    }
+  }
 
   def accounts(xa: Transactor[IO], p: Principal, entity: Option[UUID]): IO[Out[List[AccountView]]] =
     principal(p)(WealthRepo.accounts(p.userId, entity).map(_.map(av))).transact(xa)
@@ -212,6 +236,13 @@ object Wealth {
     .errorOut(err)
     .out(jsonBody[EntityView])
     .summary("Create an entity")
+  val updateEntityEndpoint = sttp.tapir.endpoint.patch
+    .securityIn(bearer)
+    .in("api" / "wealth" / "entities" / path[UUID]("id"))
+    .in(jsonBody[UpdateEntityReq])
+    .errorOut(err)
+    .out(jsonBody[EntityView])
+    .summary("Edit an entity (name/kind/jurisdiction/parent)")
   val accountsEndpoint = sttp.tapir.endpoint.get
     .securityIn(bearer)
     .in("api" / "wealth" / "accounts")
@@ -262,6 +293,9 @@ object Wealth {
     createEntityEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => (r: CreateEntityReq) => createEntity(xa, p, r)),
+    updateEntityEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, r) => updateEntity(xa, p, id, r) }),
     accountsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (e: Option[UUID]) => accounts(xa, p, e)),
     createAccountEndpoint
       .serverSecurityLogic(a.securityLogic)
@@ -279,6 +313,7 @@ object Wealth {
   val endpoints: List[AnyEndpoint] = List(
     entitiesEndpoint,
     createEntityEndpoint,
+    updateEntityEndpoint,
     accountsEndpoint,
     createAccountEndpoint,
     postEndpoint,

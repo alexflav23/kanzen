@@ -1,7 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { colors } from "../styles/tokens.stylex";
+import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
 import { fmtMoney } from "../data/money";
@@ -10,7 +11,8 @@ import { Loading, EmptyState, ErrorState } from "../components/states";
 import { getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, type BalanceSheet, type IncomeStatement } from "../services/wealth";
 
 const styles = stylex.create({
-  header: { marginBottom: "20px" },
+  header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", marginBottom: "20px" },
+  manage: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px", textDecoration: "none", flexShrink: 0 },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px" },
@@ -99,9 +101,12 @@ export function Wealth() {
   return (
     <div>
       <header {...stylex.props(styles.header)}>
-        <div {...stylex.props(styles.eyebrow)}>Private Wealth · Principal-private</div>
-        <h1 {...stylex.props(styles.title)}>Net worth</h1>
-        <div {...stylex.props(styles.desc)}>Computed from the ledger — assets and investments at market, less liabilities. The books are never shown; figures only.</div>
+        <div>
+          <div {...stylex.props(styles.eyebrow)}>Private Wealth · Principal-private</div>
+          <h1 {...stylex.props(styles.title)}>Net worth</h1>
+          <div {...stylex.props(styles.desc)}>Computed from the ledger — assets and investments at market, less liabilities. The books are never shown; figures only.</div>
+        </div>
+        <Link to="/wealth/entities" {...stylex.props(styles.manage)}>Manage entities →</Link>
       </header>
 
       <div {...stylex.props(styles.scope)}>
