@@ -88,7 +88,9 @@ object Main extends IOApp.Simple {
                 // F34: the transactional-outbox relay runs alongside the servers (in-process
                 // consumers in sandbox; Pulsar transport is infra, deferred to hardening).
                 val relay = log.info("F34 event relay started") *> Relay.run(xa, Consumers.sandbox)
-                IO.both(servers, relay).void
+                // F32/NL-2: the RAG index reconcile loop — first pass backfills, then keeps every asset + update fresh.
+                val reconcile = log.info("NL-2 RAG index reconcile started") *> com.kanzen.index.IndexReconcile.loop(xa)
+                IO.both(servers, IO.both(relay, reconcile)).void
               }
             }
         } yield ()

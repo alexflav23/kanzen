@@ -4,6 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
+import com.kanzen.index.EntityDocRepo
 import com.kanzen.nl.{NlQueryRepo, NlQueryService}
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -32,6 +33,8 @@ object NlQuery {
   private def gbp(minor: Long): String = f"£${minor / 100}%,d"
   private def ok(prompt: String, intent: String, answer: String, count: Option[Long]): Out[QueryResult] =
     Right(QueryResult(prompt, intent, answer, count))
+  private def snippet(b: String): String =
+    if (b.length <= 320) b else b.take(320).reverse.dropWhile(_ != ' ').reverse.trim + "…"
 
   def query(xa: Transactor[IO], p: Principal, prompt: String): IO[Out[QueryResult]] =
     Authz
@@ -98,7 +101,13 @@ object NlQuery {
                   Some(tasks + maint)
                 )
               }
-            case NlQueryService.Unknown(_) => (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
+            case NlQueryService.Unknown(_) =>
+              // No structured intent — fall back to RAG retrieval over the indexed entity documents (NL-2).
+              // Sandbox returns the best-matching document extract; prod synthesises over the top-K via Claude.
+              EntityDocRepo.search(prompt, 3).map {
+                case Nil => Left(cannot)
+                case best :: _ => ok(prompt, "rag", s"${best.title}: ${snippet(best.body)}", None)
+              }
           }
       }
       .transact(xa)

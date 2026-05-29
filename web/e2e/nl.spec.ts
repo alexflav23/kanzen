@@ -18,4 +18,9 @@ test("⌘K Ask: a natural-language question returns a grounded answer", async ({
   await page.getByLabel("Search", { exact: true }).fill("how much did I spend this year");
   await page.getByLabel("Search", { exact: true }).press("Enter");
   await expect(page.getByTestId("nl-answer")).toContainText("£"); // GBP total
+
+  // NL-2 RAG fallback: an open-ended question with no structured intent → answered from the indexed asset doc
+  await page.getByLabel("Search", { exact: true }).fill("tell me about the Royal Oak");
+  await page.getByLabel("Search", { exact: true }).press("Enter");
+  await expect(page.getByTestId("nl-answer")).toContainText("Royal Oak");
 });

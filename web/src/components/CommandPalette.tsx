@@ -97,7 +97,9 @@ export function CommandPalette() {
           {q.trim().length < 2 ? (
             <div {...stylex.props(styles.hint)}>{canAsk ? "Search across everything you can see — or ask a question and press ↵." : "Type to search across everything you can see."}</div>
           ) : hits.length === 0 ? (
-            <div {...stylex.props(styles.hint)} data-testid="cmdk-empty">No matches for “{q}”.</div>
+            // a verbose, sentence-shaped query is an Ask, not a literal search — once it's answered, the
+            // "no matches" search empty-state is just noise, so suppress it when an answer is showing.
+            answer ? null : <div {...stylex.props(styles.hint)} data-testid="cmdk-empty">No matches for “{q}”.</div>
           ) : (
             hits.map((h) => (
               <div key={`${h.entityType}:${h.entityId}`} {...stylex.props(styles.row)} data-testid="cmdk-result" onClick={() => setOpen(false)}>
