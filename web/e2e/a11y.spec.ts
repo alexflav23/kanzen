@@ -48,6 +48,7 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await go("Tasks", /^Tasks$/);
   await go("Calendar", /^Calendar$/);
   await go("Lists", /^Lists$/);
+  await go("Supplies", /^Supplies$/);
   await go("Maintenance", /^Maintenance$/);
   await go("People", /^People$/);
   await go("Vendors", /^Vendors$/);

@@ -5,7 +5,7 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
 import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
-import com.kanzen.product.{Product, ProductRepo, ProductService}
+import com.kanzen.product.{Product, ProductListRow, ProductRepo, ProductService}
 import com.kanzen.replenishment.ReplenishmentService
 import doobie.ConnectionIO
 import doobie.implicits._
@@ -34,6 +34,9 @@ object Products {
       name: String,
       stockStatus: String,
       preferredSpec: Option[String],
+      unit: Option[String],
+      vendor: Option[String],
+      buyUrl: Option[String],
       needsReorder: Boolean
   )
   final case class CreateReq(name: String, preferredSpec: Option[String], unit: Option[String])
@@ -41,8 +44,29 @@ object Products {
   final case class ForecastReq(purchaseDates: List[String], leadDays: Option[Int])
   final case class ForecastResult(avgIntervalDays: Option[Double], predictedNext: Option[String], dueSoon: Boolean)
 
-  private def pv(p: Product): ProductView =
-    ProductView(p.id, p.name, p.stockStatus, p.preferredSpec, ProductService.needsReorder(p.stockStatus))
+  // Minimal mapper (create/reorder paths have no joined vendor); listView carries the buy-link.
+  private def pv(p: Product, unit: Option[String] = None): ProductView =
+    ProductView(
+      p.id,
+      p.name,
+      p.stockStatus,
+      p.preferredSpec,
+      unit,
+      None,
+      None,
+      ProductService.needsReorder(p.stockStatus)
+    )
+  private def pvRow(r: ProductListRow): ProductView =
+    ProductView(
+      r.id,
+      r.name,
+      r.stockStatus,
+      r.preferredSpec,
+      r.unit,
+      r.vendor,
+      r.buyUrl,
+      ProductService.needsReorder(r.stockStatus)
+    )
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to products"))
@@ -52,7 +76,7 @@ object Products {
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.can(Actions.byKey("product:view"))) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
-      else ProductRepo.list.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
+      else ProductRepo.listView.map(ps => Right(ps.map(pvRow)): Out[List[ProductView]])
     }
     tx.transact(xa)
   }
@@ -60,7 +84,7 @@ object Products {
   def reorder(xa: Transactor[IO], p: Principal): IO[Out[List[ProductView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.can(Actions.byKey("product:view"))) (Left(forbidden): Out[List[ProductView]]).pure[ConnectionIO]
-      else ProductRepo.needingReorder.map(ps => Right(ps.map(pv)): Out[List[ProductView]])
+      else ProductRepo.needingReorder.map(ps => Right(ps.map(p => pv(p))): Out[List[ProductView]])
     }
     tx.transact(xa)
   }
@@ -68,7 +92,10 @@ object Products {
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[ProductView]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { a =>
       if (!a.can(Actions.byKey("product:create"))) (Left(forbidden): Out[ProductView]).pure[ConnectionIO]
-      else ProductRepo.insertOwned(p.userId, r.name, r.preferredSpec, r.unit).map(x => Right(pv(x)): Out[ProductView])
+      else
+        ProductRepo
+          .insertOwned(p.userId, r.name, r.preferredSpec, r.unit)
+          .map(x => Right(pv(x, r.unit)): Out[ProductView])
     }
     tx.transact(xa)
   }
@@ -85,7 +112,7 @@ object Products {
           else
             ProductRepo.setStock(id, status) *>
               emitStock(p, id, status) *> // F34: out/low transitions become events (buy requests, alerts)
-              ProductRepo.list.map(_.find(_.id == id).map(pv).toRight(notFound))
+              ProductRepo.listView.map(_.find(_.id == id).map(pvRow).toRight(notFound))
       } yield res
       tx.transact(xa)
     }

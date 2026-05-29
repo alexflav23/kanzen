@@ -15,6 +15,7 @@ import { Vendors } from "./pages/Vendors";
 import { Tasks } from "./pages/Tasks";
 import { Lists } from "./pages/Lists";
 import { Maintenance } from "./pages/Maintenance";
+import { Products } from "./pages/Products";
 import { Wealth } from "./pages/Wealth";
 import { Inbox } from "./pages/Inbox";
 import { Calendar } from "./pages/Calendar";
@@ -49,6 +50,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
     { label: "Tasks", route: "/tasks", icon: I.Tasks, external: true },
     { label: "Calendar", route: "/calendar", icon: I.Calendar, external: true },
     { label: "Lists", route: "/lists", icon: I.Receipt },
+    { label: "Supplies", route: "/supplies", icon: I.Refresh },
     { label: "Maintenance", route: "/maintenance", icon: I.Wrench },
   ] },
   { group: "RECORDS", items: [
@@ -70,6 +72,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
 const NAV_RESOURCE: Record<string, string> = {
   Inventory: "asset", Collections: "asset", Vehicles: "asset", Insights: "asset",
   Finance: "bill", Wealth: "wealth", Backup: "backup", Customization: "custom_field",
+  Supplies: "product",
 };
 
 const styles = stylex.create({
@@ -230,6 +233,7 @@ function Shell() {
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/lists" element={<Lists />} />
                 <Route path="/maintenance" element={<Maintenance />} />
+                <Route path="/supplies" element={<Products />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/customization" element={<Customization />} />
                 <Route path="/settings" element={<Settings />} />

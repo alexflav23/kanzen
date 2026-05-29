@@ -19,13 +19,19 @@ object ProductsApiIT extends IOSuite {
   private val marcia =
     Principal(UUID.fromString("10000000-0000-0000-0000-000000000003"), "m", "marcia@kanzen.local", "staff")
 
-  test("seeded products list; reorder shows low/out items") { xa =>
+  test("seeded products list; reorder shows low/out items; rows carry unit + preferred buy-link") { xa =>
     for {
       all <- Products.list(xa, marcia).map(_.toOption.get) // staff read
       reorder <- Products.reorder(xa, lorna).map(_.toOption.get)
-    } yield expect(all.exists(_.name == "Nespresso pods")) and
-      expect(reorder.exists(_.name == "Olive oil")) and // 'out'
-      expect(!reorder.exists(_.name == "Dishwasher tablets")) // 'in_stock'
+    } yield {
+      val oil = all.find(_.name == "Olive oil")
+      expect(all.exists(_.name == "Nespresso pods")) and
+        expect(reorder.exists(_.name == "Olive oil")) and // 'out'
+        expect(!reorder.exists(_.name == "Dishwasher tablets")) and // 'in_stock'
+        expect(oil.flatMap(_.unit).contains("bottle")) and // enriched view exposes unit
+        expect(oil.flatMap(_.vendor).contains("Natoora")) and // preferred vendor (preferred=true)
+        expect(oil.flatMap(_.buyUrl).exists(_.contains("natoora"))) // where to buy
+    }
   }
 
   test("setting stock to 'out' makes a product appear in the reorder list") { xa =>

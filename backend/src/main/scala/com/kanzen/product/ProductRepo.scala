@@ -13,6 +13,17 @@ object ProductService {
 
 final case class Product(id: UUID, name: String, stockStatus: String, preferredSpec: Option[String])
 
+/** A product row enriched with its preferred vendor + buy-link (F35 §5 — "where to buy"). */
+final case class ProductListRow(
+    id: UUID,
+    name: String,
+    stockStatus: String,
+    preferredSpec: Option[String],
+    unit: Option[String],
+    vendor: Option[String],
+    buyUrl: Option[String]
+)
+
 /** F35 — consumables/products with stock status + preferred vendors (buy links). */
 object ProductRepo {
   def create(name: String, preferredSpec: Option[String]): ConnectionIO[Product] =
@@ -31,6 +42,19 @@ object ProductRepo {
   def list: ConnectionIO[List[Product]] =
     sql"select id, name, stock_status, preferred_spec from products where deleted_at is null order by name"
       .query[Product]
+      .to[List]
+
+  /** List enriched with each product's preferred vendor + buy-link (preferred first, else any). */
+  def listView: ConnectionIO[List[ProductListRow]] =
+    sql"""select p.id, p.name, p.stock_status, p.preferred_spec, p.unit, v.vendor_name, v.buy_url
+          from products p
+          left join lateral (
+            select vendor_name, buy_url from product_vendors
+            where product_id = p.id order by preferred desc limit 1
+          ) v on true
+          where p.deleted_at is null
+          order by p.name"""
+      .query[ProductListRow]
       .to[List]
 
   def exists(id: UUID): ConnectionIO[Boolean] =
