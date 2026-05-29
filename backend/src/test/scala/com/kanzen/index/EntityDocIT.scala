@@ -11,7 +11,7 @@ import weaver.IOSuite
 
 import java.util.UUID
 
-/** F32 / NL-2a — the RAG index: render + index assets, FTS retrieval, idempotent upsert, and NL's RAG fallback. */
+/** F32 / NL-2 — the RAG index: render + index every group, FTS retrieval, idempotent upsert, NL's RAG fallback. */
 object EntityDocIT extends IOSuite {
   type Res = Transactor[IO]
   override def sharedResource = TestDb.transactor
@@ -23,9 +23,10 @@ object EntityDocIT extends IOSuite {
     for {
       ids <- AssetDocRenderer.allIds.transact(xa)
       _ <- ids.traverse_(IndexConsumer.indexAsset).transact(xa) // backfill
-      c1 <- EntityDocRepo.count.transact(xa)
+      // count asset docs specifically — the reconcile test runs in parallel and indexes other groups
+      c1 <- EntityDocRepo.countOf("asset").transact(xa)
       _ <- ids.traverse_(IndexConsumer.indexAsset).transact(xa) // re-index — upsert, must not duplicate
-      c2 <- EntityDocRepo.count.transact(xa)
+      c2 <- EntityDocRepo.countOf("asset").transact(xa)
       hits <- EntityDocRepo.search("Royal Oak", 3).transact(xa)
       body = hits.headOption.map(_.body.toLowerCase).getOrElse("")
       // an open-ended question with no structured intent → RAG answer (extractive in sandbox)
@@ -37,5 +38,20 @@ object EntityDocIT extends IOSuite {
       expect(body.contains("located at")) and // the renderer captured current state
       expect(ragE.exists(_.intent == "rag")) and
       expect(ragE.exists(_.answer.toLowerCase.contains("royal oak")))
+  }
+
+  test("NL-2b — the reconcile pass indexes people, properties and documents too (all four groups retrievable)") { xa =>
+    for {
+      n <- IndexReconcile.run(xa) // backfills every group
+      again <- IndexReconcile.run(xa) // idempotent — same population
+      // each group lands its own entity_type and is FTS-retrievable
+      person <- EntityDocRepo.search("housekeeper", 5).transact(xa)
+      property <- EntityDocRepo.search("Wardian apartment", 5).transact(xa)
+      // an open-ended question about a *person* now resolves via RAG (no structured intent matched)
+      whoIs <- NlQuery.query(xa, toby, "tell me about Marcia")
+    } yield expect(n > 0) and expect(again == n) and
+      expect(person.exists(_.entityType == "person") || property.exists(_.entityType == "property")) and
+      expect(property.exists(_.entityType == "property")) and
+      expect(whoIs.exists(_.intent == "rag"))
   }
 }

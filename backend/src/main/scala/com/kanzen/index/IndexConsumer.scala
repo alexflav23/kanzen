@@ -23,16 +23,22 @@ object IndexConsumer extends Consumer {
     val subjType = c.downField("subject").get[String]("type").toOption
     val subjId = c.downField("subject").get[UUID]("id").toOption
     (subjType, subjId) match {
-      case (Some("asset"), Some(id)) => indexAsset(id)
-      case _ => ().pure[ConnectionIO] // more entity types land in NL-2b (person, document, expense, property)
+      case (Some("asset"), Some(id)) => index(AssetDocRenderer.render(id))
+      case (Some("person"), Some(id)) => index(PersonDocRenderer.render(id))
+      case (Some("property"), Some(id)) => index(PropertyDocRenderer.render(id))
+      case (Some("document"), Some(id)) => index(DocumentDocRenderer.render(id))
+      case _ => ().pure[ConnectionIO] // expense/finance retrieval lands later (Principal-private, ledger-hidden)
     }
   }
 
-  def indexAsset(id: UUID): ConnectionIO[Unit] =
-    AssetDocRenderer.render(id).flatMap {
+  /** Render → upsert (idempotent); a renderer returning None (deleted/missing) is a no-op. */
+  def index(rendered: ConnectionIO[Option[RenderedDoc]]): ConnectionIO[Unit] =
+    rendered.flatMap {
       case Some(doc) => EntityDocRepo.upsert(doc).void
       case None => ().pure[ConnectionIO]
     }
+
+  def indexAsset(id: UUID): ConnectionIO[Unit] = index(AssetDocRenderer.render(id))
 }
 
 /** F32 / NL-2 — keep the RAG index complete. `run` re-renders + upserts every indexable entity (idempotent); the first
@@ -41,13 +47,24 @@ object IndexConsumer extends Consumer {
   * `updated_at`-delta pass; full re-render is ample at household scale and guarantees completeness.)
   */
 object IndexReconcile {
-  def run(xa: Transactor[IO]): IO[Int] = {
-    val tx = for {
-      ids <- AssetDocRenderer.allIds
-      _ <- ids.traverse_(IndexConsumer.indexAsset)
-    } yield ids.size
-    tx.transact(xa)
-  }
+  // each indexable group: its id source + its renderer. Add a group here and the reconcile pass picks it up.
+  private val groups: List[(ConnectionIO[List[UUID]], UUID => ConnectionIO[Option[RenderedDoc]])] = List(
+    (AssetDocRenderer.allIds, AssetDocRenderer.render),
+    (PersonDocRenderer.allIds, PersonDocRenderer.render),
+    (PropertyDocRenderer.allIds, PropertyDocRenderer.render),
+    (DocumentDocRenderer.allIds, DocumentDocRenderer.render)
+  )
+
+  def run(xa: Transactor[IO]): IO[Int] =
+    groups
+      .flatTraverse { case (ids, render) =>
+        for {
+          xs <- ids
+          _ <- xs.traverse_(id => IndexConsumer.index(render(id)))
+        } yield xs
+      }
+      .map(_.size)
+      .transact(xa)
 
   def loop(xa: Transactor[IO], every: FiniteDuration = 15.seconds)(implicit T: Temporal[IO]): IO[Unit] =
     (run(xa).attempt *> T.sleep(every)).foreverM

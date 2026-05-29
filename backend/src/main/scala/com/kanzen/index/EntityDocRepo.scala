@@ -43,4 +43,6 @@ object EntityDocRepo {
           limit $limit""".query[DocHit].to[List]
 
   def count: ConnectionIO[Long] = sql"select count(*) from entity_documents".query[Long].unique
+  def countOf(entityType: String): ConnectionIO[Long] =
+    sql"select count(*) from entity_documents where entity_type = $entityType".query[Long].unique
 }

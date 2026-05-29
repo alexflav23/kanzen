@@ -36,4 +36,9 @@ test("⌘K Ask: a natural-language question returns a grounded answer", async ({
   await page.getByLabel("Search", { exact: true }).fill("when was the housekeeper last in");
   await page.getByLabel("Search", { exact: true }).press("Enter");
   await expect(page.getByTestId("nl-answer")).toContainText("Housekeeping");
+
+  // NL-2b-ii: RAG now spans people/properties/documents — an open question about a person resolves from the index
+  await page.getByLabel("Search", { exact: true }).fill("tell me about Marcia");
+  await page.getByLabel("Search", { exact: true }).press("Enter");
+  await expect(page.getByTestId("nl-answer")).toContainText("Housekeeper");
 });
