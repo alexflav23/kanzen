@@ -4,11 +4,11 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card } from "../components/Card";
-import { Avatar } from "../components/Avatar";
+import { PersonAvatar } from "../components/PersonAvatar";
 import { PRIORITIES } from "../components/PriorityPill";
 import { Plus, Check, Box, Home, X } from "../components/icons";
 import { addTaskLink, completeTask, createTask, deleteTask, listProjects, listTasks, removeTaskLink, updateTask, type Task } from "../services/tasks";
-import { listPeople } from "../services/people";
+import { listPeople, type Person } from "../services/people";
 import { listAssets } from "../services/assets";
 import { listProperties } from "../services/properties";
 import { useAuth } from "../state/AuthContext";
@@ -214,12 +214,16 @@ function TaskModal({ token, projects, people, task, onClose }: {
   );
 }
 
-function TaskRow({ t, projectName, assignee, onComplete, onEdit }: {
+function TaskRow({ t, projectName, assignee, assigneeProperty, people, canReassign, onComplete, onEdit, onReassign }: {
   t: Task;
   projectName?: string;
-  assignee?: string;
+  assignee?: Person;
+  assigneeProperty?: string;
+  people: { id: string; name: string }[];
+  canReassign: boolean;
   onComplete: () => void;
   onEdit: () => void;
+  onReassign: (personId: string) => void;
 }) {
   const done = t.status === "done";
   const bucket = bucketOf(t.dueOn);
@@ -263,13 +267,17 @@ function TaskRow({ t, projectName, assignee, onComplete, onEdit }: {
           </div>
         )}
       </div>
-      {assignee && <span {...stylex.props(styles.avatarWrap)}><Avatar name={assignee} size={24} /></span>}
+      {assignee && (
+        <span {...stylex.props(styles.avatarWrap)}>
+          <PersonAvatar person={assignee} propertyName={assigneeProperty} canReassign={canReassign} people={people} onReassign={onReassign} size={24} />
+        </span>
+      )}
     </div>
   );
 }
 
 export function Tasks() {
-  const { token } = useAuth();
+  const { token, role } = useAuth();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -277,10 +285,19 @@ export function Tasks() {
   const tasks = useQuery({ queryKey: ["tasks", token], queryFn: () => listTasks(token) });
   const projects = useQuery({ queryKey: ["task-projects", token], queryFn: () => listProjects(token) });
   const people = useQuery({ queryKey: ["people", token], queryFn: () => listPeople(token) });
-  const peopleById = useMemo(() => new Map((people.data ?? []).map((p) => [p.id, p.name])), [people.data]);
+  const properties = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
+  const peopleById = useMemo(() => new Map((people.data ?? []).map((p) => [p.id, p] as const)), [people.data]);
   const projectById = useMemo(() => new Map((projects.data ?? []).map((p) => [p.id, p.name])), [projects.data]);
+  const propertyById = useMemo(() => new Map((properties.data ?? []).map((p) => [p.id, p.name])), [properties.data]);
+  const peopleOpts = useMemo(() => (people.data ?? []).map((p) => ({ id: p.id, name: p.name })), [people.data]);
+  const canReassign = role != null && role !== "staff"; // Manager/Principal can reassign others' work
 
   const complete = useMutation({ mutationFn: (id: string) => completeTask(id, token), onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }) });
+  const reassign = useMutation({
+    mutationFn: ({ t, personId }: { t: Task; personId: string }) =>
+      updateTask(t.id, { projectId: t.projectId ?? "", title: t.title, dueOn: t.dueOn, recurrence: t.recurrence, priority: t.priority, assigneeId: personId }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
   const canAdd = (projects.data?.length ?? 0) > 0;
 
   const all = tasks.data ?? [];
@@ -296,11 +313,16 @@ export function Tasks() {
     return m;
   }, [active]);
 
-  const row = (t: Task) => (
-    <TaskRow key={t.id} t={t} projectName={t.projectId ? projectById.get(t.projectId) : undefined}
-      assignee={t.assigneeId ? peopleById.get(t.assigneeId) : undefined} onComplete={() => complete.mutate(t.id)}
-      onEdit={() => setEditing(t)} />
-  );
+  const row = (t: Task) => {
+    const assignee = t.assigneeId ? peopleById.get(t.assigneeId) : undefined;
+    return (
+      <TaskRow key={t.id} t={t} projectName={t.projectId ? projectById.get(t.projectId) : undefined}
+        assignee={assignee} assigneeProperty={assignee?.propertyId ? propertyById.get(assignee.propertyId) : undefined}
+        people={peopleOpts} canReassign={canReassign}
+        onComplete={() => complete.mutate(t.id)} onEdit={() => setEditing(t)}
+        onReassign={(personId) => reassign.mutate({ t, personId })} />
+    );
+  };
 
   return (
     <div>

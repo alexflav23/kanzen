@@ -34,6 +34,19 @@ test("adding a task with an assignee + due date + recurrence makes it appear", a
   await expect(page.getByRole("button", { name: `Complete ${title} (urgent priority)` })).toBeVisible();
 });
 
+// An assignee avatar opens a profile hover-card (View profile + reassign) and links to the person page.
+test("an assignee avatar opens a profile card and links to the person page", async ({ page }) => {
+  await page.goto("/tasks");
+  const avatar = page.getByRole("link", { name: /— view profile/ }).first();
+  await expect(avatar).toBeVisible();
+  await avatar.hover();
+  const card = page.getByTestId("person-card").first();
+  await expect(card).toBeVisible();
+  await expect(card.getByLabel("Reassign to")).toBeVisible(); // Principal session → reassign offered
+  await card.getByRole("link", { name: "View profile →" }).click();
+  await expect(page).toHaveURL(/\/people\/[0-9a-f-]+/); // landed on the person's profile
+});
+
 // Click a task → edit it (Todoist-style), then delete it.
 test("a task can be edited on click, and deleted", async ({ page }) => {
   const title = `Edit me ${Date.now()}`;
