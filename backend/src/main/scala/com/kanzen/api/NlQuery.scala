@@ -29,30 +29,63 @@ object NlQuery {
   private val cannot: (StatusCode, ApiError) =
     (StatusCode.UnprocessableEntity, ApiError(422, "not_understood", "Could not interpret the query."))
 
+  private def gbp(minor: Long): String = f"£${minor / 100}%,d"
+  private def ok(prompt: String, intent: String, answer: String, count: Option[Long]): Out[QueryResult] =
+    Right(QueryResult(prompt, intent, answer, count))
+
   def query(xa: Transactor[IO], p: Principal, prompt: String): IO[Out[QueryResult]] =
     Authz
       .forUser(p.userId, p.role)
       .flatMap { a =>
-        if (!a.can(Actions.byKey("asset:view")))
-          (Left(forbidden): Out[QueryResult]).pure[ConnectionIO] // NL reads the registry → registry read
+        // NL is Principal-only in v1: the asker can see the whole estate, so unscoped aggregates carry no leak
+        // (Manager/Staff get 403). Scoped, role-aware NL is a follow-up. Registry read is the floor.
+        if (p.role != "principal" || !a.can(Actions.byKey("asset:view")))
+          (Left(forbidden): Out[QueryResult]).pure[ConnectionIO]
         else
           NlQueryService.translate(prompt) match {
             case NlQueryService.CountIntent(entity, filter) =>
               NlQueryRepo
                 .countAssets(filter)
-                .map(n =>
-                  Right(QueryResult(prompt, s"count:$entity", s"$n ${filter.getOrElse(entity)}(s)", Some(n))): Out[
-                    QueryResult
-                  ]
-                )
+                .map(n => ok(prompt, s"count:$entity", s"$n ${filter.getOrElse(entity)}(s) in the registry.", Some(n)))
             case NlQueryService.LastPurchaseIntent(category) =>
               NlQueryRepo.lastPurchase(Some(category).filter(_ != "asset")).map {
                 case Some((title, date)) =>
-                  Right(
-                    QueryResult(prompt, "last_purchase", s"Last: $title${date.map(d => s" on $d").getOrElse("")}", None)
-                  ): Out[QueryResult]
-                case None =>
-                  Right(QueryResult(prompt, "last_purchase", "No matching purchase found.", None)): Out[QueryResult]
+                  ok(prompt, "last_purchase", s"Last: $title${date.map(d => s" on $d").getOrElse("")}.", None)
+                case None => ok(prompt, "last_purchase", "No matching purchase found.", None)
+              }
+            case NlQueryService.WhereIsIntent(kw) =>
+              if (kw.isEmpty) (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
+              else
+                NlQueryRepo.whereIs(kw).map {
+                  case Some((title, prop, loc)) =>
+                    val where = List(prop, loc).flatten match {
+                      case Nil => "no location on record"; case xs => xs.mkString(" · ")
+                    }
+                    ok(prompt, "where_is", s"$title — $where.", None)
+                  case None => ok(prompt, "where_is", s"""No asset matching "$kw".""", None)
+                }
+            case NlQueryService.ValueByCategoryIntent() =>
+              NlQueryRepo.valueByCategory.map { rows =>
+                val total = rows.map(_._2).sum
+                val txt =
+                  if (rows.isEmpty) "No costed assets yet."
+                  else rows.map { case (c, v) => s"$c ${gbp(v)}" }.mkString(", ") + s" (total ${gbp(total)})."
+                ok(prompt, "value_by_category", s"By category: $txt", Some(rows.size.toLong))
+              }
+            case NlQueryService.SpendIntent(category, monthsN) =>
+              NlQueryRepo.spendTotal(category, monthsN).map { case (sum, cnt) =>
+                val onCat = category.map(c => s" on $c").getOrElse("")
+                val window = if (monthsN == 1) "the last month" else s"the last $monthsN months"
+                ok(prompt, "spend", s"${gbp(sum)}$onCat across $cnt approved expense(s) in $window.", Some(cnt))
+              }
+            case NlQueryService.DueSoonIntent(daysN) =>
+              NlQueryRepo.dueSoonCount(daysN).map { case (tasks, maint) =>
+                ok(
+                  prompt,
+                  "due_soon",
+                  s"${tasks + maint} due in the next $daysN days ($tasks task(s), $maint maintenance).",
+                  Some(tasks + maint)
+                )
               }
             case NlQueryService.Unknown(_) => (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
           }

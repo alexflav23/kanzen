@@ -23,4 +23,43 @@ object NlQueryRepo {
       fr"and acquisition_date is not null order by acquisition_date desc limit 1")
       .query[(String, Option[LocalDate])]
       .option
+
+  /** Where is the best-matching asset? title, property, location. */
+  def whereIs(kw: String): ConnectionIO[Option[(String, Option[String], Option[String])]] =
+    sql"""select a.title, p.name, l.name
+          from assets a
+          left join locations l on l.id = a.location_id
+          left join properties p on p.id = l.property_id
+          where a.deleted_at is null and (a.title ilike ${"%" + kw + "%"} or a.maker ilike ${"%" + kw + "%"})
+          order by a.created_at desc limit 1""".query[(String, Option[String], Option[String])].option
+
+  /** Acquisition value by category (top 5) — the basis for "what's my registry worth". */
+  def valueByCategory: ConnectionIO[List[(String, Long)]] =
+    sql"""select c.name, coalesce(sum(a.acquisition_cost_minor), 0)
+          from assets a join categories c on c.id = a.category_id
+          where a.deleted_at is null and a.acquisition_cost_minor is not null
+          group by c.name having coalesce(sum(a.acquisition_cost_minor), 0) > 0
+          order by 2 desc limit 5""".query[(String, Long)].to[List]
+
+  /** Approved-expense spend (GBP, native — no FX) over the last N months, optionally for a category: (sumMinor, count).
+    */
+  def spendTotal(category: Option[String], monthsBack: Int): ConnectionIO[(Long, Long)] = {
+    val catCond = category
+      .map(c =>
+        fr"and exists (select 1 from categories c where c.id = e.category_id and c.name ilike ${"%" + c + "%"})"
+      )
+      .getOrElse(Fragment.empty)
+    (fr"""select coalesce(sum(e.amount_minor), 0), count(*) from expenses e
+          where e.deleted_at is null and e.status = 'approved' and e.currency = 'GBP'
+            and coalesce(e.incurred_on, e.created_at::date) >= current_date - make_interval(months => $monthsBack)""" ++ catCond)
+      .query[(Long, Long)]
+      .unique
+  }
+
+  /** Tasks + maintenance plans due within N days: (tasksDue, maintenanceDue). */
+  def dueSoonCount(daysAhead: Int): ConnectionIO[(Long, Long)] =
+    sql"""select
+            (select count(*) from tasks where due_on is not null and due_on between current_date and current_date + $daysAhead and status <> 'done'),
+            (select count(*) from maintenance_plans where next_due is not null and next_due between current_date and current_date + $daysAhead and active)
+       """.query[(Long, Long)].unique
 }

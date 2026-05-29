@@ -17,6 +17,18 @@ class NlQueryServiceSpec extends AnyFreeSpec with Matchers {
     "'when did I last buy shoes?' -> last-purchase intent" in {
       NlQueryService.translate("When did I last buy shoes?") shouldBe LastPurchaseIntent("shoe")
     }
+    "'how much did I spend on maintenance?' -> spend intent (maintenance, 12mo)" in {
+      NlQueryService.translate("How much did I spend on maintenance?") shouldBe SpendIntent(Some("maintenance"), 12)
+    }
+    "'what's due this week?' -> due-soon intent (7 days)" in {
+      NlQueryService.translate("What's due this week?") shouldBe DueSoonIntent(7)
+    }
+    "'where is my royal oak?' -> where-is intent" in {
+      NlQueryService.translate("Where is my Royal Oak?") shouldBe WhereIsIntent("royal oak")
+    }
+    "'what's my registry worth by category?' -> value-by-category intent" in {
+      NlQueryService.translate("What's my registry worth by category?") shouldBe ValueByCategoryIntent()
+    }
     "an unrecognised prompt is Unknown" in {
       NlQueryService.translate("tell me a joke") shouldBe Unknown("tell me a joke")
     }

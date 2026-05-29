@@ -40,6 +40,23 @@ object SearchNlApiIT extends IOSuite {
       expect(huh.left.exists(_._1.code == 422))
   }
 
+  test("F32 — broadened intents: spend (finance), due-soon (household), where-is + value (registry depth)") { xa =>
+    for {
+      spend <- NlQuery.query(xa, toby, "how much did I spend on maintenance this year").map(_.toOption.get)
+      due <- NlQuery.query(xa, toby, "what's due this week").map(_.toOption.get)
+      worth <- NlQuery.query(xa, toby, "what's my registry worth by category").map(_.toOption.get)
+      where <- NlQuery.query(xa, toby, "where is my Royal Oak").map(_.toOption.get)
+    } yield expect(spend.intent == "spend") and expect(spend.answer.contains("£")) and
+      expect(due.intent == "due_soon") and expect(due.count.exists(_ >= 0L)) and
+      expect(worth.intent == "value_by_category") and
+      expect(where.intent == "where_is") and expect(where.answer.contains("Royal Oak"))
+  }
+
+  test("F32 — NL is Principal-only in v1: a Manager is also denied (403)") { xa =>
+    val lorna = Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
+    NlQuery.query(xa, lorna, "how much did I spend").map(r => expect(r.left.exists(_._1.code == 403)))
+  }
+
   test("F32 — Staff cannot run NL registry queries (403, no leak via NL totals)") { xa =>
     NlQuery.query(xa, marcia, "how many assets").map(r => expect(r.left.exists(_._1.code == 403)))
   }
