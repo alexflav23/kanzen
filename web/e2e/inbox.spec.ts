@@ -24,13 +24,13 @@ test("the collaborative inbox lists threads and surfaces the agent's proposal on
   await expect(modal.getByTestId("proposal-confirm")).toBeVisible();
 });
 
-test("a mailbox has standard folders — Inbox / Sent / Spam / Archive", async ({ page }) => {
+test("mailboxes are tabs, folders are rows — Spam isolates the phishing thread", async ({ page }) => {
   await page.goto("/inbox");
-  await page.getByTestId("inbox-rail-item").filter({ hasText: "Deliveries" }).first().click();
-  // the spam tab shows the flagged phishing thread, not the real deliveries
+  // the mailbox is a top tab; the folder is a left-rail row
+  await page.getByTestId("mailbox-tab").filter({ hasText: "Deliveries" }).first().click();
   await page.getByTestId("folder-spam").click();
   await expect(page.getByTestId("thread-row").filter({ hasText: "redelivery" })).toBeVisible();
-  // back to Inbox — the phishing thread is NOT there
+  // back to Inbox — the phishing thread is NOT there, the real deliveries are
   await page.getByTestId("folder-inbox").click();
   await expect(page.getByTestId("thread-row").filter({ hasText: "Amazon" })).toBeVisible();
   await expect(page.getByTestId("thread-row").filter({ hasText: "redelivery" })).toHaveCount(0);

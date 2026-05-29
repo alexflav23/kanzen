@@ -29,16 +29,21 @@ const ago = (iso: string) => {
   if (h < 24) return `${h}h`;
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 };
-type View = { kind: "all" | "me" | "mailbox"; inboxId?: string };
 type Folder = "inbox" | "sent" | "spam" | "archive";
-const FOLDERS: [Folder, string][] = [["inbox", "Inbox"], ["sent", "Sent"], ["spam", "Spam"], ["archive", "Archive"]];
+type RailSel = Folder | "mine";
+// folders are the left-rail rows; mailboxes are the top tabs. Archived == completed (we archive what we're done with).
+const FOLDERS: [Folder, string][] = [["inbox", "Inbox"], ["sent", "Sent"], ["spam", "Spam"], ["archive", "Archived"]];
 
 const styles = stylex.create({
   header: { marginBottom: "16px" },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px", maxWidth: "560px" },
-  pane: { display: "grid", gridTemplateColumns: "210px 340px 1fr", border: `1px solid ${colors.line}`, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.bgElev, minHeight: "640px", "@media (max-width: 1000px)": { gridTemplateColumns: "1fr" } },
+  mailboxTabs: { display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" },
+  mbTab: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, background: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
+  mbTabOn: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent },
+  mbCount: { fontSize: "11px", fontVariantNumeric: "tabular-nums", opacity: 0.85 },
+  pane: { display: "grid", gridTemplateColumns: "180px 340px 1fr", border: `1px solid ${colors.line}`, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.bgElev, minHeight: "640px", "@media (max-width: 1000px)": { gridTemplateColumns: "1fr" } },
   rail: { borderRight: `1px solid ${colors.line}`, padding: "10px", display: "flex", flexDirection: "column", gap: "1px", backgroundColor: colors.bgSunken },
   railSection: { fontSize: "10.5px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, padding: "12px 10px 4px" },
   railItem: { display: "flex", alignItems: "center", gap: "8px", width: "100%", textAlign: "left", border: 0, background: "transparent", cursor: "pointer", padding: "8px 10px", borderRadius: radius.sm, color: colors.ink2, fontSize: "13px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgElev } },
@@ -102,8 +107,8 @@ export function Inbox() {
   const { token, role } = useAuth();
   const qc = useQueryClient();
   const [params] = useSearchParams();
-  const [view, setView] = useState<View>({ kind: "all" });
-  const [folder, setFolder] = useState<Folder>("inbox");
+  const [mailbox, setMailbox] = useState<string | "all">("all"); // top tab
+  const [railSel, setRailSel] = useState<RailSel>("inbox"); // left-rail folder/view
   const [selected, setSelected] = useState<string | null>(params.get("thread"));
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -117,8 +122,9 @@ export function Inbox() {
   const peopleById = useMemo(() => new Map((peopleQ.data ?? []).map((p) => [p.id, p])), [peopleQ.data]);
   const peopleOpts = useMemo(() => (peopleQ.data ?? []).map((p) => ({ id: p.id, name: p.name })), [peopleQ.data]);
 
-  const tq = view.kind === "mailbox" ? { inbox: view.inboxId, folder } : view.kind === "me" ? { assignee: "me", folder: "inbox" } : { folder: "inbox" };
-  const threadsQ = useQuery({ queryKey: ["inbox-threads", view, folder, token], queryFn: () => listThreads(token, tq) });
+  const inboxId = mailbox === "all" ? undefined : mailbox;
+  const tq = railSel === "mine" ? { inbox: inboxId, folder: "inbox", assignee: "me" } : { inbox: inboxId, folder: railSel };
+  const threadsQ = useQuery({ queryKey: ["inbox-threads", mailbox, railSel, token], queryFn: () => listThreads(token, tq) });
   const detailQ = useQuery({ queryKey: ["inbox-thread", selected, token], queryFn: () => threadDetail(selected!, token), enabled: !!selected });
 
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["inbox-threads"] }); qc.invalidateQueries({ queryKey: ["inbox-inboxes"] }); if (selected) qc.invalidateQueries({ queryKey: ["inbox-thread", selected] }); };
@@ -140,10 +146,9 @@ export function Inbox() {
   };
 
   const threads = threadsQ.data ?? [];
-  const railItem = (label: string, on: boolean, onClick: () => void, count?: number) => (
-    <button type="button" {...stylex.props(styles.railItem, on && styles.railItemOn)} onClick={onClick} data-testid="inbox-rail-item">
+  const railItem = (label: string, on: boolean, onClick: () => void, testId = "inbox-rail-item") => (
+    <button type="button" {...stylex.props(styles.railItem, on && styles.railItemOn)} onClick={onClick} data-testid={testId} aria-current={on ? "true" : undefined}>
       <span {...stylex.props(styles.railGrow)}>{label}</span>
-      {count != null && count > 0 && <span {...stylex.props(styles.railCount)}>{count}</span>}
     </button>
   );
 
@@ -158,27 +163,27 @@ export function Inbox() {
         <div {...stylex.props(styles.desc)}>Household mail, triaged by the agent into proposed actions — assign a thread, discuss it, turn it into a task, and mark it done.</div>
       </header>
 
-      {inboxesQ.isPending ? <Loading /> : inboxesQ.isError ? <ErrorState error={inboxesQ.error} /> : (
+      {inboxesQ.isPending ? <Loading /> : inboxesQ.isError ? <ErrorState error={inboxesQ.error} /> : (<>
+        <div {...stylex.props(styles.mailboxTabs)} role="tablist" aria-label="Mailboxes">
+          <button type="button" role="tab" aria-selected={mailbox === "all"} {...stylex.props(styles.mbTab, mailbox === "all" && styles.mbTabOn)} data-testid="mailbox-all" onClick={() => { setSelected(null); setMailbox("all"); }}>All</button>
+          {(inboxesQ.data ?? []).map((i: CInbox) => (
+            <button key={i.id} type="button" role="tab" aria-selected={mailbox === i.id} {...stylex.props(styles.mbTab, mailbox === i.id && styles.mbTabOn)} data-testid="mailbox-tab" onClick={() => { setSelected(null); setMailbox(i.id); }}>
+              {i.label}{i.openCount > 0 && <span {...stylex.props(styles.mbCount)}>{i.openCount}</span>}
+            </button>
+          ))}
+        </div>
+
         <div {...stylex.props(styles.pane)} data-testid="inbox-pane">
-          <nav {...stylex.props(styles.rail)} aria-label="Inboxes">
-            {railItem("All open", view.kind === "all", () => { setSelected(null); setView({ kind: "all" }); })}
-            {railItem("Assigned to me", view.kind === "me", () => { setSelected(null); setView({ kind: "me" }); })}
-            <div {...stylex.props(styles.railSection)}>Mailboxes</div>
-            {(inboxesQ.data ?? []).filter((i: CInbox) => i.kind === "shared").map((i: CInbox) => railItem(i.label, view.kind === "mailbox" && view.inboxId === i.id, () => { setSelected(null); setFolder("inbox"); setView({ kind: "mailbox", inboxId: i.id }); }, i.openCount))}
-            <div {...stylex.props(styles.railSection)}>Role &amp; property</div>
-            {(inboxesQ.data ?? []).filter((i: CInbox) => i.kind !== "shared").map((i: CInbox) => railItem(i.label, view.kind === "mailbox" && view.inboxId === i.id, () => { setSelected(null); setFolder("inbox"); setView({ kind: "mailbox", inboxId: i.id }); }, i.openCount))}
+          <nav {...stylex.props(styles.rail)} aria-label="Folders">
+            <div {...stylex.props(styles.railSection)}>Folders</div>
+            {FOLDERS.map(([f, label]) => railItem(label, railSel === f, () => { setSelected(null); setRailSel(f); }, `folder-${f}`))}
+            <div {...stylex.props(styles.railSection)}>Views</div>
+            {railItem("Assigned to me", railSel === "mine", () => { setSelected(null); setRailSel("mine"); }, "view-mine")}
           </nav>
 
           <div {...stylex.props(styles.listCol)}>
-            {view.kind === "mailbox" && (
-              <div {...stylex.props(styles.folderTabs)} role="tablist" aria-label="Folders">
-                {FOLDERS.map(([f, label]) => (
-                  <button key={f} type="button" role="tab" aria-selected={folder === f} {...stylex.props(styles.folderTab, folder === f && styles.folderTabOn)} data-testid={`folder-${f}`} onClick={() => { setSelected(null); setFolder(f); }}>{label}</button>
-                ))}
-              </div>
-            )}
             <div {...stylex.props(styles.list)}>
-            {threadsQ.isPending ? <Loading /> : threads.length === 0 ? <EmptyState title={folder === "inbox" ? "Inbox zero" : "Nothing here"}>Nothing here.</EmptyState>
+            {threadsQ.isPending ? <Loading /> : threads.length === 0 ? <EmptyState title={railSel === "inbox" ? "Inbox zero" : railSel === "archive" ? "Nothing archived" : "Nothing here"}>Nothing here.</EmptyState>
               : threads.map((t: CThread) => (
                 <button key={t.id} type="button" {...stylex.props(styles.trow, t.id === selected && styles.trowOn)} data-testid="thread-row" onClick={() => { setReplying(false); setSelected(t.id); }}>
                   <div {...stylex.props(styles.trowTop)}>
@@ -215,9 +220,9 @@ export function Inbox() {
                           {peopleOpts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       )}
-                    {detail.thread.status !== "done"
-                      ? <button type="button" {...stylex.props(styles.btn)} data-testid="thread-done" onClick={() => status.mutate({ id: detail.thread.id, s: "done" })}><Check size={13} /> Done</button>
-                      : <button type="button" {...stylex.props(styles.btn)} onClick={() => status.mutate({ id: detail.thread.id, s: "open" })}>Reopen</button>}
+                    {detail.thread.status === "open" || detail.thread.status === "snoozed"
+                      ? <button type="button" {...stylex.props(styles.btn)} data-testid="thread-archive" onClick={() => status.mutate({ id: detail.thread.id, s: "archived" })}><Check size={13} /> Archive</button>
+                      : <button type="button" {...stylex.props(styles.btn)} data-testid="thread-reopen" onClick={() => status.mutate({ id: detail.thread.id, s: "open" })}>Reopen</button>}
                   </div>
                 </div>
 
@@ -289,7 +294,7 @@ export function Inbox() {
               </div>
             )}
         </div>
-      )}
+      </>)}
       {reviewing && (
         <ProposalReviewModal
           proposalId={reviewing}
