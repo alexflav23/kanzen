@@ -21,6 +21,8 @@
 4. **AI ingest agent** (the F25 engine, elevated): every inbound message → classify + extract → **typed proposals** (F27 trust — financial/asset **never auto-commit**), surfaced inline in the thread and in the Triage stream.
 5. **Spec now, build later** (operator-gated). Build sequenced as **Wave W9** once `SETUP.md` inputs land (§17). The W9 build deliberately lands a **sandbox spine behind the integration seam** first (§18) so every layer is testable before live Gmail/Bedrock.
 6. **Hand-roll the UI** (house style, `input/inbox.jsx`/`triage.jsx`), composing the four headless OSS libs in §3 for the hard parts. No third-party webmail shell / UI kit.
+7. **A generic collaboration & linking abstraction** (the "abstraction layer we generate") — `entity_links` (polymorphic link any source↔any target) + `entity_comments` (internal comments/@mentions on any entity), so the inbox links a **thread → a task / asset / property / expense / list / vehicle / anything**, those records show their **linked emails** back, and comments/collaboration work the same on every entity. Built once, reused everywhere (it subsumes the `task_links`/`document_links` pattern). See §11a.
+8. **A "showcase" test suite proving the auto-suggested intelligence** — golden, fixture-driven tests where a real-shaped `.eml` → asserted intent + confidence + extracted fields + proposed actions, and on confirm the exact created+linked records, with the financial-lock proven. This is both regression-grade and a living demo of the agent's discernment. See §15a.
 
 ---
 
@@ -138,14 +140,35 @@ create table email_attachments (
   safe         boolean
 );
 
-create table thread_comments (                    -- internal notes; NEVER sent outbound
-  id         uuid primary key default gen_random_uuid(),
-  thread_id  uuid not null references email_threads(id) on delete cascade,
-  author_id  uuid not null,
-  body       text not null,
-  mentions   uuid[] not null default '{}',        -- person/user ids @mentioned
-  created_at timestamptz not null default now()
+-- generic collaboration layer (§11a) — comments work on ANY entity (threads first), never sent outbound
+create table entity_comments (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null,
+  entity_type text not null,                       -- 'email_thread'|'task'|'asset'|… (reusable)
+  entity_id   uuid not null,
+  author_id   uuid not null,
+  body        text not null,
+  mentions    uuid[] not null default '{}',        -- person/user ids @mentioned
+  created_at  timestamptz not null default now()
 );
+create index entity_comments_idx on entity_comments (entity_type, entity_id, created_at);
+
+-- generic polymorphic links (§11a) — link any source↔target; back-references via the target index.
+-- Subsumes the task_links/document_links pattern; the inbox links a thread → task/asset/property/expense/…
+create table entity_links (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null,
+  source_type text not null,                       -- e.g. 'email_thread'
+  source_id   uuid not null,
+  target_type text not null,                       -- 'task'|'asset'|'property'|'expense'|'receipt'|'maintenance'|'list'|'vehicle'|'person'|'document'|'email_thread'
+  target_id   uuid not null,
+  role        text,                                -- optional ('about'|'evidence'|'spawned_from'|…)
+  created_by  uuid,
+  created_at  timestamptz not null default now(),
+  unique (source_type, source_id, target_type, target_id)
+);
+create index entity_links_source_idx on entity_links (source_type, source_id);
+create index entity_links_target_idx on entity_links (target_type, target_id);
 
 create table email_drafts (                       -- shared draft replies
   id         uuid primary key default gen_random_uuid(),
@@ -169,7 +192,7 @@ create table thread_events (                       -- the thread's activity/audi
   at         timestamptz not null default now()
 );
 ```
-Reuses: **`agent_actions`** (F25; re-keyed to `message_id`), `agent_action_result_link` (provenance), `sender_rules` (F27), `documents`/`document_links` (F05; attachments + thread↔record links), `tasks`/`task_links` (F06; a thread→task link via `task_links target_type='email_thread'`), `merchants` (F12), `audit_log_entries` (every write), `EventRepo` outbox (F34; @mention + proposal notifications).
+Reuses: **`agent_actions`** (F25; re-keyed to `message_id`), `agent_action_result_link` (provenance), `sender_rules` (F27), `documents` (F05; attachments), `tasks` (F06; a thread→task link lives in `entity_links`), `merchants` (F12), `audit_log_entries` (every write), `EventRepo` outbox (F34; @mention + proposal notifications). The shipped `task_links`/`document_links` are the precedent for `entity_links` and may be folded into it in a later cleanup (no migration needed for W9).
 
 ## 5. Gmail sync architecture (Google is the server)
 **Connect** (`mailbox:connect`, Principal): a Workspace **service account with domain-wide delegation** (scopes `gmail.readonly`, `gmail.modify`, `gmail.send`) impersonates each mailbox — one credential for the whole domain; per-mailbox OAuth is the non-Workspace fallback. Persist `mail_accounts` row; kick off backfill + start a watch.
@@ -239,7 +262,7 @@ Errors `statusCode.and(jsonBody[ApiError])`; bearer security → `Principal`; al
 - `POST /api/inbox/threads/:id/assign` `{assigneeId|null}` (`thread:assign`).
 - `POST /api/inbox/threads/:id/status` `{status, snoozedUntil?}` (`thread:status`; syncs Gmail label).
 - `POST /api/inbox/threads/:id/read` `{unread:bool}`.
-- `POST /api/inbox/threads/:id/task` `{...CreateTaskReq}` → create a task linked back (`task_links target='email_thread'`); `thread_events(task_created)`.
+- `POST /api/inbox/threads/:id/task` `{...CreateTaskReq}` → create a task + an `entity_links` row (`email_thread`↔`task`); `thread_events(task_created)`.
 
 **Messages / send / drafts**
 - `GET  /api/inbox/messages/:id/body` → sanitized HTML for the iframe (server sanitizes too; defence-in-depth) + `loadImages` flag.
@@ -247,8 +270,11 @@ Errors `statusCode.and(jsonBody[ApiError])`; bearer security → `Principal`; al
 - `POST /api/inbox/threads/:id/drafts` `{...}` · `PATCH /drafts/:id` · `DELETE /drafts/:id` (shared drafts).
 - `POST /api/inbox/messages/:id/reprocess` (re-run agent; versioned).
 
-**Collaboration**
-- `POST /api/inbox/threads/:id/comments` `{body, mentions[]}` (`thread:comment`) → emits F34 notifications to mentions; **never** outbound.
+**Collaboration & linking (generic — `com.kanzen.api.Collab`; §11a)**
+- `GET  /api/comments?entity=:type::id` → `[CommentView{id,author,body,mentions,at}]` (gated on viewing the entity).
+- `POST /api/comments` `{entityType, entityId, body, mentions[]}` (`*:comment`) → emits F34 notifications to mentions; **internal-only, never outbound**.
+- `GET  /api/links?entity=:type::id&dir=out|in|both` → `[LinkView{id,type,id,label,role,direction}]` (labels resolved per target type; `in` = back-references, e.g. emails linked to a task/asset).
+- `POST /api/links` `{sourceType, sourceId, targetType, targetId, role?}` (write on the source's feature + view on the target) · `DELETE /api/links/:id`.
 
 **Agent proposals** (reuse F26): `POST /api/agent/actions/:id/confirm` (optional edited `extracted`) · `/reject` · bulk-confirm (financial excluded).
 
@@ -258,7 +284,7 @@ Errors `statusCode.and(jsonBody[ApiError])`; bearer security → `Principal`; al
 **Route** `/inbox` (replaces the current Inbox), three-pane, keyboard-first, StyleX tokens, dark+light, axe-clean.
 - **Rail** (`<InboxRail>`): inboxes (`All`, `wardian@`, `deliveries@`, `groceries@`…) + saved views (`Assigned to me`, `Unassigned`, `Snoozed`, `Done`), each a live count pill (TanStack Query, scope-filtered); "+ New inbox" (alias on the fly). Plus the existing F26 streams entry (`Triage`).
 - **Thread list** (`<ThreadList>`, `@tanstack/react-virtual`): row = sender · subject · snippet · `<PersonAvatar>` (assignee) · **agent-proposal badge** · attachment icon · unread (bold) · relative time; multi-select; `data-testid="thread-row"`.
-- **Thread view** (`<ThreadView>`): message stack — each message body rendered via **DOMPurify → sandboxed `<iframe srcdoc>`** with a "load images" toggle; attachments as F05 doc tiles; the **agent proposal panel inline** (the F26 Triage detail embedded: editable extracted KV + Confirm/Edit/Reject); the **`<ReplyComposer>`** (Lexical) + **shared drafts**; the **`<CommentsPanel>`** (Lexical w/ @mentions); header controls — **assign** (PersonAvatar reassign), status (snooze/done/archive), **convert → task**, "open in Gmail".
+- **Thread view** (`<ThreadView>`): message stack — each message body rendered via **DOMPurify → sandboxed `<iframe srcdoc>`** with a "load images" toggle; attachments as F05 doc tiles; the **agent proposal panel inline** (the F26 Triage detail embedded: editable extracted KV + Confirm/Edit/Reject); the **`<ReplyComposer>`** (Lexical) + **shared drafts**; the reusable **`<CollabPanel>`** (Lexical comments w/ @mentions + **linked records** + "Link to…" picker, §11a); header controls — **assign** (PersonAvatar reassign), status (snooze/done/archive), **convert → task**, "open in Gmail". The **`<LinkedEmails>`** back-reference panel is added to AssetDetail / Task / PropertyBible so "what emails concern this record?" is answerable from the record.
 - **Keyboard map** (tinykeys, scoped to `/inbox`):
 
   | Key | Action |  | Key | Action |
@@ -274,10 +300,22 @@ Errors `statusCode.and(jsonBody[ApiError])`; bearer security → `Principal`; al
 
 ## 11. Collaboration (Front-grade)
 - **Assignment**: `<PersonAvatar>` (built) on each thread; assign/reassign via the hover card → `thread:assign`; emits F34 notification to the new assignee; Staff scope keys off the assignee.
-- **Internal comments + @mentions**: `<CommentsPanel>` (Lexical mention node); `@person` resolves against the people list; on post → F34 notification to mentioned users; **rendered only in Kanzen, never serialized into any outbound email** (tested, V2-AC7).
+- **Internal comments + @mentions**: the comments half of `<CollabPanel>` over `entity_comments` (§11a; Lexical mention node); `@person` resolves against the people list; on post → F34 notification to mentioned users; **rendered only in Kanzen, never serialized into any outbound email** (tested, V2-AC7).
 - **Shared drafts**: `email_drafts(shared=true)` visible to collaborators on the thread; last-writer-wins with an `updated_at` guard; on send becomes the outbound message.
 - **Read/seen**: `unread` per thread synced to Gmail `UNREAD`; "seen by" derived from `thread_events`.
+- **Linked records**: a thread shows its **linked records** (task/asset/property/expense/list/vehicle…) and a "Link to…" picker; the linked record shows the thread back. Comments + links are the generic abstraction (§11a), so the same panel works on any entity.
 - **Activity timeline**: `thread_events` rendered via the reusable `<Timeline>`/`<ActivityFeed>` (W2/W8.5).
+
+## 11a. Collaboration & linking abstraction (the layer we generate — reusable everywhere)
+A single generic layer powers "link emails to tasks & other stuff, comment, collaborate" — and is reusable on every entity, not just the inbox.
+- **`entity_links`** (§4): link *any* `source` ↔ *any* `target` with an optional `role`. The inbox links a **thread → task / asset / property / expense / receipt / maintenance / list / vehicle / person / document**. The `target_type,target_id` index gives **back-references** for free — "which emails relate to this task / this asset / this expense?" — without per-pair tables.
+- **`entity_comments`** (§4): internal comments + `@mentions` on *any* entity (threads first; tasks/assets/etc. can adopt it with zero new schema). Mentions fan out via F34; **never** included in outbound email.
+- **`LinksRepo.labelsFor(refs)`** — one resolver mapping each `target_type` to a display label (asset.title · property.name · task.title · `merchant £amount` for expense · list.name · vehicle reg · person.name · document.name), generalising the F06 `task_links` label query. New target types are one `case` away.
+- **Authz**: creating a link needs **write on the source's feature + view on the target** (no leak — you can't link to something you can't see); comments need `*:comment`; both scope-filtered (Staff only see links/comments on entities in their scope).
+- **Web — reusable components**:
+  - `<CollabPanel entityType entityId>` — comments (Lexical + @mentions) + the links list + a "Link to…" entity picker. Mounted on the thread view; droppable onto Task/Asset/Property detail later with one line.
+  - `<LinkedEmails entityType entityId>` — the back-reference list (threads linked to this record) → click opens the inbox thread. Add to AssetDetail / Task / PropertyBible so "what emails concern this?" is answerable from the record.
+- **Provenance tie-in**: when the agent confirms a proposal, besides `agent_action_result_link` it writes the matching `entity_links` (thread↔created record), so the inbox↔registry/finance graph is navigable both ways.
 
 ## 12. Business rules & invariants
 - **Never moves money; financial/asset proposals never auto-commit** (F27 server-enforced regardless of trust). Confirm runs under the **acting user's** authz.
@@ -300,14 +338,30 @@ Existing **F25 AC1–AC8** + **F26 AC1–AC8** carry forward (ingest idempotency
 - **V2-AC4 — Assign a thread; Staff see only theirs** ‹`ThreadScopeIT`, web `inbox.spec` scope›: assigning to Marcia → visible to her, absent for other Staff; no financial proposals to Staff.
 - **V2-AC5 — Thread → task; done makes it go away** ‹`ThreadToTaskIT`›: thread→task (linked back); marking done removes it from the open queue + syncs the Gmail label.
 - **V2-AC6 — Reply/send threaded** ‹`SendReplyIT` (send mocked)›: a reply posts in-thread via Gmail; stored outbound with `sent_by`; the agent cannot send.
-- **V2-AC7 — Internal comment + @mention notifies, never leaves Kanzen** ‹`ThreadCommentIT`›: an @mention notifies (F34); **never** in any outbound email.
+- **V2-AC7 — Internal comment + @mention notifies, never leaves Kanzen** ‹`EntityCommentIT`›: an @mention notifies (F34); **never** in any outbound email.
 - **V2-AC8 — Shared draft** ‹`SharedDraftIT`›: a draft visible to collaborators, editable, on send becomes the outbound message.
 - **V2-AC9 — Idempotent sync** ‹`SyncIdempotencyIT`›: redelivered Pub/Sub history → one thread/message, no dup actions.
 - **V2-AC10 — Reauth surfaces** ‹`ReauthIT`›: a 401 from Gmail → `account.status='reauth'` + a reconnect banner; sync pauses, no data loss.
+- **V2-AC11 — Link a thread to a record; the record shows it back** ‹`EntityLinkIT`, web `inbox.spec` linked + `inventory.spec` linked-emails›: link a thread to the Range Rover asset → it appears in the thread's linked records **and** in the asset's "Linked emails" back-reference; linking to a record you can't see is denied (no leak); a Staff member sees only links/comments within their scope.
 
 ## 15. Test plan (named)
-**Backend (weaver + Testcontainers-PG; Gmail + Pub/Sub + Bedrock mocked):** `GmailSyncIT` (history upsert + idempotency + cursor), `SyncIdempotencyIT`, `ReauthIT`, `AgentClassifyIT` (per-intent extraction; deterministic stub), `GroceryRoutingIT`, `ServiceRoutingIT`, `ReceiptRoutingIT`, `TrustRouteIT` (financial always propose), `ThreadScopeIT` (Staff assignee-scope; no leak), `ThreadToTaskIT`, `SendReplyIT` (threading + acting identity; agent-can't-send negative), `ThreadCommentIT` (mention notify + outbound-isolation), `SharedDraftIT`, `AttachmentScanIT`, `ProvenanceLinkIT`, `ConfirmAuthzIT` (carry F26 AC7). Pure: `AgentClassifierSpec` (rules), `LabelSyncSpec` (status↔label map).
+**Backend (weaver + Testcontainers-PG; Gmail + Pub/Sub + Bedrock mocked):** `GmailSyncIT` (history upsert + idempotency + cursor), `SyncIdempotencyIT`, `ReauthIT`, `AgentClassifyIT` (per-intent extraction; deterministic stub), `GroceryRoutingIT`, `ServiceRoutingIT`, `ReceiptRoutingIT`, `TrustRouteIT` (financial always propose), `ThreadScopeIT` (Staff assignee-scope; no leak), `ThreadToTaskIT`, `SendReplyIT` (threading + acting identity; agent-can't-send negative), `EntityLinkIT` (thread↔asset/task link + back-reference + authz no-leak + Staff scope), `EntityCommentIT` (mention notify + outbound-isolation), `SharedDraftIT`, `AttachmentScanIT`, `ProvenanceLinkIT`, `ConfirmAuthzIT` (carry F26 AC7), and the **`InboxShowcaseIT`** golden suite (§15a, one test per `.eml` fixture). Pure: `AgentClassifierSpec` (rules), `LinksRepoSpec` (`labelsFor` per target type), `LabelSyncSpec` (status↔Gmail-label map).
 **Web (Vitest):** `InboxRail`, `ThreadList` (virtualized), `ThreadView` (iframe sanitize), `ReplyComposer` (Lexical), `CommentsPanel` (@mention), keyboard map. **Playwright:** sync-render, assign, convert-to-task, reply, comment, snooze/done, reauth banner; **axe** every state. **Mobile (F31):** capture + assigned-to-me triage.
+
+## 15a. Showcase suite — the auto-suggested intelligence (golden, fixture-driven)
+A dedicated, demo-grade suite that proves the agent's discernment end-to-end: each real-shaped `.eml` fixture (in `backend/src/test/resources/inbox/`) is ingested through the **same pipeline** (deterministic classifier in CI; the Bedrock seam in prod), and the test asserts (a) classified **intent** + confidence band, (b) key **extracted** fields, (c) the **proposed `agent_actions`** (financial/asset → `status='proposed'`, never executed), (d) on **confirm** the exact created records **and** their `entity_links`/provenance back to the thread, (e) the **financial lock** (no money moved). `InboxShowcaseIT` (one weaver test per row) + web `inbox-showcase.spec` (renders the proposal card + confirm for two flagship cases).
+
+| Fixture `.eml` | → intent (conf) | extracted (asserted) | proposed actions | on confirm → records (each linked to the thread) |
+|---|---|---|---|---|
+| `ocado-order` | **grocery_order** (≥0.9) | vendor=Ocado, total £142.50/GBP, slot, 18 line items | `create_receipt` · `propose_expense`(Groceries) · `link_list_order`(Grocery — Wardian) | receipt (£142.50, 18 lines) + expense (pending approval) + a delivered-order on the grocery List; `entity_links` thread↔{receipt,expense,list} |
+| `ups-dispatch` | **delivery** (≥0.95) | carrier=UPS, tracking 1Z…, eta Fri 09:00–13:00 | `create_event`(delivery) [+ `create_task` "be in"] | a Fri calendar event (+ optional task), linked to the thread |
+| `garage-service` | **service_booking** (≥0.85) | vendor=Stratstone, asset_hint "Range Rover KA21 NZN", 15 Jul 09:00 | `create_event` · `propose_maintenance`(asset=Range Rover) · `assign` | event + maintenance plan **linked to the Range Rover asset**; thread assigned |
+| `octopus-invoice` | **invoice** (≥0.9) | merchant=Octopus, £214/GBP, due-date, account-ref | `reconcile_bill` (vs £180 schedule → **+18% variance**, `mode=review`) | a reconciliation flagged review; **bill NOT marked paid; no money moved** |
+| `amex-statement` | **statement** (≥0.8) | institution=Amex, period | `file_document` · `set_reminder` | document filed (F05) + a reminder; linked to the thread |
+| `warranty-dyson` | **warranty** (≥0.8) | product, vendor, expiry, asset_hint | `file_document` · attach-to-asset · `set_reminder` | doc + asset attachment + reminder |
+| `lorna-note` (a person emailing) | **generic** (—) | — | **none** | no proposals — a plain thread, assignable/commentable (negative case) |
+
+Invariants the suite locks: financial/asset items are **always `proposed`**, never auto-executed regardless of trust (carries F25-AC4/F26-AC4); confirm runs under the actor's authz; the raw `.eml` is stored immutable in S3; rejection records a sender-learning signal and leaves the source untouched. The fixtures double as the **sandbox seed** (§18) so the live UI demos the same flows.
 
 ## 16. Observability & audit
 Audit every ingest/classify/propose/confirm/assign/comment/send/status. Metrics: mail/day by inbox+intent, auto-exec vs propose ratio, classification confidence histogram, proposal acceptance rate, time-to-triage, queue depth by inbox/assignee, send volume, sync lag (Pub/Sub→stored), watch-renewal + reauth + error rates, attachment-scan blocks.
@@ -322,9 +376,9 @@ Audit every ingest/classify/propose/confirm/assign/comment/send/status. Metrics:
 
 ## 18. Build plan (Wave W9 — each slice ships behind the integration seam, sandbox-testable first)
 - **W9.1 — Data model + sync core.** Migration (§4); `MailSync` with an `EmailSource` seam (**sandbox impl = ingest seeded `.eml` fixtures + a `POST /api/inbox/dev/ingest` paste/forward endpoint**; prod impl = Gmail watch→Pub/Sub→history). Raw→S3, attachments→F05, idempotency, threads/messages upsert, label-sync map (no-op in sandbox). Tests: `GmailSyncIT`, `SyncIdempotencyIT`.
-- **W9.2 — Agent ingest.** `AgentClassifier` seam (sandbox deterministic stub; prod Bedrock) → per-intent schemas (§7) → `agent_actions` → F27 trust; routing wiring (§8) to F13/F17/F08/F07/F11/F04. Tests: `AgentClassifyIT`, `GroceryRoutingIT`, `ServiceRoutingIT`, `TrustRouteIT`.
+- **W9.2 — Agent ingest + the showcase suite.** `AgentClassifier` seam (sandbox deterministic stub; prod Bedrock) → per-intent schemas (§7) → `agent_actions` → F27 trust; routing wiring (§8) to F13/F17/F08/F07/F11/F04. Land the **golden showcase suite** (§15a) + the `.eml` fixtures alongside the classifier so the intelligence is proven and demoable from day one. Tests: `AgentClassifyIT`, `InboxShowcaseIT` (per-fixture), `GroceryRoutingIT`, `ServiceRoutingIT`, `TrustRouteIT`.
 - **W9.3 — Collaborative inbox UI.** Three-pane rail/list/thread (§10); DOMPurify+iframe; virtualized list; assignment (PersonAvatar); inline agent proposals (embed F26 Triage); convert→task; status/snooze/done + label sync; keyboard (tinykeys). Vitest + Playwright + axe.
-- **W9.4 — Send + collaboration.** Reply composer + shared drafts (Lexical); internal comments + @mentions + F34 notifications; read/seen. Tests: `SendReplyIT`, `ThreadCommentIT`, `SharedDraftIT`.
+- **W9.4 — Send + the collaboration/linking abstraction (§11a).** The generic `entity_links` + `entity_comments` + `Collab` API + `LinksRepo.labelsFor`; reusable `<CollabPanel>` (comments/@mentions + linked records + "Link to…") on the thread, and `<LinkedEmails>` on AssetDetail/Task/PropertyBible (back-references); reply composer + shared drafts (Lexical); read/seen; F34 notifications. Tests: `SendReplyIT`, `EntityLinkIT` (link thread↔asset/task; back-reference; authz no-leak), `EntityCommentIT` (mention notify + outbound-isolation), `SharedDraftIT`.
 - **W9.5 — Hardening + live.** Wire the prod `EmailSource`/`AgentClassifier` (Gmail+Bedrock) once §17 lands; reauth/watch-renewal job; phishing/spam + catch-all flood controls; learned categorisation (F27); multi-account. Operator-gated.
 - **Seed fixtures** (sandbox realism): a handful of real-shaped `.eml` — an Ocado order, a UPS dispatch, a garage service confirmation (Range Rover), a utility invoice, a personal email — so the pipeline + UI demo end-to-end without Gmail.
 
