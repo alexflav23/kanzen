@@ -83,6 +83,19 @@ object TaskRepo {
           values ($projectId, $title, $dueOn, $recurrence, $priority, $assigneeId)
           returning id, title, status, recurrence""".query[Task].unique
 
+  /** Create a task with no project (e.g. the agent turning an email into a task — it lands in the ungrouped task list).
+    * Mirrors [[createTask]] but project_id is null.
+    */
+  def createUnfiled(
+      title: String,
+      dueOn: Option[LocalDate],
+      priority: String,
+      assigneeId: Option[UUID]
+  ): ConnectionIO[Task] =
+    sql"""insert into tasks (project_id, title, due_on, priority, assignee_id)
+          values (null, $title, $dueOn, $priority, $assigneeId)
+          returning id, title, status, recurrence""".query[Task].unique
+
   /** Complete a task; if recurring, materialise the next occurrence and return its id. */
   def complete(taskId: UUID): ConnectionIO[Option[UUID]] =
     for {

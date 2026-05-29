@@ -79,6 +79,32 @@ export function ProposalReviewModal(props: {
               </dl>
             )}
 
+            {d.kind === "task" && (
+              <dl {...stylex.props(styles.eventGrid)} data-testid="proposal-task">
+                {d.date && (<><dt {...stylex.props(styles.dt)}>Due</dt><dd {...stylex.props(styles.dd)}>{d.date}</dd></>)}
+                {d.assignee && (<><dt {...stylex.props(styles.dt)}>Assignee</dt><dd {...stylex.props(styles.dd)}>{d.assignee}</dd></>)}
+                {d.priority && (<><dt {...stylex.props(styles.dt)}>Priority</dt><dd {...stylex.props(styles.dd)}>{d.priority}</dd></>)}
+                {d.links.map((l) => (<div key={l.targetType} {...stylex.props(styles.linkRow)}><dt {...stylex.props(styles.dt)}>About</dt><dd {...stylex.props(styles.dd)}>{l.label}</dd></div>))}
+              </dl>
+            )}
+
+            {d.kind === "list" && (
+              <div {...stylex.props(styles.section)} data-testid="proposal-list">
+                <div {...stylex.props(styles.metaRow)}>
+                  <span>{d.listName ?? "List"}</span>
+                  <span {...stylex.props(styles.metaMuted)}>{d.lineItems.length} item{d.lineItems.length === 1 ? "" : "s"}</span>
+                </div>
+                <ul {...stylex.props(styles.items)}>
+                  {d.lineItems.map((it, i) => (
+                    <li key={i} {...stylex.props(styles.item)}>
+                      <span {...stylex.props(styles.itemDesc)}>{it.description}</span>
+                      {it.qty != null && it.qty > 1 && <span {...stylex.props(styles.itemAmt)}>×{it.qty}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {d.kind === "other" && d.summary && <p {...stylex.props(styles.summary)}>{d.summary}</p>}
 
             <div {...stylex.props(styles.actions)}>

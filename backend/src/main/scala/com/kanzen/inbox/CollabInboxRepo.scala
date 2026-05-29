@@ -171,6 +171,12 @@ object CollabInboxRepo {
   def assetTitle(id: UUID): ConnectionIO[Option[String]] =
     sql"select title from assets where id = $id".query[String].option
 
+  /** Display labels for the review popup, per chosen primitive. */
+  def listName(id: UUID): ConnectionIO[Option[String]] =
+    sql"select name from shopping_lists where id = $id".query[String].option
+  def personName(id: UUID): ConnectionIO[Option[String]] =
+    sql"select name from employment_records where id = $id".query[String].option
+
   // ── reply / send + shared drafts (W9.4a) ────────────────────────────────────
   /** The address a reply is sent *from* (the thread's inbox) and *to* (the latest inbound sender). */
   def replyEnvelope(threadId: UUID): ConnectionIO[Option[(String, Option[String])]] =

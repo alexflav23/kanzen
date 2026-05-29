@@ -7,7 +7,9 @@ import com.kanzen.authz.{Actions, Authorizer, Authz}
 import com.kanzen.calendar.CalendarRepo
 import com.kanzen.finance.ExpenseRepo
 import com.kanzen.inbox._
+import com.kanzen.lists.ListRepo
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
+import com.kanzen.tasks.TaskRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -88,7 +90,7 @@ object Inbox {
   final case class ConfirmResult(created: String, recordType: Option[String], label: Option[String])
 
   // ── proposal review detail (W9.4): the itemised receipt / dated event behind a proposal, for the confirm popup ──
-  final case class ProposalLineItem(description: String, amountMinor: Option[Long])
+  final case class ProposalLineItem(description: String, amountMinor: Option[Long], qty: Option[Int])
   final case class ProposalLink(targetType: String, label: String)
   final case class ProposalDetail(
       id: UUID,
@@ -111,6 +113,11 @@ object Inbox {
       date: Option[String],
       time: Option[String],
       location: Option[String],
+      // task
+      assignee: Option[String],
+      priority: Option[String],
+      // list
+      listName: Option[String],
       // records it will create / attach to
       links: List[ProposalLink]
   )
@@ -127,6 +134,8 @@ object Inbox {
   private val mailSendA = Actions.byKey("mail:send")
   private val calendarCreateA = Actions.byKey("calendar:create")
   private val expenseCreateA = Actions.byKey("expense:create")
+  private val taskCreateA = Actions.byKey("task:create")
+  private val listCreateA = Actions.byKey("list:create")
   private val validStatus = Set("open", "snoozed", "done", "archived")
 
   private def tv(t: ThreadRow): ThreadView =
@@ -262,21 +271,29 @@ object Inbox {
                   .get[UUID]("assetId")
                   .toOption
                   .flatTraverse(aid => CollabInboxRepo.assetTitle(aid).map(_.map(t => ProposalLink("asset", t))))
+                listName <- c.get[UUID]("listId").toOption.flatTraverse(CollabInboxRepo.listName)
+                assignee <- c.get[UUID]("assigneeId").toOption.flatTraverse(CollabInboxRepo.personName)
               } yield {
+                // the model picks the primitive; action_type IS that choice → the popup shape follows from it
                 val kind = pr.actionType match {
                   case "create_receipt" | "reconcile_bill" => "receipt"
                   case "create_event" => "event"
+                  case "create_task" => "task"
+                  case "add_to_list" => "list"
                   case _ => "other"
                 }
                 val total = c.get[Long]("amountMinor").toOption.orElse {
                   val s = items.flatMap(_.amountMinor).sum
-                  if (items.nonEmpty) Some(s) else None
+                  if (kind == "receipt" && items.nonEmpty) Some(s) else None
                 }
                 val links = assetLink.toList
                 val willCreate = kind match {
                   case "receipt" => "an expense, logged for approval — Kanzen never moves money."
                   case "event" =>
                     if (links.nonEmpty) s"a calendar event, linked to ${links.head.label}." else "a calendar event."
+                  case "task" => "a task" + assignee.fold(".")(a => s" assigned to $a.")
+                  case "list" =>
+                    s"${items.size} item${if (items.sizeIs == 1) "" else "s"} on ${listName.getOrElse("the list")}."
                   case _ => "the proposed action."
                 }
                 Right(
@@ -299,6 +316,9 @@ object Inbox {
                     date = c.get[String]("date").toOption,
                     time = c.get[String]("time").toOption,
                     location = c.get[String]("location").toOption,
+                    assignee = assignee,
+                    priority = c.get[String]("priority").toOption,
+                    listName = listName,
                     links = links
                   )
                 ): Out[ProposalDetail]
@@ -405,6 +425,53 @@ object Inbox {
             _ <- CollabInboxRepo.link(p.userId, tid, "expense", ex.id, p.userId)
             _ <- CollabInboxRepo.confirmProposal(pr.id)
           } yield Right(ConfirmResult("expense", Some("expense"), Some(s"$payee — logged for approval")))
+      case "create_task" =>
+        if (!authz.can(taskCreateA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
+        else
+          for {
+            title <- (c.get[String]("title").toOption.getOrElse("Follow up")).pure[ConnectionIO]
+            due = c.get[String]("date").toOption.flatMap(s => Try(LocalDate.parse(s)).toOption)
+            assignee = c.get[UUID]("assigneeId").toOption
+            t <- TaskRepo.createUnfiled(title, due, str("priority", "normal"), assignee)
+            _ <- CollabInboxRepo.link(p.userId, tid, "task", t.id, p.userId)
+            // a task may concern an asset (e.g. the car) — carry that link through too
+            _ <- c
+              .get[UUID]("assetId")
+              .toOption
+              .traverse_(aid => CollabInboxRepo.link(p.userId, tid, "asset", aid, p.userId))
+            _ <- CollabInboxRepo.confirmProposal(pr.id)
+          } yield Right(ConfirmResult("task", Some("task"), Some(s"Task created: $title")))
+      case "add_to_list" =>
+        if (!authz.can(listCreateA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
+        else
+          c.get[UUID]("listId").toOption match {
+            case None => (Left(notFound): Out[ConfirmResult]).pure[ConnectionIO]
+            case Some(listId) =>
+              val items = c.downField("items").as[List[ProposalLineItem]].getOrElse(Nil)
+              for {
+                _ <- items.traverse_(it =>
+                  ListRepo
+                    .addItem(
+                      listId,
+                      it.description,
+                      it.qty.getOrElse(1),
+                      false,
+                      None,
+                      None,
+                      None,
+                      None,
+                      Some(p.userId),
+                      false
+                    )
+                    .void
+                )
+                _ <- CollabInboxRepo.link(p.userId, tid, "list", listId, p.userId)
+                _ <- CollabInboxRepo.confirmProposal(pr.id)
+                name <- CollabInboxRepo.listName(listId)
+              } yield Right(
+                ConfirmResult("list", Some("list"), Some(s"${items.size} added to ${name.getOrElse("the list")}"))
+              )
+          }
       case _ =>
         CollabInboxRepo.confirmProposal(pr.id).as(Right(ConfirmResult("done", None, None)): Out[ConfirmResult])
     }

@@ -27,7 +27,7 @@ export const CThreadDetailSchema = z.object({
 export const ConfirmResultSchema = z.object({ created: z.string(), recordType: z.string().nullable(), label: z.string().nullable() });
 
 /** W9.4 — the itemised detail behind a proposal, for the review popup. */
-export const CProposalLineItemSchema = z.object({ description: z.string(), amountMinor: z.number().nullable() });
+export const CProposalLineItemSchema = z.object({ description: z.string(), amountMinor: z.number().nullable(), qty: z.number().nullable() });
 export const CProposalLinkSchema = z.object({ targetType: z.string(), label: z.string() });
 export const CProposalDetailSchema = z.object({
   id: z.string(), threadId: z.string().nullable(), actionType: z.string(), kind: z.string(), status: z.string(),
@@ -35,6 +35,7 @@ export const CProposalDetailSchema = z.object({
   payee: z.string().nullable(), description: z.string().nullable(), currency: z.string().nullable(),
   totalMinor: z.number().nullable(), category: z.string().nullable(), lineItems: z.array(CProposalLineItemSchema),
   date: z.string().nullable(), time: z.string().nullable(), location: z.string().nullable(),
+  assignee: z.string().nullable(), priority: z.string().nullable(), listName: z.string().nullable(),
   links: z.array(CProposalLinkSchema),
 });
 export type CProposalDetail = z.infer<typeof CProposalDetailSchema>;

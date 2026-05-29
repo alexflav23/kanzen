@@ -86,6 +86,35 @@ object CollabInboxIT extends IOSuite {
       expect(event.links.exists(_.label.contains("Range Rover"))) // the event shows what it links to
   }
 
+  test("W9.4 — the model picks the primitive: a personal email → a task, a note → grocery-list items") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      // a personal email the agent turned into a task
+      eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get
+      eDetail <- Inbox.detail(xa, toby, eleanor.id).map(_.toOption.get)
+      taskProp = eDetail.proposals.find(_.actionType == "create_task").get
+      taskReview <- Inbox.proposalDetail(xa, toby, taskProp.id).map(_.toOption.get)
+      taskRes <- Inbox.confirmProposal(xa, toby, taskProp.id).map(_.toOption.get)
+      tasksAfter <- com.kanzen.tasks.TaskRepo.listTasks(None, None).transact(xa)
+      // a housekeeper note the agent routed to the grocery list
+      groceries = threads.find(_.subject.exists(_.contains("next order"))).get
+      gDetail <- Inbox.detail(xa, toby, groceries.id).map(_.toOption.get)
+      listProp = gDetail.proposals.find(_.actionType == "add_to_list").get
+      listReview <- Inbox.proposalDetail(xa, toby, listProp.id).map(_.toOption.get)
+      listRes <- Inbox.confirmProposal(xa, toby, listProp.id).map(_.toOption.get)
+      gItems <- com.kanzen.lists.ListRepo
+        .items(UUID.fromString("c0000000-0000-0000-0000-000000000001"))
+        .transact(xa)
+    } yield expect(taskReview.kind == "task") and
+      expect(taskReview.assignee.contains("Lorna")) and // resolved the assignee for the popup
+      expect(taskRes.created == "task") and
+      expect(tasksAfter.exists(_.title.contains("Book Marcus"))) and // a real task was created
+      expect(listReview.kind == "list") and
+      expect(listReview.lineItems.sizeIs == 4) and
+      expect(listRes.created == "list") and
+      expect(gItems.exists(_.name.contains("Coffee"))) // items landed on the grocery list
+  }
+
   test("W9.2 — confirming a delivery proposal creates a calendar event") { xa =>
     for {
       threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
