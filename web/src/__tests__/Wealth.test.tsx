@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 
+const { recordSell } = vi.hoisted(() => ({ recordSell: vi.fn(async () => ({ quantitySold: 5, proceedsMinor: 50000, costBasisMinor: 45000, realizedGainMinor: 5000 })) }));
 vi.mock("../services/wealth", () => ({
   listEntities: async () => [
     { id: "e1", name: "Flavian (Individual)", kind: "individual", jurisdiction: "UK", baseCurrency: "GBP", parentEntityId: null },
@@ -14,6 +15,10 @@ vi.mock("../services/wealth", () => ({
     { securityId: "s1", symbol: "VWRL", quantity: 10, costBasisMinor: 90000, marketValueMinor: 98000, unrealizedGainMinor: 8000 },
   ],
   getIncomeStatement: async () => ({ entityId: null, from: "2026-01-01", to: "2026-05-28", incomeMinor: 1200000, expenseMinor: 450000, netMinor: 750000 }),
+  listSecurities: async () => [{ id: "s1", symbol: "VWRL", name: "Vanguard FTSE All-World", currency: "GBP", assetClass: "equity" }],
+  recordBuy: vi.fn(async () => ({ id: "lot1" })),
+  recordSell,
+  createSecurity: vi.fn(),
 }));
 
 import { Wealth } from "../pages/Wealth";
@@ -46,5 +51,19 @@ describe("Wealth", () => {
     expect(screen.getByTestId("is-income")).toHaveTextContent("£12,000"); // 1,200,000 minor
     expect(screen.getByTestId("is-net")).toHaveTextContent("£7,500"); // income − expenses
     expect(screen.getByRole("button", { name: "Export statement CSV" })).toBeInTheDocument();
+  });
+
+  it("records a sell trade and surfaces the realised gain", async () => {
+    renderWealth();
+    fireEvent.click(await screen.findByRole("button", { name: "Record trade" }));
+    const modal = await screen.findByTestId("trade-modal");
+    fireEvent.click(within(modal).getByRole("tab", { name: "Sell" }));
+    fireEvent.change(within(modal).getByLabelText("Quantity"), { target: { value: "5" } });
+    fireEvent.change(within(modal).getByLabelText("Proceeds"), { target: { value: "500.00" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Record sell" }));
+    await waitFor(() => expect(recordSell).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: "e1", securityId: "s1", quantity: 5, proceedsMinor: 50000 }), "t",
+    ));
+    expect(await screen.findByTestId("trade-result")).toHaveTextContent("+£50"); // realised gain (5000 minor)
   });
 });

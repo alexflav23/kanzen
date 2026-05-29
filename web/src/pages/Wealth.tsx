@@ -1,14 +1,18 @@
 import * as stylex from "@stylexjs/stylex";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
 import { Pill } from "../components/Pill";
+import { Plus } from "../components/icons";
 import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, type BalanceSheet, type IncomeStatement } from "../services/wealth";
+import {
+  createSecurity, getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, listSecurities,
+  recordBuy, recordSell, type BalanceSheet, type Entity, type IncomeStatement, type Security,
+} from "../services/wealth";
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", marginBottom: "20px" },
@@ -41,6 +45,26 @@ const styles = stylex.create({
   periodBtn: { padding: "5px 10px", borderRadius: "8px", border: `1px solid ${colors.line}`, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12.5px" },
   periodBtnOn: { backgroundColor: colors.accentSoft, color: colors.accent, borderColor: "transparent" },
   exportBtn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 11px", borderRadius: "8px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", marginLeft: "8px" },
+  cardActions: { display: "flex", gap: "8px", marginLeft: "auto" },
+  smallBtn: { display: "inline-flex", alignItems: "center", gap: "5px", padding: "6px 11px", borderRadius: "8px", border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px" },
+  accentBtn: { border: 0, backgroundColor: colors.accent, color: colors.accentInk },
+  // trade / security modals
+  overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
+  modal: { width: "440px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
+  modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  field: { display: "block", marginBottom: "14px" },
+  two: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" },
+  label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "6px" },
+  control: { width: "100%", padding: "9px 11px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
+  seg: { display: "inline-flex", gap: "2px", padding: "3px", borderRadius: radius.md, backgroundColor: colors.bgSunken, marginBottom: "16px" },
+  segBtn: { padding: "6px 16px", borderRadius: radius.sm, border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "13px", fontWeight: 500 },
+  segOn: { backgroundColor: colors.bgElev, color: colors.ink, boxShadow: "0 1px 2px rgba(0,0,0,0.08)" },
+  result: { padding: "16px", borderRadius: radius.md, backgroundColor: colors.bgSunken, fontSize: "14px", color: colors.ink, marginBottom: "16px" },
+  resultGain: { fontSize: "22px", fontWeight: 700, fontVariantNumeric: "tabular-nums", marginTop: "4px" },
+  errorText: { color: colors.danger, fontSize: "12.5px", marginBottom: "8px" },
+  actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
+  ghost: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
+  primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
 });
 
 const gbp = (m: number) => fmtMoney(m, "GBP");
@@ -83,6 +107,113 @@ function exportStatementCsv(is: IncomeStatement, bs: BalanceSheet | undefined, e
   URL.revokeObjectURL(url);
 }
 
+const toMinor = (v: string) => Math.round((parseFloat(v) || 0) * 100);
+
+/** F40 — record a trade (buy opens a cost-basis lot; sell closes FIFO and shows the realised gain).
+ * Records investments; it never executes a trade. Requires a specific entity. */
+function RecordTradeModal({ entities, defaultEntity, securities, token, onClose }: { entities: Entity[]; defaultEntity: string | null; securities: Security[]; token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [entityId, setEntityId] = useState(defaultEntity ?? entities[0]?.id ?? "");
+  const [securityId, setSecurityId] = useState(securities[0]?.id ?? "");
+  const [quantity, setQuantity] = useState("");
+  const [amount, setAmount] = useState("");
+  const [on, setOn] = useState("");
+  const [sold, setSold] = useState<number | null>(null);
+
+  const invalidate = () => { for (const k of ["holdings", "net", "bs"]) qc.invalidateQueries({ queryKey: ["wealth", k] }); };
+  const trade = useMutation({
+    mutationFn: () => {
+      const qty = parseFloat(quantity) || 0;
+      const minor = toMinor(amount);
+      return side === "buy"
+        ? recordBuy({ entityId, securityId, quantity: qty, costBasisMinor: minor, acquiredOn: on || null }, token).then(() => null)
+        : recordSell({ entityId, securityId, quantity: qty, proceedsMinor: minor, on: on || null }, token).then((r) => r.realizedGainMinor);
+    },
+    onSuccess: (gain) => { invalidate(); if (side === "sell") setSold(gain); else onClose(); },
+  });
+
+  const valid = entityId && securityId && (parseFloat(quantity) || 0) > 0 && toMinor(amount) > 0;
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="trade-modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (valid) trade.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Record a trade</div>
+        {sold !== null ? (
+          <>
+            <div {...stylex.props(styles.result)} data-testid="trade-result">
+              Sale recorded · realised {sold >= 0 ? "gain" : "loss"}
+              <div {...stylex.props(styles.resultGain, sold >= 0 ? styles.gain : styles.loss)}>{sold >= 0 ? "+" : "−"}{gbp(Math.abs(sold))}</div>
+            </div>
+            <div {...stylex.props(styles.actions)}><button type="button" {...stylex.props(styles.primary)} onClick={onClose}>Done</button></div>
+          </>
+        ) : (
+          <>
+            <div {...stylex.props(styles.seg)} role="tablist" aria-label="Trade side">
+              {(["buy", "sell"] as const).map((s) => (
+                <button key={s} type="button" role="tab" aria-selected={side === s} {...stylex.props(styles.segBtn, side === s && styles.segOn)} onClick={() => setSide(s)}>{s === "buy" ? "Buy" : "Sell"}</button>
+              ))}
+            </div>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Entity</span>
+              <select {...stylex.props(styles.control)} aria-label="Entity" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+                {entities.map((en) => <option key={en.id} value={en.id}>{en.name}</option>)}
+              </select></label>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Security</span>
+              <select {...stylex.props(styles.control)} aria-label="Security" value={securityId} onChange={(e) => setSecurityId(e.target.value)}>
+                {securities.map((s) => <option key={s.id} value={s.id}>{s.symbol} — {s.name}</option>)}
+              </select></label>
+            <div {...stylex.props(styles.two)}>
+              <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Quantity</span>
+                <input {...stylex.props(styles.control)} aria-label="Quantity" type="number" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="10" /></label>
+              <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>{side === "buy" ? "Cost (£)" : "Proceeds (£)"}</span>
+                <input {...stylex.props(styles.control)} aria-label={side === "buy" ? "Cost" : "Proceeds"} type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="900.00" /></label>
+            </div>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Date (optional)</span>
+              <input {...stylex.props(styles.control)} aria-label="Date" type="date" value={on} onChange={(e) => setOn(e.target.value)} /></label>
+            {trade.isError && <div {...stylex.props(styles.errorText)} role="alert">Couldn't record the trade (check quantity available for a sell).</div>}
+            <div {...stylex.props(styles.actions)}>
+              <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+              <button type="submit" {...stylex.props(styles.primary)} disabled={!valid || trade.isPending}>{trade.isPending ? "Recording…" : side === "buy" ? "Record buy" : "Record sell"}</button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+/** F40 — register a security so it can be traded/held. */
+function AddSecurityModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [symbol, setSymbol] = useState("");
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState("GBP");
+  const create = useMutation({
+    mutationFn: () => createSecurity({ symbol: symbol.trim(), name: name.trim(), currency, assetClass: null }, token),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["securities"] }); onClose(); },
+  });
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" onClick={onClose}>
+      <form {...stylex.props(styles.modal)} data-testid="security-modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (symbol.trim() && name.trim()) create.mutate(); }}>
+        <div {...stylex.props(styles.modalTitle)}>Add a security</div>
+        <div {...stylex.props(styles.two)}>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Symbol</span>
+            <input {...stylex.props(styles.control)} aria-label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="e.g. VWRL" autoFocus /></label>
+          <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Currency</span>
+            <select {...stylex.props(styles.control)} aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {["GBP", "USD", "SGD", "EUR"].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select></label>
+        </div>
+        <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Name</span>
+          <input {...stylex.props(styles.control)} aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Vanguard FTSE All-World" /></label>
+        <div {...stylex.props(styles.actions)}>
+          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Cancel</button>
+          <button type="submit" {...stylex.props(styles.primary)} disabled={!symbol.trim() || !name.trim() || create.isPending}>{create.isPending ? "Adding…" : "Add security"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 /** Wave G — Private Wealth: consolidated net worth (F41) + holdings (F40) + balance sheet (F43),
   * per entity (F42) or consolidated. Principal-private (the API hard-403s anyone else). */
 export function Wealth() {
@@ -95,8 +226,12 @@ export function Wealth() {
   const net = useQuery({ queryKey: ["wealth", "net", token, entity], queryFn: () => getNetWorth(token, entity) });
   const bs = useQuery({ queryKey: ["wealth", "bs", token, entity], queryFn: () => getBalanceSheet(token, entity) });
   const holdings = useQuery({ queryKey: ["wealth", "holdings", token, entity], queryFn: () => listHoldings(token, entity) });
+  const securities = useQuery({ queryKey: ["securities", token], queryFn: () => listSecurities(token) });
   const inc = useQuery({ queryKey: ["wealth", "income", token, entity, from, to], queryFn: () => getIncomeStatement(token, from, to, entity) });
   const entityName = entity === null ? "Consolidated" : entities.data?.find((e) => e.id === entity)?.name ?? "Entity";
+  const [trading, setTrading] = useState(false);
+  const [addingSec, setAddingSec] = useState(false);
+  const canTrade = (entities.data?.length ?? 0) > 0 && (securities.data?.length ?? 0) > 0;
 
   return (
     <div>
@@ -151,7 +286,13 @@ export function Wealth() {
       </Card>
 
       <Card style={styles.hero}>
-        <CardHeader><CardTitle>Investments</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Investments</CardTitle>
+          <div {...stylex.props(styles.cardActions)}>
+            <button type="button" {...stylex.props(styles.smallBtn)} onClick={() => setAddingSec(true)}>Add security</button>
+            <button type="button" {...stylex.props(styles.smallBtn, styles.accentBtn)} disabled={!canTrade} onClick={() => setTrading(true)}><Plus size={13} /> Record trade</button>
+          </div>
+        </CardHeader>
         {holdings.isPending ? <Loading /> : holdings.isError ? <ErrorState error={holdings.error} />
           : holdings.data.length === 0 ? <EmptyState title="No holdings">No open positions for this view.</EmptyState>
           : (
@@ -190,6 +331,9 @@ export function Wealth() {
           </div>
         )}
       </Card>
+
+      {trading && <RecordTradeModal entities={entities.data ?? []} defaultEntity={entity} securities={securities.data ?? []} token={token} onClose={() => setTrading(false)} />}
+      {addingSec && <AddSecurityModal token={token} onClose={() => setAddingSec(false)} />}
     </div>
   );
 }

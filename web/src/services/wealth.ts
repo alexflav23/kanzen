@@ -73,6 +73,20 @@ export const getBalanceSheet = (token: string | null, entity?: string | null) =>
   api(`/api/wealth/balance-sheet${entityQs(entity)}`, BalanceSheetSchema, { token });
 export const listHoldings = (token: string | null, entity?: string | null) =>
   api(`/api/investments/holdings${entityQs(entity)}`, z.array(HoldingSchema), { token });
+
+/** F40 — securities + record-a-trade (records investments; never executes trades). Principal-private. */
+export const SecuritySchema = z.object({ id: z.string(), symbol: z.string(), name: z.string(), currency: z.string(), assetClass: z.string() });
+export type Security = z.infer<typeof SecuritySchema>;
+export const SellResultSchema = z.object({ quantitySold: z.number(), proceedsMinor: z.number(), costBasisMinor: z.number(), realizedGainMinor: z.number() });
+export type SellResult = z.infer<typeof SellResultSchema>;
+
+export const listSecurities = (token: string | null) => api("/api/investments/securities", z.array(SecuritySchema), { token });
+export const createSecurity = (req: { symbol: string; name: string; currency: string | null; assetClass: string | null }, token: string | null) =>
+  api("/api/investments/securities", SecuritySchema, { method: "POST", body: req, token });
+export const recordBuy = (req: { entityId: string; securityId: string; quantity: number; costBasisMinor: number; acquiredOn: string | null }, token: string | null) =>
+  api("/api/investments/lots", z.object({ id: z.string() }), { method: "POST", body: req, token });
+export const recordSell = (req: { entityId: string; securityId: string; quantity: number; proceedsMinor: number; on: string | null }, token: string | null) =>
+  api("/api/investments/sell", SellResultSchema, { method: "POST", body: req, token });
 export const getIncomeStatement = (token: string | null, from: string, to: string, entity?: string | null) => {
   const qs = new URLSearchParams({ from, to });
   if (entity) qs.set("entity", entity);
