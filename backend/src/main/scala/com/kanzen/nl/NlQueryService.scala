@@ -47,8 +47,10 @@ object NlQueryService {
     else if (p.contains("when did i last buy") || p.contains("last buy") || p.contains("last purchase"))
       LastPurchaseIntent(firstIn(p, assetCats).getOrElse("asset"))
     // "what/which … do I own", "list/show my …" → a clean list of matching assets
-    else if (p.contains("do i own") || p.contains("do i have") || p.contains("list my") || p.contains("show my") ||
-      ((p.startsWith("what") || p.startsWith("which")) && (p.contains("own") || p.contains("have"))))
+    else if (
+      p.contains("do i own") || p.contains("do i have") || p.contains("list my") || p.contains("show my") ||
+      ((p.startsWith("what") || p.startsWith("which")) && (p.contains("own") || p.contains("have")))
+    )
       ListIntent(firstIn(p, assetCats))
     // NL-2b crisp intents, placed *before* the generic spend/due branches they would otherwise be swallowed by:
     // "…next due a **service**" → service, not due-soon; "how much is my car **insurance**" → cover, not spend.

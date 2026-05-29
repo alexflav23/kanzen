@@ -1,38 +1,48 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 
-vi.mock("../services/inbox", () => ({
-  getInbox: async () => ({ counts: { agent: 3, reconciliation: 2 }, total: 5 }),
-  listActions: async () => [
-    { id: "a1", actionType: "create_task", status: "proposed", category: "Delivery", subject: "Amazon — order dispatched", locked: false },
-    { id: "a2", actionType: "propose_asset", status: "proposed", category: "Receipt", subject: "Selfridges — your receipt", locked: true },
+vi.mock("../services/collabInbox", () => ({
+  listInboxes: async () => [{ id: "i1", address: "groceries@kanzen.family", label: "Groceries", kind: "shared", propertyId: null, openCount: 1 }],
+  listThreads: async () => [
+    { id: "t1", inboxId: "i1", subject: "Your Ocado order is on its way", snippet: "Delivery Friday · £142.50", fromName: "Ocado", lastMessageAt: new Date().toISOString(), unread: true, hasAttachments: true, status: "open", assigneeId: null, proposalCount: 1 },
   ],
-  confirmAction: vi.fn(),
-  rejectAction: vi.fn(),
+  threadDetail: async () => ({
+    thread: { id: "t1", inboxId: "i1", subject: "Your Ocado order is on its way", snippet: "", fromName: "Ocado", lastMessageAt: new Date().toISOString(), unread: false, hasAttachments: true, status: "open", assigneeId: null, proposalCount: 1 },
+    messages: [{ id: "m1", direction: "inbound", fromAddr: "orders@ocado.com", sentAt: new Date().toISOString(), bodyText: "Your order totalling £142.50 will be delivered Friday." }],
+    proposals: [{ id: "p1", actionType: "create_receipt", status: "proposed", title: "Log the Ocado receipt + expense", summary: "£142.50 grocery receipt → expense + add to the Grocery list.", confidence: 0.93 }],
+    comments: [],
+  }),
+  assignThread: vi.fn(), setThreadStatus: vi.fn(), addThreadComment: vi.fn(),
 }));
+vi.mock("../services/inbox", () => ({ confirmAction: vi.fn(), rejectAction: vi.fn() }));
+vi.mock("../services/people", () => ({ listPeople: async () => [{ id: "u1", name: "Marcia", role: "staff", jurisdiction: null, propertyId: null }] }));
 
 import { Inbox } from "../pages/Inbox";
 
 const renderInbox = () =>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AuthProvider><Inbox /></AuthProvider>
+      <MemoryRouter><AuthProvider><Inbox /></AuthProvider></MemoryRouter>
     </QueryClientProvider>,
   );
 
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
-describe("Inbox", () => {
-  it("shows stream counts and the triage queue, marking financial items for Review", async () => {
+describe("Inbox (collaborative)", () => {
+  it("lists inboxes + threads, and a thread shows the agent's auto-suggested proposal", async () => {
     renderInbox();
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
-    expect(await screen.findByTestId("count-agent")).toHaveTextContent("3");
-    expect(screen.getByTestId("count-recon")).toHaveTextContent("2");
-    expect(await screen.findByText("Amazon — order dispatched")).toBeInTheDocument();
-    // the Receipt (financial) proposal is flagged Review (F27 — never auto-committed)
-    expect(screen.getByText("Review")).toBeInTheDocument();
-    expect(screen.getAllByTestId("triage-row")).toHaveLength(2);
+    expect(await screen.findByText("Groceries")).toBeInTheDocument(); // rail inbox
+    const row = await screen.findByTestId("thread-row");
+    expect(row).toHaveTextContent("Ocado");
+    fireEvent.click(row);
+    expect(await screen.findByTestId("thread-detail")).toBeInTheDocument();
+    const proposal = await screen.findByTestId("agent-proposal");
+    expect(proposal).toHaveTextContent("Log the Ocado receipt");
+    expect(proposal).toHaveTextContent("93% sure"); // the intelligence + confidence
+    expect(proposal).toHaveTextContent("Confirm");
   });
 });

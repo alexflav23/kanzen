@@ -24,8 +24,10 @@ object NlQuery {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class QueryReq(prompt: String)
-  /** A formatted answer: a one-line `answer` summary + optional structured `items` (rendered as a list) so the UI
-    * can present lists cleanly instead of a run-on paragraph. */
+
+  /** A formatted answer: a one-line `answer` summary + optional structured `items` (rendered as a list) so the UI can
+    * present lists cleanly instead of a run-on paragraph.
+    */
   final case class NlItem(title: String, subtitle: Option[String])
   final case class QueryResult(
       prompt: String,
@@ -67,7 +69,10 @@ object NlQuery {
                 if (rows.isEmpty) ok(prompt, "list", s"No $noun found in the registry.", Some(0L))
                 else {
                   val items = rows.map { case (title, maker, cat) =>
-                    NlItem(title, List(maker, cat).flatten.distinct.mkString(" · ") match { case "" => None; case s => Some(s) })
+                    NlItem(
+                      title,
+                      List(maker, cat).flatten.distinct.mkString(" · ") match { case "" => None; case s => Some(s) }
+                    )
                   }
                   okItems(prompt, "list", s"You own ${rows.size} $noun${if (rows.size == 1) "" else "s"}:", items)
                 }

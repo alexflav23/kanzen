@@ -54,6 +54,13 @@ object Actions {
       ) ++
       crud("task") ++ crud("calendar") ++ crud("maintenance") ++ crud("product") ++
       crud("vendor") ++ crud("person") ++
+      // ── Collaborative Inbox (W9) ── thread assign/status/comment ride the inbox resource
+      List(
+        Action("inbox", "view", Read),
+        Action("thread", "assign", Write),
+        Action("thread", "status", Write),
+        Action("thread", "comment", Write)
+      ) ++
       // ── Finance ── (the pay queue + payment methods are authorized as part of `bill`; bank sync/reconcile as part
       // of `bank_account` — matching the real gating resources, so grants bite without a separate seed mapping)
       crud("bill") ++ List(

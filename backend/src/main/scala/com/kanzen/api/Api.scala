@@ -39,7 +39,10 @@ object Api {
         ++ Notifications.serverEndpoints(auth, xa) ++ Extensibility.serverEndpoints(auth, xa)
         ++ DataQuality.serverEndpoints(auth, xa) ++ Fx.serverEndpoints(auth, xa)
         ++ Restructure.serverEndpoints(auth, xa) ++ Calendar.serverEndpoints(auth, xa)
-        ++ Agent.serverEndpoints(auth, xa) ++ Search.serverEndpoints(auth, xa) ++ NlQuery.serverEndpoints(auth, xa)
+        ++ Agent.serverEndpoints(auth, xa) ++ Inbox.serverEndpoints(auth, xa) ++ Search.serverEndpoints(
+          auth,
+          xa
+        ) ++ NlQuery.serverEndpoints(auth, xa)
         ++ Backup.serverEndpoints(auth, xa)
         ++ Wealth.serverEndpoints(auth, xa) ++ Investments.serverEndpoints(auth, xa)
         ++ Insights.serverEndpoints(auth, xa) ++ Impersonate.serverEndpoints(auth, xa, dev)
@@ -51,7 +54,7 @@ object Api {
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++
-      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ Backup.endpoints ++ Wealth.endpoints ++ Investments.endpoints ++ Insights.endpoints ++ Impersonate.endpoints ++ Roles.endpoints ++ RbacAdmin.endpoints ++ Audit.endpoints ++ Collections.endpoints ++ Groups.endpoints ++ Brands.endpoints ++ dev
+      Ledger.endpoints ++ Expenses.endpoints ++ Tax.endpoints ++ Finance.endpoints ++ Dashboard.endpoints ++ Tasks.endpoints ++ Lists.endpoints ++ Maintenance.endpoints ++ Products.endpoints ++ Notifications.endpoints ++ Extensibility.endpoints ++ DataQuality.endpoints ++ Fx.endpoints ++ Restructure.endpoints ++ Calendar.endpoints ++ Agent.endpoints ++ Inbox.endpoints ++ Search.endpoints ++ NlQuery.endpoints ++ Backup.endpoints ++ Wealth.endpoints ++ Investments.endpoints ++ Insights.endpoints ++ Impersonate.endpoints ++ Roles.endpoints ++ RbacAdmin.endpoints ++ Audit.endpoints ++ Collections.endpoints ++ Groups.endpoints ++ Brands.endpoints ++ dev
         .map(_ => Dev.endpoint)
         .toList
     val docs = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))

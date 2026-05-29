@@ -21,7 +21,9 @@ object NlQueryRepo {
   /** Assets (optionally in a category) for a "what do I own / list my …" answer: (title, maker, category). */
   def listAssets(kw: Option[String]): ConnectionIO[List[(String, Option[String], Option[String])]] = {
     val cat = kw
-      .map(k => fr"and (c.name ilike ${"%" + k + "%"} or a.title ilike ${"%" + k + "%"} or a.maker ilike ${"%" + k + "%"} or a.vertical ilike ${"%" + k + "%"})")
+      .map(k =>
+        fr"and (c.name ilike ${"%" + k + "%"} or a.title ilike ${"%" + k + "%"} or a.maker ilike ${"%" + k + "%"} or a.vertical ilike ${"%" + k + "%"})"
+      )
       .getOrElse(Fragment.empty)
     (fr"""select a.title, a.maker, c.name from assets a left join categories c on c.id = a.category_id
           where a.deleted_at is null""" ++ cat ++ fr"order by c.name nulls last, a.title limit 40")
