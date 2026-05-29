@@ -23,4 +23,17 @@ test("⌘K Ask: a natural-language question returns a grounded answer", async ({
   await page.getByLabel("Search", { exact: true }).fill("tell me about the Royal Oak");
   await page.getByLabel("Search", { exact: true }).press("Enter");
   await expect(page.getByTestId("nl-answer")).toContainText("Royal Oak");
+
+  // NL-2b crisp single-fact intents — the three named questions, answered against real seed data
+  await page.getByLabel("Search", { exact: true }).fill("when is my car next due a service");
+  await page.getByLabel("Search", { exact: true }).press("Enter");
+  await expect(page.getByTestId("nl-answer")).toContainText("service");
+
+  await page.getByLabel("Search", { exact: true }).fill("how much is my car insurance");
+  await page.getByLabel("Search", { exact: true }).press("Enter");
+  await expect(page.getByTestId("nl-answer")).toContainText("insured");
+
+  await page.getByLabel("Search", { exact: true }).fill("when was the housekeeper last in");
+  await page.getByLabel("Search", { exact: true }).press("Enter");
+  await expect(page.getByTestId("nl-answer")).toContainText("Housekeeping");
 });

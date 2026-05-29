@@ -101,6 +101,41 @@ object NlQuery {
                   Some(tasks + maint)
                 )
               }
+            case NlQueryService.ServiceDueIntent(kw) =>
+              if (kw.isEmpty) (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
+              else
+                NlQueryRepo.serviceDueForAsset(kw).map {
+                  case Some((title, Some(due), vendor)) =>
+                    val by = vendor.map(v => s" with $v").getOrElse("")
+                    ok(prompt, "service_due", s"$title is next due a service on $due$by.", None)
+                  case Some((title, None, _)) =>
+                    ok(prompt, "service_due", s"$title has a service plan, but no date is scheduled yet.", None)
+                  case None => ok(prompt, "service_due", s"""No service plan on record for "$kw".""", None)
+                }
+            case NlQueryService.InsuranceAmountIntent(kw) =>
+              if (kw.isEmpty) (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
+              else
+                NlQueryRepo.insuranceForAsset(kw).map {
+                  case Some((title, insured, value, insurer, renewal)) =>
+                    if (!insured) ok(prompt, "insurance", s"$title is recorded as not currently insured.", None)
+                    else {
+                      val who = insurer.map(i => s" with $i").getOrElse("")
+                      val cover = value.map(v => s" for ${gbp(v)} of cover").getOrElse("")
+                      val ren = renewal.map(r => s", renewing $r").getOrElse("")
+                      // the sum insured, not a premium — Kanzen stores cover, not what was paid
+                      ok(prompt, "insurance", s"$title is insured$who$cover$ren.", value)
+                    }
+                  case None => ok(prompt, "insurance", s"""No insurance on record for "$kw".""", None)
+                }
+            case NlQueryService.LastActivityIntent(kw) =>
+              if (kw.isEmpty) (Left(cannot): Out[QueryResult]).pure[ConnectionIO]
+              else
+                NlQueryRepo.lastActivityForPerson(NlQueryService.stem(kw)).map {
+                  case Some((title, date, isPast)) =>
+                    val rel = if (isPast) s"last on record $date" else s"next scheduled $date"
+                    ok(prompt, "last_activity", s"$title — $rel.", None)
+                  case None => ok(prompt, "last_activity", s"""No calendar activity matching "$kw".""", None)
+                }
             case NlQueryService.Unknown(_) =>
               // No structured intent — fall back to RAG retrieval over the indexed entity documents (NL-2).
               // Sandbox returns the best-matching document extract; prod synthesises over the top-K via Claude.

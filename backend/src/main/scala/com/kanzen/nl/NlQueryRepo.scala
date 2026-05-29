@@ -71,4 +71,50 @@ object NlQueryRepo {
             (select count(*) from tasks where due_on is not null and due_on between current_date and current_date + $daysAhead and status <> 'done'),
             (select count(*) from maintenance_plans where next_due is not null and next_due between current_date and current_date + $daysAhead and active)
        """.query[(Long, Long)].unique
+
+  // NL-2b — "car"/"auto" colloquially means the vehicle vertical; everything else matches the keyword as-is.
+  private def carSyn(kw: String): String =
+    if (Set("car", "cars", "auto", "automobile", "motor").contains(kw.trim.toLowerCase)) "vehicle" else kw.trim
+
+  /** Next service for the asset best matching the keyword: (title, nextDue, vendor). NL-2b ServiceDue. */
+  def serviceDueForAsset(kw: String): ConnectionIO[Option[(String, Option[LocalDate], Option[String])]] = {
+    val k = "%" + carSyn(kw) + "%"
+    sql"""select a.title, mp.next_due, mp.vendor
+          from maintenance_plans mp join assets a on a.id = mp.asset_id
+          where mp.active and a.deleted_at is null
+            and (a.title ilike $k or a.maker ilike $k or a.vertical ilike $k)
+          order by mp.next_due asc nulls last limit 1"""
+      .query[(String, Option[LocalDate], Option[String])]
+      .option
+  }
+
+  /** Insurance cover on the asset best matching the keyword: (title, insured, insuredValueMinor, insurer, renewalOn).
+    * Note: this is the *sum insured* (registry-native), not a premium — Kanzen does not store premiums. NL-2b.
+    */
+  def insuranceForAsset(
+      kw: String
+  ): ConnectionIO[Option[(String, Boolean, Option[Long], Option[String], Option[LocalDate])]] = {
+    val k = "%" + carSyn(kw) + "%"
+    sql"""select a.title, ins.insured, ins.insured_value_minor, ins.insurer, ins.renewal_on
+          from asset_insurance ins join assets a on a.id = ins.asset_id
+          where a.deleted_at is null and (a.title ilike $k or a.maker ilike $k or a.vertical ilike $k)
+          order by ins.created_at desc limit 1"""
+      .query[(String, Boolean, Option[Long], Option[String], Option[LocalDate])]
+      .option
+  }
+
+  /** Most recent (or, failing that, soonest upcoming) calendar activity whose title matches the stem: (title, date,
+    * isPast). The keyword is already stemmed so a role-noun matches its activity title. NL-2b LastActivity.
+    */
+  def lastActivityForPerson(stem: String): ConnectionIO[Option[(String, LocalDate, Boolean)]] = {
+    val k = "%" + stem + "%"
+    sql"""select title, start_on, (start_on <= current_date) as is_past
+          from calendar_event_refs
+          where start_on is not null and title ilike $k
+          order by (start_on <= current_date) desc,
+                   case when start_on <= current_date then current_date - start_on else start_on - current_date end asc
+          limit 1"""
+      .query[(String, LocalDate, Boolean)]
+      .option
+  }
 }

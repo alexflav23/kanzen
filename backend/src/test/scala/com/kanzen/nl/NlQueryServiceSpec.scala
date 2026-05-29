@@ -35,5 +35,34 @@ class NlQueryServiceSpec extends AnyFreeSpec with Matchers {
     "an unrecognised prompt is Unknown" in {
       NlQueryService.translate("tell me a joke") shouldBe Unknown("tell me a joke")
     }
+    // NL-2b crisp intents — and that they win over the generic branches they sit near.
+    "'when is my car next due a service?' -> service-due(car), NOT due-soon" in {
+      NlQueryService.translate("When is my car next due a service?") shouldBe ServiceDueIntent("car")
+    }
+    "'how much is my car insurance for my Mercedes?' -> insurance(mercedes), NOT spend" in {
+      NlQueryService.translate("How much is my car insurance for my Mercedes?") shouldBe InsuranceAmountIntent(
+        "mercedes"
+      )
+    }
+    "'how much did I spend on insurance?' stays a spend intent (premium spend, not asset cover)" in {
+      NlQueryService.translate("How much did I spend on insurance?") shouldBe SpendIntent(Some("insurance"), 12)
+    }
+    "'when was the housekeeper last in?' -> last-activity(housekeeper)" in {
+      NlQueryService.translate("When was the housekeeper last in?") shouldBe LastActivityIntent("housekeeper")
+    }
+  }
+  "subject" - {
+    "takes the noun after the last my/the marker, up to a stopword" in {
+      NlQueryService.subject("when is my car next due a service") shouldBe "car"
+      NlQueryService.subject("how much is my car insurance for my mercedes") shouldBe "mercedes"
+      NlQueryService.subject("when was the housekeeper last in") shouldBe "housekeeper"
+    }
+  }
+  "stem" - {
+    "loosens a role-noun to match its activity title" in {
+      NlQueryService.stem("housekeeper") shouldBe "housekeep" // matches "Housekeeping"
+      NlQueryService.stem("gardener") shouldBe "garden"
+      NlQueryService.stem("personal trainer") shouldBe "train"
+    }
   }
 }

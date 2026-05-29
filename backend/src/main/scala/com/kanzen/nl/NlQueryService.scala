@@ -20,6 +20,10 @@ object NlQueryService {
   final case class ValueByCategoryIntent() extends Intent
   final case class SpendIntent(category: Option[String], months: Int) extends Intent
   final case class DueSoonIntent(days: Int) extends Intent
+  // NL-2b — crisp, single-fact intents about a *named* thing (the subject after "my"/"the").
+  final case class ServiceDueIntent(keyword: String) extends Intent // "when is my car next due a service"
+  final case class InsuranceAmountIntent(keyword: String) extends Intent // "how much is my car insurance"
+  final case class LastActivityIntent(keyword: String) extends Intent // "when was the housekeeper last in"
   final case class Unknown(prompt: String) extends Intent
 
   private val assetCats = List("guitar", "watch", "shoe", "painting", "art", "vehicle", "car", "wine")
@@ -41,6 +45,16 @@ object NlQueryService {
     if (p.contains("how many")) CountIntent("asset", firstIn(p, assetCats))
     else if (p.contains("when did i last buy") || p.contains("last buy") || p.contains("last purchase"))
       LastPurchaseIntent(firstIn(p, assetCats).getOrElse("asset"))
+    // NL-2b crisp intents, placed *before* the generic spend/due branches they would otherwise be swallowed by:
+    // "…next due a **service**" → service, not due-soon; "how much is my car **insurance**" → cover, not spend.
+    else if (p.contains("service") && !p.contains("spend") && !p.contains("spent"))
+      ServiceDueIntent(subject(p))
+    else if (
+      (p.contains("insurance") || p.contains("insured") || p.contains("policy")) &&
+      !p.contains("spend") && !p.contains("spent")
+    )
+      InsuranceAmountIntent(subject(p))
+    else if (isLastActivity(p)) LastActivityIntent(subject(p))
     else if (p.contains("where is") || p.contains("where are") || p.contains("where's"))
       WhereIsIntent(firstIn(p, assetCats).orElse(keywordAfterWhere(p)).getOrElse(""))
     else if (p.contains("worth") || p.contains("value"))
@@ -54,6 +68,95 @@ object NlQueryService {
     else if (p.contains("due") || p.contains("coming up") || p.contains("upcoming"))
       DueSoonIntent(days(p))
     else Unknown(prompt)
+  }
+
+  // "when was X last in/here", "X's last visit" — a person/role being on-site. Kept distinct from "last buy/purchase".
+  private def isLastActivity(p: String): Boolean =
+    p.contains("last in") || p.contains("last here") || p.contains("last visit") || p.contains("last on site") ||
+      (p.contains("last") && (p.contains("come") || p.contains("came"))) ||
+      ((p.contains("when was") || p.contains("when did")) && p.contains("last") &&
+        !p.contains("buy") && !p.contains("purchase"))
+
+  private val nounStop = Set(
+    "next",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "due",
+    "a",
+    "an",
+    "the",
+    "my",
+    "for",
+    "do",
+    "i",
+    "have",
+    "service",
+    "serviced",
+    "servicing",
+    "insurance",
+    "insured",
+    "policy",
+    "worth",
+    "value",
+    "valued",
+    "cost",
+    "costs",
+    "costing",
+    "last",
+    "in",
+    "here",
+    "visit",
+    "come",
+    "came",
+    "on",
+    "site",
+    "at",
+    "when",
+    "did",
+    "does",
+    "much",
+    "how",
+    "and",
+    "of"
+  )
+
+  /** The thing the question is *about* — the noun-phrase after the last "my "/"the " marker, taken up to a stopword.
+    * "when is my car next due a service" → "car"; "…for my mercedes" → "mercedes"; "the housekeeper last in" →
+    * "housekeeper". Best-effort and deterministic (Claude does this far better in prod; this is the sandbox stub).
+    */
+  def subject(prompt: String): String = {
+    val p = prompt.toLowerCase
+    val starts = List("my ", "the ").flatMap(m => indicesOf(p, m).map(_ + m.length))
+    starts.sorted.lastOption
+      .map(s =>
+        p.substring(s).split("[^a-z0-9]+").filter(_.nonEmpty).takeWhile(w => !nounStop.contains(w)).mkString(" ")
+      )
+      .getOrElse("")
+      .trim
+  }
+
+  /** A loose stem so a role-noun matches an activity title — "housekeeper" → "housekeep" (matches "Housekeeping"),
+    * "gardener" → "garden", "trainer" → "train". Strips one common agent/gerund suffix from the last word.
+    */
+  def stem(keyword: String): String = {
+    val w = keyword.trim.toLowerCase.split("\\s+").lastOption.getOrElse("")
+    List("ing", "ers", "er", "ist", "or")
+      .find(s => w.endsWith(s) && w.length - s.length >= 4)
+      .map(s => w.dropRight(s.length))
+      .getOrElse(w)
+  }
+
+  private def indicesOf(s: String, sub: String): List[Int] = {
+    @annotation.tailrec
+    def go(from: Int, acc: List[Int]): List[Int] = s.indexOf(sub, from) match {
+      case -1 => acc.reverse
+      case i => go(i + sub.length, i :: acc)
+    }
+    go(0, Nil)
   }
 
   // best-effort: the noun after "where is/are/'s" (drops a leading article) — e.g. "where is my royal oak" → "royal oak".

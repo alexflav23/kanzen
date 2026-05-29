@@ -55,7 +55,20 @@ object SearchNlApiIT extends IOSuite {
       expect(where.intent == "where_is") and expect(where.answer.contains("Royal Oak"))
   }
 
-  test("F32 — NL is Principal-only in v1: a Manager is also denied (403)") { xa =>
+  test("F32 NL-2b — crisp single-fact intents resolve against the seed (service · insurance cover · last-in)") { xa =>
+    for {
+      service <- NlQuery.query(xa, toby, "when is my car next due a service").map(_.toOption.get)
+      insure <- NlQuery.query(xa, toby, "how much is my car insurance").map(_.toOption.get)
+      lastIn <- NlQuery.query(xa, toby, "when was the housekeeper last in").map(_.toOption.get)
+    } yield expect(service.intent == "service_due") and expect(service.answer.toLowerCase.contains("service")) and
+      // the seeded vehicle is the Range Rover; "car" resolves to the vehicle vertical
+      expect(service.answer.contains("Range Rover")) and
+      expect(insure.intent == "insurance") and expect(insure.answer.contains("Hiscox")) and
+      expect(insure.answer.contains("£")) and // cover amount, not a premium
+      expect(lastIn.intent == "last_activity") and expect(lastIn.answer.contains("Housekeeping"))
+  }
+
+  test("F32 NL is Principal-only in v1: a Manager is also denied (403)") { xa =>
     val lorna = Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
     NlQuery.query(xa, lorna, "how much did I spend").map(r => expect(r.left.exists(_._1.code == 403)))
   }
