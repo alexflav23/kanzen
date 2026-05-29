@@ -59,6 +59,20 @@ const entityQs = (entity?: string | null) => (entity ? `?entity=${encodeURICompo
 
 export const listEntities = (token: string | null) => api("/api/wealth/entities", z.array(EntitySchema), { token });
 
+/** F18/F39 — a chart-of-accounts entry with its derived balance (Principal-private). */
+export const AccountSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  name: z.string(),
+  accountType: z.string(),
+  currency: z.string(),
+  balanceMinor: z.number(),
+  subkind: z.string().nullable(),
+});
+export type Account = z.infer<typeof AccountSchema>;
+export const listAccounts = (token: string | null, entity?: string | null) =>
+  api(`/api/wealth/accounts${entityQs(entity)}`, z.array(AccountSchema), { token });
+
 // F42 — entity management (Principal-private). Base currency is set at creation and immutable thereafter.
 export type CreateEntityReq = { name: string; kind: string; jurisdiction: string | null; baseCurrency: string | null; parentEntityId: string | null };
 export type UpdateEntityReq = { name: string; kind: string; jurisdiction: string | null; parentEntityId: string | null };

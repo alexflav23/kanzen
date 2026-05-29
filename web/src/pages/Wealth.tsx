@@ -16,6 +16,7 @@ import {
 
 const styles = stylex.create({
   header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", marginBottom: "20px" },
+  headLinks: { display: "flex", gap: "8px", flexShrink: 0 },
   manage: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px", textDecoration: "none", flexShrink: 0 },
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
@@ -241,7 +242,10 @@ export function Wealth() {
           <h1 {...stylex.props(styles.title)}>Net worth</h1>
           <div {...stylex.props(styles.desc)}>Computed from the ledger — assets and investments at market, less liabilities. The books are never shown; figures only.</div>
         </div>
-        <Link to="/wealth/entities" {...stylex.props(styles.manage)}>Manage entities →</Link>
+        <div {...stylex.props(styles.headLinks)}>
+          <Link to="/wealth/ledger" {...stylex.props(styles.manage)}>Statements →</Link>
+          <Link to="/wealth/entities" {...stylex.props(styles.manage)}>Manage entities →</Link>
+        </div>
       </header>
 
       <div {...stylex.props(styles.scope)}>

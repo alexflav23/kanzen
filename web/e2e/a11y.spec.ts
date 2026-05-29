@@ -64,6 +64,11 @@ test("a11y: every route is free of serious/critical violations", async ({ page }
   await go("Documents", /^Documents$/);
   await go("Finance", /Bills, expenses/);
   await go("Wealth", /Net worth/);
+  // statements (sub-route off Wealth)
+  await page.getByRole("link", { name: "Statements →" }).click();
+  await expect(page.getByRole("heading", { name: "Statements" })).toBeVisible();
+  await scan(page, "Statements", v);
+  await page.getByRole("button", { name: "← Wealth" }).click();
   // entity management (sub-route off Wealth)
   await page.getByRole("link", { name: "Manage entities →" }).click();
   await expect(page.getByRole("heading", { name: "Entities" })).toBeVisible();

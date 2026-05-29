@@ -19,6 +19,7 @@ import { Maintenance } from "./pages/Maintenance";
 import { Products } from "./pages/Products";
 import { Wealth } from "./pages/Wealth";
 import { Entities } from "./pages/Entities";
+import { Ledger } from "./pages/Ledger";
 import { Inbox } from "./pages/Inbox";
 import { Calendar } from "./pages/Calendar";
 import { Insights } from "./pages/Insights";
@@ -228,6 +229,7 @@ function Shell() {
                 <Route path="/finance" element={<Finance />} />
                 <Route path="/wealth" element={<Wealth />} />
                 <Route path="/wealth/entities" element={<Entities />} />
+                <Route path="/wealth/ledger" element={<Ledger />} />
                 <Route path="/backup" element={<Backup />} />
                 <Route path="/properties" element={<Properties />} />
                 <Route path="/properties/:id" element={<PropertyBible />} />
