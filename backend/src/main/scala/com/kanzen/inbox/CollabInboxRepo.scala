@@ -5,6 +5,8 @@ import com.kanzen.people.AssigneeScope
 import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
+import doobie.postgres.circe.jsonb.implicits._
+import io.circe.Json
 
 import java.time.Instant
 import java.util.UUID
@@ -49,6 +51,16 @@ final case class ProposalRow(
     confidence: Option[BigDecimal]
 )
 final case class CommentRow(id: UUID, authorName: Option[String], body: String, createdAt: Instant)
+final case class AttachmentRow(id: UUID, filename: String, contentType: Option[String], sizeBytes: Option[Long])
+
+/** A proposal with its action type + extracted payload, for execution on confirm. */
+final case class ProposalFull(
+    id: UUID,
+    threadId: Option[UUID],
+    actionType: String,
+    status: String,
+    payload: Option[Json]
+)
 
 object CollabInboxRepo {
 
@@ -143,4 +155,29 @@ object CollabInboxRepo {
   ): ConnectionIO[UUID] =
     sql"""insert into entity_comments (owner_id, entity_type, entity_id, author_id, body, mentions)
           values ($ownerId, $entityType, $entityId, $authorId, $body, $mentions) returning id""".query[UUID].unique
+
+  // ── attachments + actionable proposals (W9.2) ───────────────────────────────
+  def attachments(threadId: UUID): ConnectionIO[List[AttachmentRow]] =
+    sql"""select at.id, at.filename, at.content_type, at.size_bytes
+          from email_attachments at join email_messages m on m.id = at.message_id
+          where m.thread_id = $threadId order by at.filename""".query[AttachmentRow].to[List]
+
+  def proposal(id: UUID): ConnectionIO[Option[ProposalFull]] =
+    sql"select id, thread_id, action_type, status, payload from agent_actions where id = $id".query[ProposalFull].option
+
+  /** The thread's inbox property (for scoping the created record). */
+  def threadProperty(threadId: UUID): ConnectionIO[Option[UUID]] =
+    sql"""select i.property_id from email_threads t join mail_inboxes i on i.id = t.inbox_id
+          where t.id = $threadId""".query[Option[UUID]].option.map(_.flatten)
+
+  def confirmProposal(id: UUID): ConnectionIO[Int] =
+    sql"update agent_actions set status = 'confirmed' where id = $id and status = 'proposed'".update.run
+  def rejectProposal(id: UUID): ConnectionIO[Int] =
+    sql"update agent_actions set status = 'rejected' where id = $id and status = 'proposed'".update.run
+
+  /** Link the thread to a created record (provenance both ways, spec §11a). */
+  def link(ownerId: UUID, threadId: UUID, targetType: String, targetId: UUID, createdBy: UUID): ConnectionIO[Int] =
+    sql"""insert into entity_links (owner_id, source_type, source_id, target_type, target_id, role, created_by)
+          values ($ownerId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
+          on conflict do nothing""".update.run
 }

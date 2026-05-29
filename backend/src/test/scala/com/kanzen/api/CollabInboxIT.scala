@@ -48,6 +48,34 @@ object CollabInboxIT extends IOSuite {
       expect(!marciaInboxes.exists(_.address.startsWith("singapore")))
   }
 
+  test("W9.2 — confirming a proposal creates the real record + links it back; attachments surface") { xa =>
+    for {
+      inboxes <- Inbox.inboxes(xa, toby).map(_.toOption.get)
+      groceries = inboxes.find(_.address.startsWith("groceries")).get
+      threads <- Inbox.threads(xa, toby, Some(groceries.id), Some("open"), None).map(_.toOption.get)
+      ocado = threads.find(_.subject.exists(_.contains("Ocado"))).get
+      detail <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
+      proposal = detail.proposals.head
+      // the forwarded receipt is attached + the agent extracted a proposal from it
+      result <- Inbox.confirmProposal(xa, toby, proposal.id).map(_.toOption.get)
+      // re-fetch: the proposal is no longer 'proposed', and a link to the created expense exists
+      after <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
+      expenses <- com.kanzen.finance.ExpenseRepo.list(None).transact(xa)
+    } yield expect(detail.attachments.exists(_.filename.endsWith(".pdf"))) and
+      expect(result.created == "expense") and
+      expect(after.proposals.forall(_.status != "proposed")) and // executed, not still pending
+      expect(expenses.exists(_.payee.contains("Ocado"))) // a real expense (for approval) was created
+  }
+
+  test("W9.2 — confirming a delivery proposal creates a calendar event") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("open"), None).map(_.toOption.get)
+      amazon = threads.find(_.subject.exists(_.contains("Amazon"))).get
+      detail <- Inbox.detail(xa, toby, amazon.id).map(_.toOption.get)
+      result <- Inbox.confirmProposal(xa, toby, detail.proposals.head.id).map(_.toOption.get)
+    } yield expect(result.created == "event") and expect(result.recordType.contains("calendar"))
+  }
+
   test("assign · comment · done round-trip") { xa =>
     for {
       marciaPid <- PeopleRepo.assigneeScope(marcia.userId).transact(xa).map(_.get.personId)

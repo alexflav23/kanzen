@@ -3,12 +3,15 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
-import com.kanzen.authz.{Actions, Authz}
+import com.kanzen.authz.{Actions, Authorizer, Authz}
+import com.kanzen.calendar.CalendarRepo
+import com.kanzen.finance.ExpenseRepo
 import com.kanzen.inbox._
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.Json
 import io.circe.generic.auto._
 import sttp.model.StatusCode
 import sttp.tapir._
@@ -16,7 +19,9 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
+import java.time.LocalDate
 import java.util.UUID
+import scala.util.Try
 
 /** W9 — the Collaborative Inbox API (read + triage + collaborate over seeded threads; Gmail behind the seam). Staff are
   * scope-filtered to their own threads / property; assign/status/comment are authz-gated.
@@ -61,24 +66,33 @@ object Inbox {
       confidence: Option[Double]
   )
   final case class CommentView(id: UUID, authorName: Option[String], body: String, createdAt: String)
+  final case class AttachmentView(id: UUID, filename: String, contentType: Option[String], sizeBytes: Option[Long])
   final case class ThreadDetail(
       thread: ThreadView,
       messages: List[MessageView],
       proposals: List[ProposalView],
-      comments: List[CommentView]
+      comments: List[CommentView],
+      attachments: List[AttachmentView]
   )
   final case class AssignReq(assigneeId: Option[UUID])
   final case class StatusReq(status: String)
   final case class ReadReq(unread: Boolean)
   final case class CommentReq(body: String, mentions: Option[List[UUID]])
 
+  /** What confirming a proposal created (for the success toast). */
+  final case class ConfirmResult(created: String, recordType: Option[String], label: Option[String])
+
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to the inbox"))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such thread."))
+  private val conflict: (StatusCode, ApiError) =
+    (StatusCode.Conflict, ApiError(409, "already_actioned", "Already actioned."))
   private val viewA = Actions.byKey("inbox:view")
   private val assignA = Actions.byKey("thread:assign")
   private val statusA = Actions.byKey("thread:status")
   private val commentA = Actions.byKey("thread:comment")
+  private val calendarCreateA = Actions.byKey("calendar:create")
+  private val expenseCreateA = Actions.byKey("expense:create")
   private val validStatus = Set("open", "snoozed", "done", "archived")
 
   private def tv(t: ThreadRow): ThreadView =
@@ -100,6 +114,7 @@ object Inbox {
     ProposalView(p.id, p.actionType, p.status, p.title, p.summary, p.confidence.map(_.toDouble))
   private def mv(m: MessageRow): MessageView = MessageView(m.id, m.direction, m.fromAddr, m.sentAt.toString, m.bodyText)
   private def cv(c: CommentRow): CommentView = CommentView(c.id, c.authorName, c.body, c.createdAt.toString)
+  private def av(a: AttachmentRow): AttachmentView = AttachmentView(a.id, a.filename, a.contentType, a.sizeBytes)
 
   // Staff are scoped to their own threads / property; Manager/Principal see all.
   private def staffScope(p: Principal): ConnectionIO[Option[AssigneeScope]] =
@@ -159,7 +174,10 @@ object Inbox {
               ms <- CollabInboxRepo.messages(id)
               ps <- CollabInboxRepo.proposals(id)
               cs <- CollabInboxRepo.comments("email_thread", id)
-            } yield Right(ThreadDetail(tv(row.copy(unread = false)), ms.map(mv), ps.map(pv), cs.map(cv))): Out[
+              ats <- CollabInboxRepo.attachments(id)
+            } yield Right(
+              ThreadDetail(tv(row.copy(unread = false)), ms.map(mv), ps.map(pv), cs.map(cv), ats.map(av))
+            ): Out[
               ThreadDetail
             ]
           case _ => (Left(notFound): Out[ThreadDetail]).pure[ConnectionIO]
@@ -188,6 +206,93 @@ object Inbox {
             .map(_.find(_.id == cid).map(cv).getOrElse(CommentView(cid, None, r.body.trim, "")))
         )
     ).transact(xa)
+
+  /** Execute a confirmed proposal: create the real record (calendar event / expense for approval — money-safe), link it
+    * back to the thread (provenance), mark the proposal confirmed. Runs under the actor's authz.
+    */
+  private def execute(p: Principal, pr: ProposalFull, authz: Authorizer): ConnectionIO[Out[ConfirmResult]] = {
+    val tid = pr.threadId.get
+    val c = pr.payload.getOrElse(Json.Null).hcursor
+    def str(k: String, d: String) = c.get[String](k).toOption.getOrElse(d)
+    pr.actionType match {
+      case "create_event" =>
+        if (!authz.can(calendarCreateA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
+        else
+          for {
+            prop <- CollabInboxRepo.threadProperty(tid)
+            title = str("title", "Event")
+            date = c
+              .get[String]("date")
+              .toOption
+              .flatMap(s => Try(LocalDate.parse(s)).toOption)
+              .getOrElse(LocalDate.now)
+            eid <- CalendarRepo.createNative(p.userId, title, date, str("category", "manual"), prop, "agent", Some(tid))
+            _ <- CollabInboxRepo.link(p.userId, tid, "calendar", eid, p.userId)
+            _ <- CollabInboxRepo.confirmProposal(pr.id)
+          } yield Right(ConfirmResult("event", Some("calendar"), Some(title)))
+      case "create_receipt" | "reconcile_bill" =>
+        if (!authz.can(expenseCreateA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
+        else
+          for {
+            prop <- CollabInboxRepo.threadProperty(tid)
+            payee = str("payee", "Unknown")
+            amt = c.get[Long]("amountMinor").toOption.getOrElse(0L)
+            ex <- ExpenseRepo.submit(
+              p.userId,
+              Some(payee),
+              c.get[String]("description").toOption,
+              amt,
+              str("currency", "GBP"),
+              prop,
+              None,
+              false,
+              false,
+              None,
+              p.userId
+            )
+            _ <- CollabInboxRepo.link(p.userId, tid, "expense", ex.id, p.userId)
+            _ <- CollabInboxRepo.confirmProposal(pr.id)
+          } yield Right(ConfirmResult("expense", Some("expense"), Some(s"$payee — logged for approval")))
+      case _ =>
+        CollabInboxRepo.confirmProposal(pr.id).as(Right(ConfirmResult("done", None, None)): Out[ConfirmResult])
+    }
+  }
+
+  def confirmProposal(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ConfirmResult]] = {
+    val tx = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      scope <- staffScope(p)
+      prOpt <- CollabInboxRepo.proposal(id)
+      res <- prOpt match {
+        case None => (Left(notFound): Out[ConfirmResult]).pure[ConnectionIO]
+        case Some(pr) if pr.status != "proposed" => (Left(conflict): Out[ConfirmResult]).pure[ConnectionIO]
+        case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ConfirmResult]).pure[ConnectionIO]
+        case Some(pr) =>
+          CollabInboxRepo.visible(pr.threadId.get, scope).flatMap { vis =>
+            if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
+            else execute(p, pr, authz)
+          }
+      }
+    } yield res
+    tx.transact(xa)
+  }
+
+  def rejectProposal(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Unit]] = {
+    val tx = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      scope <- staffScope(p)
+      prOpt <- CollabInboxRepo.proposal(id)
+      res <- prOpt.flatMap(_.threadId) match {
+        case None => (Left(notFound): Out[Unit]).pure[ConnectionIO]
+        case Some(tid) =>
+          CollabInboxRepo.visible(tid, scope).flatMap { vis =>
+            if (!vis || !authz.can(viewA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
+            else CollabInboxRepo.rejectProposal(id).as(Right(()): Out[Unit])
+          }
+      }
+    } yield res
+    tx.transact(xa)
+  }
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
@@ -241,8 +346,22 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[CommentView])
     .summary("Internal comment (never outbound)")
+  val confirmEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "proposals" / path[UUID]("id") / "confirm")
+    .errorOut(err)
+    .out(jsonBody[ConfirmResult])
+    .summary("Confirm a proposal — create the record (calendar/expense) + link it back")
+  val rejectEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "proposals" / path[UUID]("id") / "reject")
+    .errorOut(err)
+    .out(jsonBody[Unit])
+    .summary("Dismiss a proposal")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
+    confirmEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => confirmProposal(xa, p, id)),
+    rejectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => rejectProposal(xa, p, id)),
     inboxesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => inboxes(xa, p)),
     threadsEndpoint
       .serverSecurityLogic(a.securityLogic)
@@ -261,6 +380,8 @@ object Inbox {
     assignEndpoint,
     statusEndpoint,
     readEndpoint,
-    commentEndpoint
+    commentEndpoint,
+    confirmEndpoint,
+    rejectEndpoint
   )
 }

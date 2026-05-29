@@ -6,13 +6,12 @@ import { Pill } from "../components/Pill";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { Avatar } from "../components/Avatar";
 import { AgentRibbon } from "../components/AgentRibbon";
-import { Check, X, Inbox as InboxIcon } from "../components/icons";
+import { Check, X, Inbox as InboxIcon, Documents } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { confirmAction, rejectAction } from "../services/inbox";
 import { listPeople } from "../services/people";
 import {
-  addThreadComment, assignThread, listInboxes, listThreads, setThreadStatus, threadDetail,
+  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, setThreadStatus, threadDetail,
   type CInbox, type CThread,
 } from "../services/collabInbox";
 
@@ -77,6 +76,9 @@ const styles = stylex.create({
   addInput: { flex: 1, padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13px", boxSizing: "border-box" },
   note: { fontSize: "11.5px", color: colors.ink3, marginTop: "4px" },
   empty: { display: "grid", placeItems: "center", color: colors.ink3, fontSize: "13.5px", padding: "60px 20px" },
+  attachRow: { display: "flex", flexWrap: "wrap", gap: "8px", borderTop: `1px solid ${colors.line}`, paddingTop: "14px" },
+  attach: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "5px 10px", borderRadius: radius.sm, backgroundColor: colors.bgSunken, color: colors.ink2, fontSize: "12px", border: `1px solid ${colors.line}` },
+  toast: { position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)", zIndex: 80, backgroundColor: colors.ink, color: colors.bgElev, padding: "10px 18px", borderRadius: radius.md, fontSize: "13px", fontWeight: 500, boxShadow: colors.shadowPop },
 });
 
 export function Inbox() {
@@ -85,6 +87,7 @@ export function Inbox() {
   const [view, setView] = useState<View>({ kind: "all" });
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
   const canReassign = role != null && role !== "staff";
 
   const inboxesQ = useQuery({ queryKey: ["inbox-inboxes", token], queryFn: () => listInboxes(token) });
@@ -100,8 +103,11 @@ export function Inbox() {
   const assign = useMutation({ mutationFn: ({ id, who }: { id: string; who: string | null }) => assignThread(id, who, token), onSuccess: invalidate });
   const status = useMutation({ mutationFn: ({ id, s }: { id: string; s: string }) => setThreadStatus(id, s, token), onSuccess: () => { setSelected(null); invalidate(); } });
   const comment = useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => addThreadComment(id, body, token), onSuccess: () => { setDraft(""); invalidate(); } });
-  const confirm = useMutation({ mutationFn: (id: string) => confirmAction(id, token), onSuccess: invalidate });
-  const reject = useMutation({ mutationFn: (id: string) => rejectAction(id, token), onSuccess: invalidate });
+  const confirm = useMutation({
+    mutationFn: (id: string) => confirmProposal(id, token),
+    onSuccess: (r) => { setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
+  });
+  const reject = useMutation({ mutationFn: (id: string) => rejectProposal(id, token), onSuccess: invalidate });
 
   const threads = threadsQ.data ?? [];
   const railItem = (label: string, on: boolean, onClick: () => void, count?: number) => (
@@ -199,6 +205,14 @@ export function Inbox() {
                     </div>
                   ))}
 
+                  {detail.attachments.length > 0 && (
+                    <div {...stylex.props(styles.attachRow)} data-testid="thread-attachments">
+                      {detail.attachments.map((a) => (
+                        <span key={a.id} {...stylex.props(styles.attach)} title={a.filename}><Documents size={13} /> {a.filename}</span>
+                      ))}
+                    </div>
+                  )}
+
                   <div {...stylex.props(styles.commentsHead)}>Internal notes</div>
                   {detail.comments.map((c) => (
                     <div key={c.id} {...stylex.props(styles.comment)}>
@@ -217,6 +231,7 @@ export function Inbox() {
             )}
         </div>
       )}
+      {toast && <div {...stylex.props(styles.toast)} role="status" data-testid="inbox-toast">{toast}</div>}
     </div>
   );
 }
