@@ -24,7 +24,16 @@ object NlQuery {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class QueryReq(prompt: String)
-  final case class QueryResult(prompt: String, intent: String, answer: String, count: Option[Long])
+  /** A formatted answer: a one-line `answer` summary + optional structured `items` (rendered as a list) so the UI
+    * can present lists cleanly instead of a run-on paragraph. */
+  final case class NlItem(title: String, subtitle: Option[String])
+  final case class QueryResult(
+      prompt: String,
+      intent: String,
+      answer: String,
+      count: Option[Long],
+      items: List[NlItem] = Nil
+  )
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "no access"))
   private val cannot: (StatusCode, ApiError) =
@@ -33,6 +42,8 @@ object NlQuery {
   private def gbp(minor: Long): String = f"£${minor / 100}%,d"
   private def ok(prompt: String, intent: String, answer: String, count: Option[Long]): Out[QueryResult] =
     Right(QueryResult(prompt, intent, answer, count))
+  private def okItems(prompt: String, intent: String, answer: String, items: List[NlItem]): Out[QueryResult] =
+    Right(QueryResult(prompt, intent, answer, Some(items.size.toLong), items))
   private def snippet(b: String): String =
     if (b.length <= 320) b else b.take(320).reverse.dropWhile(_ != ' ').reverse.trim + "…"
 
@@ -50,6 +61,17 @@ object NlQuery {
               NlQueryRepo
                 .countAssets(filter)
                 .map(n => ok(prompt, s"count:$entity", s"$n ${filter.getOrElse(entity)}(s) in the registry.", Some(n)))
+            case NlQueryService.ListIntent(category) =>
+              NlQueryRepo.listAssets(category).map { rows =>
+                val noun = category.getOrElse("asset")
+                if (rows.isEmpty) ok(prompt, "list", s"No $noun found in the registry.", Some(0L))
+                else {
+                  val items = rows.map { case (title, maker, cat) =>
+                    NlItem(title, List(maker, cat).flatten.distinct.mkString(" · ") match { case "" => None; case s => Some(s) })
+                  }
+                  okItems(prompt, "list", s"You own ${rows.size} $noun${if (rows.size == 1) "" else "s"}:", items)
+                }
+              }
             case NlQueryService.LastPurchaseIntent(category) =>
               NlQueryRepo.lastPurchase(Some(category).filter(_ != "asset")).map {
                 case Some((title, date)) =>
@@ -138,10 +160,14 @@ object NlQuery {
                 }
             case NlQueryService.Unknown(_) =>
               // No structured intent — fall back to RAG retrieval over the indexed entity documents (NL-2).
-              // Sandbox returns the best-matching document extract; prod synthesises over the top-K via Claude.
+              // Sandbox returns the best-matching document as a titled item + a clean extract; prod synthesises
+              // over the top-K via Claude. The stored body repeats the title + is FTS-shaped, so strip the
+              // leading "Title." echo and surface the title as the item heading rather than inlining it.
               EntityDocRepo.search(prompt, 3).map {
                 case Nil => Left(cannot)
-                case best :: _ => ok(prompt, "rag", s"${best.title}: ${snippet(best.body)}", None)
+                case best :: _ =>
+                  val body = best.body.stripPrefix(best.title).stripPrefix(".").stripPrefix(":").trim
+                  okItems(prompt, "rag", best.title, List(NlItem(best.title, Some(snippet(body)))))
               }
           }
       }

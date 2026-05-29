@@ -68,6 +68,14 @@ object SearchNlApiIT extends IOSuite {
       expect(lastIn.intent == "last_activity") and expect(lastIn.answer.contains("Housekeeping"))
   }
 
+  test("F32 — 'what vehicles do I own' returns a formatted list (items), not a raw doc dump") { xa =>
+    NlQuery.query(xa, toby, "what vehicles do I own").map(_.toOption.get).map { r =>
+      expect(r.intent == "list") and expect(r.items.nonEmpty) and
+        expect(r.items.exists(_.title.contains("Range Rover"))) and
+        expect(r.answer.toLowerCase.contains("you own"))
+    }
+  }
+
   test("F32 NL is Principal-only in v1: a Manager is also denied (403)") { xa =>
     val lorna = Principal(UUID.fromString("10000000-0000-0000-0000-000000000002"), "l", "lorna@kanzen.local", "manager")
     NlQuery.query(xa, lorna, "how much did I spend").map(r => expect(r.left.exists(_._1.code == 403)))

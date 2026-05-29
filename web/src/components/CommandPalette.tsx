@@ -23,6 +23,10 @@ const styles = stylex.create({
   answerHead: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" },
   answerQ: { fontSize: "12px", color: colors.ink3 },
   answerText: { fontSize: "14.5px", color: colors.ink, lineHeight: 1.45 },
+  answerItems: { listStyle: "none", margin: "10px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "1px" },
+  answerItem: { display: "flex", flexDirection: "column", padding: "7px 10px", borderRadius: radius.sm, backgroundColor: colors.bgElev, border: `1px solid ${colors.line}` },
+  itemTitle: { fontSize: "13.5px", fontWeight: 500, color: colors.ink },
+  itemSub: { fontSize: "12px", color: colors.ink3, marginTop: "1px" },
 });
 
 /** F28 — ⌘K command palette. Opens on ⌘K/Ctrl-K from anywhere; queries the permission-filtered
@@ -86,6 +90,16 @@ export function CommandPalette() {
             <div {...stylex.props(styles.answer)} data-testid="nl-answer">
               <div {...stylex.props(styles.answerHead)}><AgentRibbon>Kanzen</AgentRibbon><span {...stylex.props(styles.answerQ)}>“{answer.prompt}”</span></div>
               <div {...stylex.props(styles.answerText)}>{answer.answer}</div>
+              {answer.items.length > 0 && (
+                <ul {...stylex.props(styles.answerItems)}>
+                  {answer.items.map((it, i) => (
+                    <li key={i} {...stylex.props(styles.answerItem)}>
+                      <span {...stylex.props(styles.itemTitle)}>{it.title}</span>
+                      {it.subtitle && <span {...stylex.props(styles.itemSub)}>{it.subtitle}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {canAsk && q.trim().length >= 2 && !answer && (

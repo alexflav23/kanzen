@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../services/inbox", () => ({
   search: vi.fn(async () => ({ hits: [{ entityType: "asset", entityId: "a1", title: "Royal Oak", subtitle: "AP" }] })),
 }));
-const nlQuery = vi.hoisted(() => vi.fn(async () => ({ prompt: "how many watches do I have", intent: "count:asset", answer: "3 watch(s) in the registry.", count: 3 })));
+const nlQuery = vi.hoisted(() => vi.fn(async () => ({ prompt: "how many watches do I have", intent: "count:asset", answer: "3 watch(s) in the registry.", count: 3, items: [] })));
 vi.mock("../services/nl", () => ({ nlQuery }));
 // Principal session: can("*","admin") → the Ask affordance shows.
 vi.mock("../state/AuthContext", () => ({ useAuth: () => ({ token: "t", can: () => true }) }));

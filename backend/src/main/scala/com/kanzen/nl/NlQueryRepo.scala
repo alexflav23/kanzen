@@ -18,6 +18,17 @@ object NlQueryRepo {
   def countAssets(kw: Option[String]): ConnectionIO[Long] =
     (fr"select count(*) from assets where deleted_at is null" ++ kwFilter(kw)).query[Long].unique
 
+  /** Assets (optionally in a category) for a "what do I own / list my …" answer: (title, maker, category). */
+  def listAssets(kw: Option[String]): ConnectionIO[List[(String, Option[String], Option[String])]] = {
+    val cat = kw
+      .map(k => fr"and (c.name ilike ${"%" + k + "%"} or a.title ilike ${"%" + k + "%"} or a.maker ilike ${"%" + k + "%"} or a.vertical ilike ${"%" + k + "%"})")
+      .getOrElse(Fragment.empty)
+    (fr"""select a.title, a.maker, c.name from assets a left join categories c on c.id = a.category_id
+          where a.deleted_at is null""" ++ cat ++ fr"order by c.name nulls last, a.title limit 40")
+      .query[(String, Option[String], Option[String])]
+      .to[List]
+  }
+
   def lastPurchase(kw: Option[String]): ConnectionIO[Option[(String, Option[LocalDate])]] =
     (fr"select title, acquisition_date from assets where deleted_at is null" ++ kwFilter(Some(kw.getOrElse(""))) ++
       fr"and acquisition_date is not null order by acquisition_date desc limit 1")
