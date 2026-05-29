@@ -9,7 +9,7 @@ import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalTime}
 import java.util.UUID
 
 /** F07 — native event authoring + a merged view overlaying read-only task & maintenance dates; Staff read but cannot
@@ -29,11 +29,11 @@ object CalendarApiIT extends IOSuite {
   test("create → appears in merged view → update → delete") { xa =>
     for {
       created <- Calendar
-        .create(xa, lorna, CreateReq("Plumber visit", today, Some("maintenance"), None))
+        .create(xa, lorna, CreateReq("Plumber visit", today, Some("maintenance"), None, None, None))
         .map(_.toOption.get)
       after <- Calendar.events(xa, lorna, today.minusDays(1), today.plusDays(1), None).map(_.toOption.get)
       _ <- Calendar
-        .update(xa, lorna, created.id, UpdateReq("Plumber visit (AM)", today, "maintenance"))
+        .update(xa, lorna, created.id, UpdateReq("Plumber visit (AM)", today, "maintenance", None, None))
         .map(_.toOption.get)
       _ <- Calendar.delete(xa, lorna, created.id).map(_.toOption.get)
       gone <- Calendar.events(xa, lorna, today.minusDays(1), today.plusDays(1), None).map(_.toOption.get)
@@ -54,7 +54,9 @@ object CalendarApiIT extends IOSuite {
 
   test("category filter narrows the merged view") { xa =>
     for {
-      _ <- Calendar.create(xa, lorna, CreateReq("Booking only", today, Some("booking"), None)).map(_.toOption.get)
+      _ <- Calendar
+        .create(xa, lorna, CreateReq("Booking only", today, Some("booking"), None, None, None))
+        .map(_.toOption.get)
       booked <- Calendar.events(xa, lorna, today.minusDays(1), today.plusDays(1), Some("booking")).map(_.toOption.get)
     } yield expect(booked.nonEmpty) and expect(booked.forall(_.category == "booking"))
   }
@@ -62,7 +64,32 @@ object CalendarApiIT extends IOSuite {
   test("Staff can read the calendar but cannot author events (403)") { xa =>
     for {
       canRead <- Calendar.events(xa, marcia, today.minusDays(1), today.plusDays(1), None)
-      cannotAdd <- Calendar.create(xa, marcia, CreateReq("Staff event", today, None, None))
+      cannotAdd <- Calendar.create(xa, marcia, CreateReq("Staff event", today, None, None, None, None))
     } yield expect(canRead.isRight) and expect(cannotAdd.left.exists(_._1.code == 403))
+  }
+
+  test("W6.5 — a timed event round-trips its property-local time; overlays stay all-day") { xa =>
+    for {
+      created <- Calendar
+        .create(
+          xa,
+          lorna,
+          CreateReq(
+            "Window cleaners",
+            today,
+            Some("booking"),
+            None,
+            Some(LocalTime.of(9, 30)),
+            Some(LocalTime.of(11, 0))
+          )
+        )
+        .map(_.toOption.get)
+      view <- Calendar.events(xa, lorna, today.minusDays(1), today.plusDays(1), None).map(_.toOption.get)
+      timed = view.find(_.id == created.id)
+      task = view.find(_.source == "task")
+    } yield expect(created.startTime.contains(LocalTime.of(9, 30))) and
+      expect(timed.exists(_.startTime.contains(LocalTime.of(9, 30)))) and
+      expect(timed.exists(_.endTime.contains(LocalTime.of(11, 0)))) and
+      expect(task.forall(_.startTime.isEmpty)) // task/maintenance overlays are all-day
   }
 }

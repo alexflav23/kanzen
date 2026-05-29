@@ -15,7 +15,7 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe._
 import sttp.tapir.server.ServerEndpoint
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalTime}
 import java.util.UUID
 
 /** F07 — household calendar. Native event authoring + a merged view that overlays read-only task due-dates (F06) and
@@ -30,12 +30,27 @@ object Calendar {
       id: UUID,
       title: String,
       startOn: Option[LocalDate],
+      startTime: Option[LocalTime],
+      endTime: Option[LocalTime],
       category: String,
       source: String,
       readOnly: Boolean
   )
-  final case class CreateReq(title: String, on: LocalDate, category: Option[String], propertyId: Option[UUID])
-  final case class UpdateReq(title: String, on: LocalDate, category: String)
+  final case class CreateReq(
+      title: String,
+      on: LocalDate,
+      category: Option[String],
+      propertyId: Option[UUID],
+      startTime: Option[LocalTime],
+      endTime: Option[LocalTime]
+  )
+  final case class UpdateReq(
+      title: String,
+      on: LocalDate,
+      category: String,
+      startTime: Option[LocalTime],
+      endTime: Option[LocalTime]
+  )
   final case class Ok(ok: Boolean)
 
   // task/maintenance overlays are derived (read-only); native calendar rows are editable
@@ -43,6 +58,8 @@ object Calendar {
     c.id,
     c.title,
     c.startOn,
+    c.startTime,
+    c.endTime,
     c.category,
     c.source,
     readOnly = c.source == "task" || c.source == "maintenance"
@@ -84,8 +101,8 @@ object Calendar {
       write(
         p,
         CalendarRepo
-          .createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None)
-          .map(id => EventView(id, r.title, Some(r.on), cat, "manual", readOnly = false)),
+          .createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None, r.startTime, r.endTime)
+          .map(id => EventView(id, r.title, Some(r.on), r.startTime, r.endTime, cat, "manual", readOnly = false)),
         createA
       ).transact(xa)
   }
@@ -97,7 +114,8 @@ object Calendar {
       res <-
         if (!a.can(editA)) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
-        else CalendarRepo.update(id, r.title, r.on, r.category).map(n => Right(Ok(n > 0)): Out[Ok])
+        else
+          CalendarRepo.update(id, r.title, r.on, r.category, r.startTime, r.endTime).map(n => Right(Ok(n > 0)): Out[Ok])
     } yield res
     tx.transact(xa)
   }

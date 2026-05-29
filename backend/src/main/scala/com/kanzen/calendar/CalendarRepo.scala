@@ -4,11 +4,21 @@ import doobie._
 import doobie.implicits._
 import doobie.postgres.implicits._
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalTime}
 import java.util.UUID
 
-/** A merged-view row: a native/Google event, or a read-only overlay from a task / maintenance plan. */
-final case class CalEvent(id: UUID, title: String, startOn: Option[LocalDate], category: String, source: String)
+/** A merged-view row: a native/Google event, or a read-only overlay from a task / maintenance plan.
+  * `startTime`/`endTime` are property-local wall-clock (no zone); None = all-day (W6.5).
+  */
+final case class CalEvent(
+    id: UUID,
+    title: String,
+    startOn: Option[LocalDate],
+    startTime: Option[LocalTime],
+    endTime: Option[LocalTime],
+    category: String,
+    source: String
+)
 
 /** F07 — calendar event refs synced with Google; idempotent by google_event_id. */
 object CalendarRepo {
@@ -22,7 +32,7 @@ object CalendarRepo {
       .query[(String, String)]
       .to[List]
 
-  /** Native event authoring (no google_event_id until pushed to Google). */
+  /** Native event authoring (no google_event_id until pushed to Google). Times are property-local. */
   def createNative(
       ownerId: UUID,
       title: String,
@@ -30,13 +40,25 @@ object CalendarRepo {
       category: String,
       propertyId: Option[UUID],
       source: String,
-      sourceId: Option[UUID]
+      sourceId: Option[UUID],
+      startTime: Option[LocalTime] = None,
+      endTime: Option[LocalTime] = None
   ): ConnectionIO[UUID] =
-    sql"""insert into calendar_event_refs (owner_id, title, start_on, category, source, source_id, property_id)
-          values ($ownerId, $title, $on, $category, $source, $sourceId, $propertyId) returning id""".query[UUID].unique
+    sql"""insert into calendar_event_refs (owner_id, title, start_on, start_time, end_time, category, source, source_id, property_id)
+          values ($ownerId, $title, $on, $startTime, $endTime, $category, $source, $sourceId, $propertyId) returning id"""
+      .query[UUID]
+      .unique
 
-  def update(id: UUID, title: String, on: LocalDate, category: String): ConnectionIO[Int] =
-    sql"update calendar_event_refs set title = $title, start_on = $on, category = $category where id = $id and deleted_at is null".update.run
+  def update(
+      id: UUID,
+      title: String,
+      on: LocalDate,
+      category: String,
+      startTime: Option[LocalTime] = None,
+      endTime: Option[LocalTime] = None
+  ): ConnectionIO[Int] =
+    sql"""update calendar_event_refs set title = $title, start_on = $on, start_time = $startTime, end_time = $endTime,
+          category = $category where id = $id and deleted_at is null""".update.run
 
   def softDelete(id: UUID): ConnectionIO[Int] =
     sql"update calendar_event_refs set deleted_at = now() where id = $id and deleted_at is null".update.run
@@ -54,13 +76,13 @@ object CalendarRepo {
     * system-of-linkage; tasks/maintenance are derived, not stored.
     */
   def merged(from: LocalDate, to: LocalDate): ConnectionIO[List[CalEvent]] =
-    sql"""select id, title, start_on, coalesce(category, 'manual'), source
+    sql"""select id, title, start_on, start_time, end_time, coalesce(category, 'manual'), source
             from calendar_event_refs where deleted_at is null and start_on between $from and $to
           union all
-          select id, title, due_on, 'task', 'task'
+          select id, title, due_on, null::time, null::time, 'task', 'task'
             from tasks where due_on between $from and $to and status <> 'done'
           union all
-          select id, title, next_due, 'maintenance', 'maintenance'
+          select id, title, next_due, null::time, null::time, 'maintenance', 'maintenance'
             from maintenance_plans where next_due between $from and $to and active
-          order by 3""".query[CalEvent].to[List]
+          order by 3, 4 nulls first""".query[CalEvent].to[List]
 }

@@ -28,12 +28,13 @@ const styles = stylex.create({
   modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
   field: { display: "block", marginBottom: "12px" },
+  twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
   control: { width: "100%", padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
   actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
   ghost: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
   primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
-  // view toggle + grid (W6)
+  // view toggle + month grid
   headRight: { display: "flex", alignItems: "center", gap: "10px" },
   seg: { display: "inline-flex", gap: "2px", padding: "3px", borderRadius: radius.md, backgroundColor: colors.bgSunken },
   segBtn: { padding: "5px 12px", borderRadius: radius.sm, border: 0, background: "transparent", color: colors.ink3, cursor: "pointer", fontSize: "12.5px", fontWeight: 500 },
@@ -52,6 +53,25 @@ const styles = stylex.create({
   dayNumToday: { color: colors.accent, fontWeight: 700 },
   chip: (bg: string, fg: string) => ({ fontSize: "11px", lineHeight: 1.25, padding: "2px 6px", borderRadius: "5px", backgroundColor: bg, color: fg, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }),
   more: { fontSize: "10.5px", color: colors.ink3, paddingLeft: "2px" },
+  // timed hour-grid (week / day)
+  tgHead: (cols: number) => ({ display: "grid", gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: `1px solid ${colors.line}` }),
+  tgGutterCell: { padding: "8px 6px" },
+  tgDayHead: { padding: "8px 10px", fontSize: "12px", color: colors.ink3, borderLeft: `1px solid ${colors.line}`, textTransform: "uppercase", letterSpacing: "0.03em" },
+  tgDayHeadToday: { color: colors.accent, fontWeight: 700 },
+  tgDayNum: { fontVariantNumeric: "tabular-nums" },
+  tgAllDayLabel: { fontSize: "10px", color: colors.ink4, textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center" },
+  tgAllDayCell: { padding: "5px 6px", borderLeft: `1px solid ${colors.line}`, display: "flex", flexDirection: "column", gap: "3px", minHeight: "26px" },
+  tgBody: (cols: number) => ({ display: "grid", gridTemplateColumns: `56px repeat(${cols}, 1fr)`, maxHeight: "620px", overflowY: "auto" }),
+  tgGutter: { display: "flex", flexDirection: "column" },
+  tgHourLabel: { height: "48px", fontSize: "11px", color: colors.ink3, textAlign: "right", paddingRight: "8px", paddingTop: "2px", fontVariantNumeric: "tabular-nums", boxSizing: "border-box" },
+  tgDayCol: { position: "relative", borderLeft: `1px solid ${colors.line}` },
+  tgSlot: { display: "block", width: "100%", height: "48px", borderTop: `1px solid ${colors.line}`, border: 0, borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: colors.line, background: "transparent", cursor: "pointer", boxSizing: "border-box" },
+  tgEvent: (top: number, height: number, bg: string, fg: string) => ({
+    position: "absolute", left: "3px", right: "3px", top: `${top}px`, height: `${height}px`,
+    backgroundColor: bg, color: fg, borderRadius: "6px", padding: "3px 7px", fontSize: "11px", lineHeight: 1.3,
+    overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.10)",
+  }),
+  tgEventTime: { fontWeight: 600, fontVariantNumeric: "tabular-nums" },
 });
 
 // Category-tinted chip backgrounds; text is high-contrast `ink` (AA on every tint, both themes) — the
@@ -64,24 +84,35 @@ const chipColors = (c: string): [string, string] => {
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const fmtDate = (s: string | null) => (s ? new Date(`${s}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—");
 const catTone = (c: string): "default" | "accent" | "warn" => (c === "maintenance" ? "warn" : c === "task" ? "default" : "accent");
-// local-date helpers (TZ-safe, unlike toISOString) for the month/week grid
+// local-date helpers (TZ-safe, unlike toISOString) for the grids
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 const startOfWeekMon = (d: Date) => addDays(d, -((d.getDay() + 6) % 7)); // Monday-start
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-type View = "month" | "week" | "agenda";
+type View = "month" | "week" | "day" | "agenda";
+
+// timed hour-grid window (property-local wall-clock; no zone) — 07:00–22:00
+const START_HOUR = 7, END_HOUR = 22, HOUR_H = 48;
+const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i); // 7..21
+const parseMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+const fmtTime = (t: string) => t.slice(0, 5);
 
 const CATS: [string, string | null][] = [["All", null], ["Delivery", "delivery"], ["Maintenance", "maintenance"], ["Booking", "booking"], ["Tasks", "task"]];
 const NEW_CATS = ["manual", "delivery", "booking", "maintenance"];
 
-function NewEventModal({ token, date, onClose }: { token: string | null; date?: string; onClose: () => void }) {
+function NewEventModal({ token, date, time, onClose }: { token: string | null; date?: string; time?: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [on, setOn] = useState(date ?? iso(new Date()));
   const [category, setCategory] = useState("manual");
+  const [startTime, setStartTime] = useState(time ?? "");
+  const [endTime, setEndTime] = useState("");
   const mutation = useMutation({
-    mutationFn: () => createEvent(token, { title: title.trim(), on, category, propertyId: null }),
+    mutationFn: () => createEvent(token, {
+      title: title.trim(), on, category, propertyId: null,
+      ...(startTime ? { startTime, endTime: endTime || null } : {}),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["calendar"] }); onClose(); },
   });
   return (
@@ -93,6 +124,12 @@ function NewEventModal({ token, date, onClose }: { token: string | null; date?: 
           <input {...stylex.props(styles.control)} aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Window cleaners" autoFocus /></label>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Date</span>
           <input {...stylex.props(styles.control)} aria-label="Date" type="date" value={on} onChange={(e) => setOn(e.target.value)} /></label>
+        <div {...stylex.props(styles.field, styles.twoCol)}>
+          <label><span {...stylex.props(styles.label)}>Start time</span>
+            <input {...stylex.props(styles.control)} aria-label="Start time" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label>
+          <label><span {...stylex.props(styles.label)}>End time</span>
+            <input {...stylex.props(styles.control)} aria-label="End time" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label>
+        </div>
         <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
           <select {...stylex.props(styles.control)} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
             {NEW_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -109,18 +146,81 @@ function NewEventModal({ token, date, onClose }: { token: string | null; date?: 
   );
 }
 
-/** F07 — household calendar. Month / week grids + an agenda list over a date window; merged native
-  * events with read-only task & maintenance overlays. Clicking a day opens the new-event form pre-dated. */
+/** A timed hour-grid (07:00–22:00) for the Week (7 columns) and Day (1 column) views. Times are
+ * property-local wall-clock; timeless events (tasks, maintenance, untimed) sit in the all-day strip. */
+function TimeGrid({ days, byDay, onSlot }: { days: Date[]; byDay: Map<string, CalEvent[]>; onSlot: (date: string, hour: number) => void }) {
+  const cols = days.length;
+  const todayKey = ymd(new Date());
+  return (
+    <div data-testid="cal-timegrid">
+      <div {...stylex.props(styles.tgHead(cols))}>
+        <div {...stylex.props(styles.tgGutterCell)} />
+        {days.map((d) => (
+          <div key={ymd(d)} {...stylex.props(styles.tgDayHead, ymd(d) === todayKey && styles.tgDayHeadToday)}>
+            {d.toLocaleDateString("en-GB", { weekday: "short" })} <span {...stylex.props(styles.tgDayNum)}>{d.getDate()}</span>
+          </div>
+        ))}
+      </div>
+      <div {...stylex.props(styles.tgHead(cols))}>
+        <div {...stylex.props(styles.tgGutterCell, styles.tgAllDayLabel)}>all-day</div>
+        {days.map((d) => {
+          const allDay = (byDay.get(ymd(d)) ?? []).filter((e) => !e.startTime);
+          return (
+            <div key={ymd(d)} {...stylex.props(styles.tgAllDayCell)} data-testid="cal-allday">
+              {allDay.map((e) => { const [bg, fg] = chipColors(e.category); return <span key={`${e.source}:${e.id}`} {...stylex.props(styles.chip(bg, fg))} title={e.title}>{e.title}</span>; })}
+            </div>
+          );
+        })}
+      </div>
+      <div {...stylex.props(styles.tgBody(cols))}>
+        <div {...stylex.props(styles.tgGutter)}>
+          {HOURS.map((h) => <div key={h} {...stylex.props(styles.tgHourLabel)}>{pad(h)}:00</div>)}
+        </div>
+        {days.map((d) => {
+          const key = ymd(d);
+          const timed = (byDay.get(key) ?? []).filter((e) => e.startTime);
+          return (
+            <div key={key} {...stylex.props(styles.tgDayCol)} data-testid="cal-daycol">
+              {HOURS.map((h) => (
+                <button key={h} type="button" {...stylex.props(styles.tgSlot)}
+                  aria-label={`${d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} ${pad(h)}:00`}
+                  onClick={() => onSlot(key, h)} />
+              ))}
+              {timed.map((e) => {
+                const start = parseMin(e.startTime!);
+                const end = e.endTime ? parseMin(e.endTime) : start + 60;
+                const top = Math.max(0, ((start - START_HOUR * 60) / 60) * HOUR_H);
+                const height = Math.max(22, ((Math.min(end, END_HOUR * 60) - start) / 60) * HOUR_H - 2);
+                const [bg, fg] = chipColors(e.category);
+                return (
+                  <div key={`${e.source}:${e.id}`} {...stylex.props(styles.tgEvent(top, height, bg, fg))} data-testid="cal-block" title={`${fmtTime(e.startTime!)} ${e.title}`}>
+                    <span {...stylex.props(styles.tgEventTime)}>{fmtTime(e.startTime!)}</span> {e.title}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** F07 — household calendar. Month grid · timed Week/Day hour-grids · agenda list, over a date window;
+  * merged native events with read-only task & maintenance overlays. Clicking a day/hour opens the
+  * new-event form pre-filled. Times are property-local wall-clock (no cross-zone conversion). */
 export function Calendar() {
   const { token } = useAuth();
   const [cat, setCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [presetDate, setPresetDate] = useState<string | undefined>(undefined);
+  const [presetTime, setPresetTime] = useState<string | undefined>(undefined);
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState(new Date());
   const today = new Date();
 
   const gridDays = useMemo(() => {
+    if (view === "day") return [new Date(cursor)];
     if (view === "week") { const s = startOfWeekMon(cursor); return Array.from({ length: 7 }, (_, i) => addDays(s, i)); }
     const s = startOfWeekMon(new Date(cursor.getFullYear(), cursor.getMonth(), 1));
     return Array.from({ length: 42 }, (_, i) => addDays(s, i)); // 6-week month grid
@@ -141,11 +241,14 @@ export function Calendar() {
     return m;
   }, [events.data]);
 
-  const openNew = (date?: string) => { setPresetDate(date); setAdding(true); };
-  const shift = (dir: number) => setCursor((c) => (view === "week" ? addDays(c, dir * 7) : new Date(c.getFullYear(), c.getMonth() + dir, 1)));
-  const label = view === "week"
-    ? `${gridDays[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${gridDays[6].toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
-    : cursor.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  const openNew = (date?: string, time?: string) => { setPresetDate(date); setPresetTime(time); setAdding(true); };
+  const shift = (dir: number) => setCursor((c) =>
+    view === "day" ? addDays(c, dir) : view === "week" ? addDays(c, dir * 7) : new Date(c.getFullYear(), c.getMonth() + dir, 1));
+  const label = view === "day"
+    ? cursor.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
+    : view === "week"
+      ? `${gridDays[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${gridDays[6].toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+      : cursor.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
   return (
     <div>
@@ -153,11 +256,11 @@ export function Calendar() {
         <div>
           <div {...stylex.props(styles.eyebrow)}>Operations · Calendar</div>
           <h1 {...stylex.props(styles.title)}>Calendar</h1>
-          <div {...stylex.props(styles.desc)}>Deliveries, maintenance, bookings and due tasks. Task &amp; maintenance dates are read-only overlays.</div>
+          <div {...stylex.props(styles.desc)}>Deliveries, maintenance, bookings and due tasks. Times are property-local; task &amp; maintenance dates are read-only overlays.</div>
         </div>
         <div {...stylex.props(styles.headRight)}>
           <div {...stylex.props(styles.seg)} role="tablist" aria-label="Calendar view">
-            {(["month", "week", "agenda"] as View[]).map((v) => (
+            {(["month", "week", "day", "agenda"] as View[]).map((v) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} {...stylex.props(styles.segBtn, view === v && styles.segBtnOn)} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>
             ))}
           </div>
@@ -165,7 +268,7 @@ export function Calendar() {
         </div>
       </header>
 
-      {adding && <NewEventModal token={token} date={presetDate} onClose={() => { setAdding(false); setPresetDate(undefined); }} />}
+      {adding && <NewEventModal token={token} date={presetDate} time={presetTime} onClose={() => { setAdding(false); setPresetDate(undefined); setPresetTime(undefined); }} />}
 
       <div {...stylex.props(styles.filters)}>
         {CATS.map(([labelTxt, value]) => (
@@ -189,7 +292,7 @@ export function Calendar() {
             : events.data.length === 0 ? <EmptyState title="Nothing scheduled">No events in this window.</EmptyState>
             : events.data.map((e) => (
               <div key={`${e.source}:${e.id}`} {...stylex.props(styles.row)} data-testid="cal-event">
-                <div {...stylex.props(styles.date)}>{fmtDate(e.startOn)}</div>
+                <div {...stylex.props(styles.date)}>{fmtDate(e.startOn)}{e.startTime ? ` · ${fmtTime(e.startTime)}` : ""}</div>
                 <div {...stylex.props(styles.grow)}>
                   <div {...stylex.props(styles.evTitle)}>{e.title}</div>
                   {e.readOnly && <div {...stylex.props(styles.ro)}>from {e.source} · read-only</div>}
@@ -198,7 +301,7 @@ export function Calendar() {
               </div>
             ))}
         </Card>
-      ) : (
+      ) : view === "month" ? (
         <Card>
           {events.isError ? <ErrorState error={events.error} /> : (
             <>
@@ -206,7 +309,7 @@ export function Calendar() {
               <div {...stylex.props(styles.grid)} data-testid="cal-grid">
                 {gridDays.map((d) => {
                   const key = ymd(d);
-                  const out = view === "month" && d.getMonth() !== cursor.getMonth();
+                  const out = d.getMonth() !== cursor.getMonth();
                   const isToday = key === ymd(today);
                   const evs = byDay.get(key) ?? [];
                   return (
@@ -216,7 +319,7 @@ export function Calendar() {
                       <span {...stylex.props(styles.dayNum, isToday && styles.dayNumToday)}>{d.getDate()}</span>
                       {evs.slice(0, 4).map((e) => {
                         const [bg, fg] = chipColors(e.category);
-                        return <span key={`${e.source}:${e.id}`} {...stylex.props(styles.chip(bg, fg))} data-testid="cal-chip" title={e.title}>{e.title}</span>;
+                        return <span key={`${e.source}:${e.id}`} {...stylex.props(styles.chip(bg, fg))} data-testid="cal-chip" title={e.title}>{e.startTime ? `${fmtTime(e.startTime)} ` : ""}{e.title}</span>;
                       })}
                       {evs.length > 4 && <span {...stylex.props(styles.more)}>+{evs.length - 4} more</span>}
                     </button>
@@ -225,6 +328,10 @@ export function Calendar() {
               </div>
             </>
           )}
+        </Card>
+      ) : (
+        <Card>
+          {events.isError ? <ErrorState error={events.error} /> : <TimeGrid days={gridDays} byDay={byDay} onSlot={(date, hour) => openNew(date, `${pad(hour)}:00`)} />}
         </Card>
       )}
     </div>

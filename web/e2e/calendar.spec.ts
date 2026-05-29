@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures";
 
 // Browser e2e (Playwright) — the Calendar vs the REAL backend (seeded native events, dated relative to
-// today, plus task/maintenance overlays). W6: month/week grids + agenda.
+// today, plus task/maintenance overlays). W6: month grid + timed Week/Day hour-grids + agenda.
 
 test("the month grid renders by default (42 cells) with seeded events as chips", async ({ page }) => {
   await page.goto("/calendar");
@@ -12,14 +12,25 @@ test("the month grid renders by default (42 cells) with seeded events as chips",
   await expect(page.getByTestId("cal-chip").first()).toBeVisible(); // ≥1 seeded event placed in-grid
 });
 
-test("month nav changes the period, and Week view shows a 7-day grid", async ({ page }) => {
+test("month nav changes the period, and Week view shows a 7-column timed hour-grid", async ({ page }) => {
   await page.goto("/calendar");
   const period = page.getByTestId("cal-period");
   const before = await period.textContent();
   await page.getByRole("button", { name: "Next" }).click();
   await expect(period).not.toHaveText(before ?? "");
   await page.getByRole("tab", { name: "Week" }).click();
-  expect(await page.getByTestId("cal-day").count()).toBe(7);
+  await expect(page.getByTestId("cal-timegrid")).toBeVisible();
+  expect(await page.getByTestId("cal-daycol").count()).toBe(7);
+});
+
+test("Day view shows the hour-grid with the seeded timed events positioned", async ({ page }) => {
+  await page.goto("/calendar");
+  await page.getByRole("tab", { name: "Day" }).click();
+  await expect(page.getByTestId("cal-timegrid")).toBeVisible();
+  expect(await page.getByTestId("cal-daycol").count()).toBe(1);
+  // seeded today: "Housekeeping · Wardian" 08:00 + "Personal trainer" 18:00 (property-local)
+  await expect(page.getByTestId("cal-block").filter({ hasText: "Housekeeping · Wardian" })).toBeVisible();
+  await expect(page.getByTestId("cal-block").filter({ hasText: "08:00" })).toBeVisible();
 });
 
 test("clicking a day opens the new-event form pre-dated", async ({ page }) => {

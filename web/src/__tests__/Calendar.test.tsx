@@ -9,11 +9,11 @@ vi.mock("../services/calendar", () => {
   const rel = (off: number) => { const x = new Date(); x.setDate(x.getDate() + off); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`; };
   return {
     listEvents: async () => [
-      { id: "c1", title: "Plumber visit · Wardian", startOn: rel(0), category: "maintenance", source: "manual", readOnly: false },
-      { id: "c2", title: "Waitrose delivery", startOn: rel(1), category: "delivery", source: "manual", readOnly: false },
-      { id: "t1", title: "Order pool chemicals", startOn: rel(-1), category: "task", source: "task", readOnly: true },
+      { id: "c1", title: "Plumber visit · Wardian", startOn: rel(0), startTime: "09:30", endTime: "11:00", category: "maintenance", source: "manual", readOnly: false },
+      { id: "c2", title: "Waitrose delivery", startOn: rel(1), startTime: null, endTime: null, category: "delivery", source: "manual", readOnly: false },
+      { id: "t1", title: "Order pool chemicals", startOn: rel(-1), startTime: null, endTime: null, category: "task", source: "task", readOnly: true },
     ],
-    createEvent: vi.fn(async () => ({ id: "new", title: "Window cleaners", startOn: rel(0), category: "manual", source: "manual", readOnly: false })),
+    createEvent: vi.fn(async () => ({ id: "new", title: "Window cleaners", startOn: rel(0), startTime: null, endTime: null, category: "manual", source: "manual", readOnly: false })),
   };
 });
 
@@ -35,7 +35,7 @@ describe("Calendar", () => {
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(await screen.findByTestId("cal-grid")).toBeInTheDocument();
     expect(screen.getAllByTestId("cal-day")).toHaveLength(42); // 6-week month grid
-    expect(await screen.findByText("Plumber visit · Wardian")).toBeInTheDocument(); // a chip on today's cell
+    expect(await screen.findByText(/Plumber visit · Wardian/)).toBeInTheDocument(); // a chip on today's cell (time-prefixed)
     expect(screen.getByTestId("cal-period")).toBeInTheDocument();
   });
 
@@ -47,14 +47,24 @@ describe("Calendar", () => {
     expect(screen.getByText(/from task · read-only/)).toBeInTheDocument();
   });
 
-  it("week view shows a 7-day grid and navigation changes the period label", async () => {
+  it("week view shows a 7-column timed hour-grid and nav changes the period label", async () => {
     renderCal();
     fireEvent.click(screen.getByRole("tab", { name: "Week" }));
-    expect(await screen.findByTestId("cal-grid")).toBeInTheDocument();
-    expect(screen.getAllByTestId("cal-day")).toHaveLength(7);
+    expect(await screen.findByTestId("cal-timegrid")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cal-daycol")).toHaveLength(7);
     const before = screen.getByTestId("cal-period").textContent;
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByTestId("cal-period").textContent).not.toBe(before);
+  });
+
+  it("day view shows a single-column hour-grid with the timed event positioned", async () => {
+    renderCal();
+    fireEvent.click(screen.getByRole("tab", { name: "Day" }));
+    expect(await screen.findByTestId("cal-timegrid")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cal-daycol")).toHaveLength(1);
+    const block = await screen.findByTestId("cal-block"); // today's 09:30 event
+    expect(block).toHaveTextContent("09:30");
+    expect(block).toHaveTextContent("Plumber visit · Wardian");
   });
 
   it("clicking a day opens the new-event form pre-dated", async () => {
@@ -65,7 +75,21 @@ describe("Calendar", () => {
     expect((within(modal).getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("creates a new event via the modal", async () => {
+  it("clicking an hour slot pre-fills the start time, and the event is created with it", async () => {
+    renderCal();
+    fireEvent.click(screen.getByRole("tab", { name: "Day" }));
+    const col = await screen.findByTestId("cal-daycol");
+    fireEvent.click(within(col).getAllByRole("button")[0]); // first hour slot (07:00)
+    const modal = await screen.findByTestId("new-event");
+    expect((within(modal).getByLabelText("Start time") as HTMLInputElement).value).toBe("07:00");
+    fireEvent.change(within(modal).getByLabelText("Title"), { target: { value: "Window cleaners" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add event" }));
+    await waitFor(() =>
+      expect(createEvent).toHaveBeenCalledWith("t", expect.objectContaining({ title: "Window cleaners", startTime: "07:00" })),
+    );
+  });
+
+  it("creates a new event via the modal (no time → all-day)", async () => {
     renderCal();
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     expect(await screen.findByTestId("new-event")).toBeInTheDocument();
