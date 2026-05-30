@@ -4,6 +4,8 @@ import cats.effect.IO
 import com.kanzen.api.Expenses.SubmitReq
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -72,5 +74,23 @@ object ExpensesApiIT extends IOSuite {
       _ <- Expenses.submit(xa, lorna, req(184000L)) // pending_approval
       pending <- Expenses.list(xa, toby, Some("pending_approval")).map(_.toOption.get)
     } yield expect(pending.nonEmpty) and expect(pending.forall(_.status == "pending_approval"))
+  }
+
+  // F34 — the drift bar for the expense-approval flow. The realtime layer (F48) live-updates the approvals queue +
+  // notifications fan out off these. A fresh over-threshold expense per run → race-proof aggregate_id.
+  test("F34 — expense mutations emit expense.{submitted,approved}; reject emits expense.rejected") { xa =>
+    for {
+      e <- Expenses.submit(xa, lorna, req(184000L)).map(_.toOption.get) // submitted (pending — over threshold)
+      _ <- Expenses.approve(xa, toby, e.id).map(_.toOption.get) // approved (Principal)
+      r <- Expenses.submit(xa, lorna, req(200000L)).map(_.toOption.get)
+      _ <- Expenses.reject(xa, toby, r.id).map(_.toOption.get) // rejected (Principal)
+      eEvents <-
+        sql"select event_type from event_outbox where aggregate_id = ${e.id}".query[String].to[List].transact(xa)
+      rEvents <-
+        sql"select event_type from event_outbox where aggregate_id = ${r.id}".query[String].to[List].transact(xa)
+    } yield expect(eEvents.contains("expense.submitted")) and
+      expect(eEvents.contains("expense.approved")) and
+      expect(rEvents.contains("expense.submitted")) and
+      expect(rEvents.contains("expense.rejected"))
   }
 }

@@ -4,11 +4,14 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.finance.{Bill, BillPayment, BillRepo, PayQueueService, PaymentRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -93,13 +96,35 @@ object Finance {
       .forUser(p.userId, p.role)
       .flatMap(a => if (a.can(action)) q.map(Right(_): Out[A]) else (Left(forbidden): Out[A]).pure[ConnectionIO])
 
+  /** F34 — emit a finance event (bill/payment) the realtime layer (F48) uses to live-update the pay queue + bills
+    * without a refresh. Money-safe: scheduling/marking records reality, it never moves money.
+    */
+  private def emitFinance(
+      p: Principal,
+      eventType: String,
+      subject: Subject,
+      propertyId: Option[UUID],
+      payload: Json
+  ): ConnectionIO[Unit] =
+    EventRepo.emit(Envelope(eventType, Actor.user(p.userId), subject, p.userId, propertyId, payload)).void
+
   // ---- bills (F15) ----
   def listBills(xa: Transactor[IO], p: Principal): IO[Out[List[BillView]]] =
     read(p, BillRepo.list.map(_.map(bv))).transact(xa)
   def createBill(xa: Transactor[IO], p: Principal, r: CreateBillReq): IO[Out[BillView]] =
     write(
       p,
-      BillRepo.create(r.payee, r.propertyId, r.category, r.amountMinor, r.currency, r.frequency).map(bv),
+      BillRepo
+        .create(r.payee, r.propertyId, r.category, r.amountMinor, r.currency, r.frequency)
+        .flatMap(b =>
+          emitFinance(
+            p,
+            Events.Bill.Created,
+            Subject("bill", b.id),
+            b.propertyId,
+            Json.obj("payee" -> b.payee.asJson, "amountMinor" -> b.amountMinor.asJson, "currency" -> b.currency.asJson)
+          ).as(bv(b))
+        ),
       createA
     )
       .transact(xa)
@@ -110,8 +135,21 @@ object Finance {
   def queue(xa: Transactor[IO], p: Principal): IO[Out[List[QueueItem]]] =
     read(p, PaymentRepo.queue.map(_.map(q => QueueItem(q.id, q.amountMinor, q.currency, q.mode, q.state)))).transact(xa)
   def schedule(xa: Transactor[IO], p: Principal, r: ScheduleReq): IO[Out[PaymentView]] =
-    write(p, PaymentRepo.schedule(r.billId, r.methodId, r.amountMinor, r.currency, r.mode).map(pv), scheduleA)
-      .transact(xa)
+    write(
+      p,
+      PaymentRepo
+        .schedule(r.billId, r.methodId, r.amountMinor, r.currency, r.mode)
+        .flatMap(b =>
+          emitFinance(
+            p,
+            Events.Bill.Scheduled,
+            Subject("payment", b.id),
+            None,
+            Json.obj("billId" -> r.billId.asJson, "amountMinor" -> r.amountMinor.asJson, "mode" -> b.mode.asJson)
+          ).as(pv(b))
+        ),
+      scheduleA
+    ).transact(xa)
   def createMethod(xa: Transactor[IO], p: Principal, r: MethodReq): IO[Out[MethodView]] =
     write(
       p,
@@ -132,7 +170,16 @@ object Finance {
         case Some(bp) =>
           if (!authz.can(payA)) (Left(forbidden): Out[PaymentView]).pure[ConnectionIO]
           else if (!PayQueueService.canMarkPaid(bp.mode)) (Left(notMarkable): Out[PaymentView]).pure[ConnectionIO]
-          else PaymentRepo.markPaid(id) *> PaymentRepo.get(id).map(_.map(pv).toRight(notFound))
+          else
+            PaymentRepo.markPaid(id) *>
+              emitFinance(
+                p,
+                Events.Bill.PaidMarked,
+                Subject("payment", id),
+                None,
+                Json.obj("mode" -> bp.mode.asJson)
+              ) *>
+              PaymentRepo.get(id).map(_.map(pv).toRight(notFound))
       }
     } yield res
     tx.transact(xa)

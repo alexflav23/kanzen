@@ -4,6 +4,8 @@ import cats.effect.IO
 import com.kanzen.api.Finance.{CreateBillReq, MethodReq, ScheduleReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -84,5 +86,28 @@ object FinanceApiIT extends IOSuite {
     for {
       sched <- Finance.schedule(xa, marcia, ScheduleReq(None, None, 100L, "GBP", "manual"))
     } yield expect(sched.left.exists(_._1.code == 403))
+  }
+
+  // F34 — the drift bar for the Finance domain (bills + pay queue). The realtime layer (F48) live-updates the
+  // pay queue + bills off these; fresh bill/payment ids per run make the aggregate_id query race-proof.
+  test("F34 — bill + payment mutations emit bill.{created,scheduled,paid_marked}") { xa =>
+    for {
+      bill <- Finance
+        .createBill(xa, lorna, CreateBillReq("Octopus F34", None, None, 9000L, "GBP", Some("monthly")))
+        .map(_.toOption.get)
+      method <- Finance
+        .createMethod(xa, lorna, MethodReq("bank_account", "Coutts F34", Some("4242"), Some("GBP"), None))
+        .map(_.toOption.get)
+      pay <- Finance
+        .schedule(xa, lorna, ScheduleReq(Some(bill.id), Some(method.id), 9000L, "GBP", "manual"))
+        .map(_.toOption.get)
+      _ <- Finance.markPaid(xa, lorna, pay.id).map(_.toOption.get)
+      billEvents <-
+        sql"select event_type from event_outbox where aggregate_id = ${bill.id}".query[String].to[List].transact(xa)
+      payEvents <-
+        sql"select event_type from event_outbox where aggregate_id = ${pay.id}".query[String].to[List].transact(xa)
+    } yield expect(billEvents == List("bill.created")) and // exactly one on the fresh bill
+      expect(payEvents.contains("bill.scheduled")) and
+      expect(payEvents.contains("bill.paid_marked"))
   }
 }

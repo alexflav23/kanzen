@@ -4,11 +4,14 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.finance.{BudgetRepo, BudgetRow, Expense, ExpenseRepo, ExpenseService}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -73,10 +76,27 @@ object Expenses {
             req.taxCategory,
             p.userId
           )
-          .map(e => Right(view(e)): Out[ExpenseView])
+          .flatMap(e => emitExpense(p, e, Events.Expense.Submitted).as(Right(view(e)): Out[ExpenseView]))
     }
     tx.transact(xa)
   }
+
+  /** F34 — emit an expense-subject event (the realtime layer (F48) live-updates the approvals queue; notifications
+    * already fan out off these). Money-safe: an event records a decision, it never settles anything.
+    */
+  private def emitExpense(p: Principal, e: Expense, eventType: String): ConnectionIO[Unit] =
+    EventRepo
+      .emit(
+        Envelope(
+          eventType,
+          Actor.user(p.userId),
+          Subject("expense", e.id),
+          p.userId,
+          None,
+          Json.obj("payee" -> e.payee.asJson, "amountMinor" -> e.amountMinor.asJson, "currency" -> e.currency.asJson)
+        )
+      )
+      .void
 
   def list(xa: Transactor[IO], p: Principal, status: Option[String]): IO[Out[List[ExpenseView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
@@ -91,7 +111,8 @@ object Expenses {
       xa: Transactor[IO],
       p: Principal,
       id: UUID,
-      action: (UUID, UUID) => ConnectionIO[Int]
+      action: (UUID, UUID) => ConnectionIO[Int],
+      eventType: String
   ): IO[Out[ExpenseView]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
@@ -102,14 +123,18 @@ object Expenses {
           if (!authz.can(Actions.byKey("expense:approve"))) (Left(forbidden): Out[ExpenseView]).pure[ConnectionIO]
           else if (ExpenseService.needsApproval(e.amountMinor, e.currency) && p.role != "principal")
             (Left(needsPrincipal): Out[ExpenseView]).pure[ConnectionIO]
-          else action(id, p.userId) *> ExpenseRepo.get(id).map(_.map(view).toRight(notFound))
+          else
+            action(id, p.userId) *> emitExpense(p, e, eventType) *>
+              ExpenseRepo.get(id).map(_.map(view).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
   }
 
-  def approve(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] = decide(xa, p, id, ExpenseRepo.approve)
-  def reject(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] = decide(xa, p, id, ExpenseRepo.reject)
+  def approve(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] =
+    decide(xa, p, id, ExpenseRepo.approve, Events.Expense.Approved)
+  def reject(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[ExpenseView]] =
+    decide(xa, p, id, ExpenseRepo.reject, Events.Expense.Rejected)
 
   // ---- budgets (F17) ----
   final case class BudgetView(
