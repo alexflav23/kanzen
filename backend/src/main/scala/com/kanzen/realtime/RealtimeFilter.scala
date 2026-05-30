@@ -50,7 +50,7 @@ object RealtimeFilter {
       ev.subjectType match {
         // The inbox carries a mailbox-visibility tier + per-thread scope on top of the resource gate.
         case "email_thread" =>
-          ev.subjectId.fold(IO.pure(true))(tid => CollabInboxRepo.visible(tid, scope, p.role).transact(xa))
+          ev.subjectId.fold(IO.pure(true))(tid => CollabInboxRepo.visible(tid, p.tenantId, scope, p.role).transact(xa))
         case _ => IO.pure(true)
       }
   }

@@ -100,7 +100,7 @@ object Collab {
           val grant = authz.can(Actions.byKey(key))
           if (!grant) false.pure[ConnectionIO]
           else if (entityType == "email_thread")
-            staffScope(p).flatMap(s => CollabInboxRepo.visible(entityId, s, p.role))
+            staffScope(p).flatMap(s => CollabInboxRepo.visible(entityId, p.tenantId, s, p.role))
           else true.pure[ConnectionIO]
         }
     }
@@ -115,7 +115,7 @@ object Collab {
           val grant = authz.can(Actions.byKey(key))
           if (!grant) false.pure[ConnectionIO]
           else if (entityType == "email_thread")
-            staffScope(p).flatMap(s => CollabInboxRepo.visible(entityId, s, p.role))
+            staffScope(p).flatMap(s => CollabInboxRepo.visible(entityId, p.tenantId, s, p.role))
           else true.pure[ConnectionIO]
         }
     }
@@ -129,7 +129,7 @@ object Collab {
         if (!ok) (Left(forbidden): Out[List[CommentView]]).pure[ConnectionIO]
         else
           CollabInboxRepo
-            .comments(entityType, entityId)
+            .comments(p.tenantId, entityType, entityId)
             .map(rows =>
               Right(
                 rows.map(r =>
@@ -160,7 +160,7 @@ object Collab {
           else {
             val ms = r.mentions.getOrElse(Nil).distinct
             for {
-              cid <- CollabInboxRepo.addComment(p.userId, r.entityType, r.entityId, p.userId, body, ms)
+              cid <- CollabInboxRepo.addComment(p.userId, p.tenantId, r.entityType, r.entityId, p.userId, body, ms)
               // F34 — `comment.created` is the canonical event the realtime layer (F48) pushes to the entity's
               // subscribers; `comment_mentioned` is the per-mention notification companion (existing).
               _ <- EventRepo.emit(
@@ -189,7 +189,7 @@ object Collab {
                 )
                 EventRepo.emit(Events.Comment.Mentioned, r.entityType, r.entityId, payload).void
               }
-              comments <- CollabInboxRepo.comments(r.entityType, r.entityId)
+              comments <- CollabInboxRepo.comments(p.tenantId, r.entityType, r.entityId)
               row = comments.find(_.id == cid)
             } yield Right(
               CommentView(

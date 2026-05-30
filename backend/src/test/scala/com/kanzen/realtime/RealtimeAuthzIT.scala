@@ -1,5 +1,6 @@
 package com.kanzen.realtime
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.Principal
@@ -57,7 +58,7 @@ object RealtimeAuthzIT extends IOSuite {
   test("a thread in the Staff's own scope IS delivered to that Staff socket") { xa =>
     for {
       mScope <- PeopleRepo.assigneeScope(marcia.userId).transact(xa)
-      visible <- CollabInboxRepo.threads(None, "inbox", None, mScope, "staff").transact(xa)
+      visible <- CollabInboxRepo.threads(Tenant.DefaultId, None, "inbox", None, mScope, "staff").transact(xa)
       m <- ctx(marcia, xa)
       // marcia has at least one visible thread (Wardian/Deliveries) — the filter must pass it through
       sees <- visible.headOption.fold(IO.pure(true))(t =>

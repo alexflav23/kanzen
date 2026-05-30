@@ -316,7 +316,7 @@ object CollabInboxIT extends IOSuite {
       // 3) link the thread directly to a fresh target id — race-proof against other tests' confirms
       freshTarget = UUID.randomUUID()
       _ <- com.kanzen.inbox.CollabInboxRepo
-        .link(toby.userId, eleanor.id, "asset", freshTarget, toby.userId)
+        .link(toby.userId, Tenant.DefaultId, eleanor.id, "asset", freshTarget, toby.userId)
         .transact(xa)
       linkEvents <-
         sql"select event_type from event_outbox where event_type = 'link.created' and aggregate_id = $freshTarget"

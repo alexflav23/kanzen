@@ -100,7 +100,7 @@ object CollabInboxRepo {
     case Some(AssigneeScope(person, None)) => fr"and t2.assignee_id = $person"
   }
 
-  def inboxes(scope: Option[AssigneeScope], role: String): ConnectionIO[List[InboxRow]] = {
+  def inboxes(tenantId: UUID, scope: Option[AssigneeScope], role: String): ConnectionIO[List[InboxRow]] = {
     val propF = scope match { // Staff see only their property's inboxes
       case Some(AssigneeScope(_, Some(prop))) => fr"and i.property_id = $prop"
       case _ => Fragment.empty
@@ -109,7 +109,9 @@ object CollabInboxRepo {
             (select count(*) from email_threads t2 where t2.inbox_id = i.id and t2.status = 'open' and t2.spam = false""" ++ countScope(
       scope
     ) ++ fr""")
-          from mail_inboxes i where i.deleted_at is null""" ++ propF ++ visibilityPred(role) ++ fr"order by i.label")
+          from mail_inboxes i where i.deleted_at is null and i.tenant_id = $tenantId""" ++ propF ++ visibilityPred(
+      role
+    ) ++ fr"order by i.label")
       .query[InboxRow]
       .to[List]
   }
@@ -126,6 +128,7 @@ object CollabInboxRepo {
   }
 
   def threads(
+      tenantId: UUID,
       inboxId: Option[UUID],
       folder: String,
       assignedTo: Option[UUID],
@@ -138,16 +141,20 @@ object CollabInboxRepo {
             t.status, t.assignee_id,
             (select count(*) from agent_actions a where a.thread_id = t.id and a.status = 'proposed')
           from email_threads t join mail_inboxes i on i.id = t.inbox_id
-          where 1=1""" ++ folderPred(folder) ++ inboxF ++ assignF ++ scopePred(scope) ++ visibilityPred(role) ++
+          where t.tenant_id = $tenantId""" ++ folderPred(folder) ++ inboxF ++ assignF ++ scopePred(
+      scope
+    ) ++ visibilityPred(role) ++
       fr"order by t.last_message_at desc")
       .query[ThreadRow]
       .to[List]
   }
 
   /** A single thread is visible iff it survives the scope predicate AND the mailbox's visibility tier. */
-  def visible(threadId: UUID, scope: Option[AssigneeScope], role: String): ConnectionIO[Boolean] =
+  def visible(threadId: UUID, tenantId: UUID, scope: Option[AssigneeScope], role: String): ConnectionIO[Boolean] =
     (fr"""select exists(select 1 from email_threads t join mail_inboxes i on i.id = t.inbox_id
-          where t.id = $threadId""" ++ scopePred(scope) ++ visibilityPred(role) ++ fr")").query[Boolean].unique
+          where t.id = $threadId and t.tenant_id = $tenantId""" ++ scopePred(scope) ++ visibilityPred(role) ++ fr")")
+      .query[Boolean]
+      .unique
 
   def thread(threadId: UUID): ConnectionIO[Option[ThreadRow]] =
     sql"""select t.id, t.inbox_id, t.subject, t.snippet, t.from_name, t.last_message_at, t.unread, t.has_attachments,
@@ -163,10 +170,10 @@ object CollabInboxRepo {
     sql"""select id, action_type, status, title, summary, confidence from agent_actions
           where thread_id = $threadId order by created_at""".query[ProposalRow].to[List]
 
-  def comments(entityType: String, entityId: UUID): ConnectionIO[List[CommentRow]] =
+  def comments(tenantId: UUID, entityType: String, entityId: UUID): ConnectionIO[List[CommentRow]] =
     sql"""select c.id, c.author_id, u.display_name, c.body, c.mentions, c.created_at, c.updated_at
           from entity_comments c left join users u on u.id = c.author_id
-          where c.entity_type = $entityType and c.entity_id = $entityId order by c.created_at"""
+          where c.tenant_id = $tenantId and c.entity_type = $entityType and c.entity_id = $entityId order by c.created_at"""
       .query[CommentRow]
       .to[List]
 
@@ -192,14 +199,17 @@ object CollabInboxRepo {
 
   def addComment(
       ownerId: UUID,
+      tenantId: UUID,
       entityType: String,
       entityId: UUID,
       authorId: UUID,
       body: String,
       mentions: List[UUID]
   ): ConnectionIO[UUID] =
-    sql"""insert into entity_comments (owner_id, entity_type, entity_id, author_id, body, mentions)
-          values ($ownerId, $entityType, $entityId, $authorId, $body, $mentions) returning id""".query[UUID].unique
+    sql"""insert into entity_comments (owner_id, tenant_id, entity_type, entity_id, author_id, body, mentions)
+          values ($ownerId, $tenantId, $entityType, $entityId, $authorId, $body, $mentions) returning id"""
+      .query[UUID]
+      .unique
 
   // ── attachments + actionable proposals (W9.2) ───────────────────────────────
   def attachments(threadId: UUID): ConnectionIO[List[AttachmentRow]] =
@@ -280,10 +290,18 @@ object CollabInboxRepo {
     * (idempotent: on-conflict no-op skips the emit). The realtime layer (F48) picks it up to live-update LinkedEmails
     * panels on the target.
     */
-  def link(ownerId: UUID, threadId: UUID, targetType: String, targetId: UUID, createdBy: UUID): ConnectionIO[Int] =
+  def link(
+      ownerId: UUID,
+      tenantId: UUID,
+      threadId: UUID,
+      targetType: String,
+      targetId: UUID,
+      createdBy: UUID
+  ): ConnectionIO[Int] =
     for {
-      n <- sql"""insert into entity_links (owner_id, source_type, source_id, target_type, target_id, role, created_by)
-                 values ($ownerId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
+      n <-
+        sql"""insert into entity_links (owner_id, tenant_id, source_type, source_id, target_type, target_id, role, created_by)
+                 values ($ownerId, $tenantId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
                  on conflict do nothing""".update.run
       _ <-
         if (n == 0) ().pure[ConnectionIO]
@@ -310,6 +328,7 @@ object CollabInboxRepo {
     * answer "what mail concerns this?". Scope-filtered — Staff never see threads outside their own/property (no leak).
     */
   def linkedThreads(
+      tenantId: UUID,
       targetType: String,
       targetId: UUID,
       scope: Option[AssigneeScope],
@@ -321,7 +340,9 @@ object CollabInboxRepo {
           from entity_links l
             join email_threads t on t.id = l.source_id and l.source_type = 'email_thread'
             join mail_inboxes i on i.id = t.inbox_id
-          where l.target_type = $targetType and l.target_id = $targetId""" ++ scopePred(scope) ++ visibilityPred(
+          where t.tenant_id = $tenantId and l.target_type = $targetType and l.target_id = $targetId""" ++ scopePred(
+      scope
+    ) ++ visibilityPred(
       role
     ) ++
       fr"order by t.last_message_at desc").query[ThreadRow].to[List]

@@ -200,7 +200,7 @@ object Inbox {
     for {
       authz <- Authz.forUser(p.userId, p.role)
       scope <- staffScope(p)
-      vis <- CollabInboxRepo.visible(threadId, scope, p.role)
+      vis <- CollabInboxRepo.visible(threadId, p.tenantId, scope, p.role)
       res <-
         if (!authz.can(action)) (Left(forbidden): Out[A]).pure[ConnectionIO]
         else if (!vis) (Left(notFound): Out[A]).pure[ConnectionIO]
@@ -216,7 +216,7 @@ object Inbox {
       .void
 
   def inboxes(xa: Transactor[IO], p: Principal): IO[Out[List[InboxView]]] =
-    read(p, staffScope(p).flatMap(s => CollabInboxRepo.inboxes(s, p.role)).map(_.map(iv))).transact(xa)
+    read(p, staffScope(p).flatMap(s => CollabInboxRepo.inboxes(p.tenantId, s, p.role)).map(_.map(iv))).transact(xa)
 
   private val validFolder = Set("inbox", "sent", "spam", "archive")
   def threads(
@@ -233,7 +233,14 @@ object Inbox {
         me <-
           if (assignee.contains("me")) PeopleRepo.assigneeScope(p.userId).map(_.map(_.personId))
           else Option.empty[UUID].pure[ConnectionIO]
-        rows <- CollabInboxRepo.threads(inbox, folder.filter(validFolder).getOrElse("inbox"), me, scope, p.role)
+        rows <- CollabInboxRepo.threads(
+          p.tenantId,
+          inbox,
+          folder.filter(validFolder).getOrElse("inbox"),
+          me,
+          scope,
+          p.role
+        )
       } yield rows.map(tv)
     ).transact(xa)
 
@@ -242,7 +249,7 @@ object Inbox {
       p,
       for {
         scope <- staffScope(p)
-        vis <- CollabInboxRepo.visible(id, scope, p.role)
+        vis <- CollabInboxRepo.visible(id, p.tenantId, scope, p.role)
         t <- CollabInboxRepo.thread(id)
         res <- (vis, t) match {
           case (true, Some(row)) =>
@@ -250,7 +257,7 @@ object Inbox {
               _ <- CollabInboxRepo.markRead(id, unread = false)
               ms <- CollabInboxRepo.messages(id)
               ps <- CollabInboxRepo.proposals(id)
-              cs <- CollabInboxRepo.comments("email_thread", id)
+              cs <- CollabInboxRepo.comments(p.tenantId, "email_thread", id)
               ats <- CollabInboxRepo.attachments(id)
               dr <- CollabInboxRepo.draft(id)
             } yield Right(
@@ -265,7 +272,12 @@ object Inbox {
 
   /** Back-reference: threads linked to a record (asset/expense/calendar), scope-filtered. */
   def linked(xa: Transactor[IO], p: Principal, targetType: String, targetId: UUID): IO[Out[List[ThreadView]]] =
-    read(p, staffScope(p).flatMap(s => CollabInboxRepo.linkedThreads(targetType, targetId, s, p.role)).map(_.map(tv)))
+    read(
+      p,
+      staffScope(p)
+        .flatMap(s => CollabInboxRepo.linkedThreads(p.tenantId, targetType, targetId, s, p.role))
+        .map(_.map(tv))
+    )
       .transact(xa)
 
   /** The itemised detail behind a proposal (receipt line items / dated event + what Confirm will do), for the review
@@ -281,7 +293,7 @@ object Inbox {
         case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ProposalDetail]).pure[ConnectionIO]
         case Some(pr) =>
           val tid = pr.threadId.get
-          CollabInboxRepo.visible(tid, scope, p.role).flatMap { vis =>
+          CollabInboxRepo.visible(tid, p.tenantId, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ProposalDetail]).pure[ConnectionIO]
             else
               for {
@@ -371,10 +383,10 @@ object Inbox {
   def comment(xa: Transactor[IO], p: Principal, id: UUID, r: CommentReq): IO[Out[CommentView]] =
     onThread(p, id, commentA)(
       CollabInboxRepo
-        .addComment(p.userId, "email_thread", id, p.userId, r.body.trim, r.mentions.getOrElse(Nil))
+        .addComment(p.userId, p.tenantId, "email_thread", id, p.userId, r.body.trim, r.mentions.getOrElse(Nil))
         .flatMap(cid =>
           CollabInboxRepo
-            .comments("email_thread", id)
+            .comments(p.tenantId, "email_thread", id)
             .map(_.find(_.id == cid).map(cv).getOrElse(CommentView(cid, None, r.body.trim, "")))
         )
     ).transact(xa)
@@ -398,7 +410,7 @@ object Inbox {
           else
             for {
               t <- TaskRepo.createUnfiled(p.tenantId, title, r.dueOn, r.priority.getOrElse("normal"), r.assigneeId)
-              _ <- CollabInboxRepo.link(p.userId, id, "task", t.id, p.userId)
+              _ <- CollabInboxRepo.link(p.userId, p.tenantId, id, "task", t.id, p.userId)
             } yield Right(CreatedFromThread(t.id, s"Task created: $title")): Out[CreatedFromThread]
         }
       }.transact(xa).map(_.flatten)
@@ -457,12 +469,12 @@ object Inbox {
               "agent",
               Some(tid)
             )
-            _ <- CollabInboxRepo.link(p.userId, tid, "calendar", eid, p.userId)
+            _ <- CollabInboxRepo.link(p.userId, p.tenantId, tid, "calendar", eid, p.userId)
             // a service/maintenance event may also concern an asset (e.g. the car) — link the thread to it too
             _ <- c
               .get[UUID]("assetId")
               .toOption
-              .traverse_(aid => CollabInboxRepo.link(p.userId, tid, "asset", aid, p.userId))
+              .traverse_(aid => CollabInboxRepo.link(p.userId, p.tenantId, tid, "asset", aid, p.userId))
             _ <- CollabInboxRepo.confirmProposal(pr.id)
           } yield Right(ConfirmResult("event", Some("calendar"), Some(title)))
       case "create_receipt" | "reconcile_bill" =>
@@ -486,7 +498,7 @@ object Inbox {
               None,
               p.userId
             )
-            _ <- CollabInboxRepo.link(p.userId, tid, "expense", ex.id, p.userId)
+            _ <- CollabInboxRepo.link(p.userId, p.tenantId, tid, "expense", ex.id, p.userId)
             _ <- CollabInboxRepo.confirmProposal(pr.id)
           } yield Right(ConfirmResult("expense", Some("expense"), Some(s"$payee — logged for approval")))
       case "create_task" =>
@@ -497,12 +509,12 @@ object Inbox {
             due = c.get[String]("date").toOption.flatMap(s => Try(LocalDate.parse(s)).toOption)
             assignee = c.get[UUID]("assigneeId").toOption
             t <- TaskRepo.createUnfiled(p.tenantId, title, due, str("priority", "normal"), assignee)
-            _ <- CollabInboxRepo.link(p.userId, tid, "task", t.id, p.userId)
+            _ <- CollabInboxRepo.link(p.userId, p.tenantId, tid, "task", t.id, p.userId)
             // a task may concern an asset (e.g. the car) — carry that link through too
             _ <- c
               .get[UUID]("assetId")
               .toOption
-              .traverse_(aid => CollabInboxRepo.link(p.userId, tid, "asset", aid, p.userId))
+              .traverse_(aid => CollabInboxRepo.link(p.userId, p.tenantId, tid, "asset", aid, p.userId))
             _ <- CollabInboxRepo.confirmProposal(pr.id)
           } yield Right(ConfirmResult("task", Some("task"), Some(s"Task created: $title")))
       case "add_to_list" =>
@@ -529,7 +541,7 @@ object Inbox {
                     )
                     .void
                 )
-                _ <- CollabInboxRepo.link(p.userId, tid, "list", listId, p.userId)
+                _ <- CollabInboxRepo.link(p.userId, p.tenantId, tid, "list", listId, p.userId)
                 _ <- CollabInboxRepo.confirmProposal(pr.id)
                 name <- CollabInboxRepo.listName(listId)
               } yield Right(
@@ -551,7 +563,7 @@ object Inbox {
         case Some(pr) if pr.status != "proposed" => (Left(conflict): Out[ConfirmResult]).pure[ConnectionIO]
         case Some(pr) if pr.threadId.isEmpty => (Left(notFound): Out[ConfirmResult]).pure[ConnectionIO]
         case Some(pr) =>
-          CollabInboxRepo.visible(pr.threadId.get, scope, p.role).flatMap { vis =>
+          CollabInboxRepo.visible(pr.threadId.get, p.tenantId, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
             else
               execute(p, pr, authz).flatTap {
@@ -579,7 +591,7 @@ object Inbox {
       res <- prOpt.flatMap(_.threadId) match {
         case None => (Left(notFound): Out[Unit]).pure[ConnectionIO]
         case Some(tid) =>
-          CollabInboxRepo.visible(tid, scope, p.role).flatMap { vis =>
+          CollabInboxRepo.visible(tid, p.tenantId, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
             else
               CollabInboxRepo.rejectProposal(id) *>

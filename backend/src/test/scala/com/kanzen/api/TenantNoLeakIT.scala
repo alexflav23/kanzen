@@ -6,6 +6,7 @@ import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.calendar.CalendarRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
+import com.kanzen.inbox.CollabInboxRepo
 import com.kanzen.property.PropertyRepo
 import com.kanzen.tasks.TaskRepo
 
@@ -153,5 +154,29 @@ object TenantNoLeakIT extends IOSuite {
         expect(bVisible.exists(_.id == bProp.id)) and
         expect(aVisible.nonEmpty) and // A still sees its own seeded properties
         expect(aSeesBById.isEmpty) // nor by direct id
+  }
+
+  test("comms: comments + mailboxes are tenant-isolated (the collab surface can't leak across tenants)") { xa =>
+    val ent = UUID.randomUUID() // the "same" entity id, commented on under two tenants
+    for {
+      tenantB <- newTenant(xa)
+      aCid <- CollabInboxRepo
+        .addComment(UUID.randomUUID(), Tenant.DefaultId, "asset", ent, UUID.randomUUID(), "A internal note", Nil)
+        .transact(xa)
+      bCid <- CollabInboxRepo
+        .addComment(UUID.randomUUID(), tenantB, "asset", ent, UUID.randomUUID(), "B internal note", Nil)
+        .transact(xa)
+      aComments <- CollabInboxRepo.comments(Tenant.DefaultId, "asset", ent).transact(xa)
+      bComments <- CollabInboxRepo.comments(tenantB, "asset", ent).transact(xa)
+      // a mailbox created in tenant B must not appear in tenant A's mailbox list
+      bInbox <-
+        sql"""insert into mail_inboxes (owner_id, tenant_id, address, label, kind, visibility)
+              values (${UUID
+            .randomUUID()}, $tenantB, ${"b-" + UUID.randomUUID() + "@x"}, 'B Box', 'operational', 'staff')
+              returning id""".query[UUID].unique.transact(xa)
+      aInboxes <- CollabInboxRepo.inboxes(Tenant.DefaultId, None, "principal").transact(xa)
+    } yield expect(aComments.exists(_.id == aCid)) and expect(!aComments.exists(_.id == bCid)) and
+      expect(bComments.exists(_.id == bCid)) and expect(!bComments.exists(_.id == aCid)) and
+      expect(aInboxes.nonEmpty) and expect(!aInboxes.exists(_.id == bInbox)) // B's mailbox never in A's list
   }
 }
