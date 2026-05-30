@@ -276,11 +276,35 @@ object CollabInboxRepo {
   def rejectProposal(id: UUID): ConnectionIO[Int] =
     sql"update agent_actions set status = 'rejected' where id = $id and status = 'proposed'".update.run
 
-  /** Link the thread to a created record (provenance both ways, spec §11a). */
+  /** Link the thread to a created record (provenance both ways, spec §11a). F34 — emits `link.created` per new edge
+    * (idempotent: on-conflict no-op skips the emit). The realtime layer (F48) picks it up to live-update LinkedEmails
+    * panels on the target.
+    */
   def link(ownerId: UUID, threadId: UUID, targetType: String, targetId: UUID, createdBy: UUID): ConnectionIO[Int] =
-    sql"""insert into entity_links (owner_id, source_type, source_id, target_type, target_id, role, created_by)
-          values ($ownerId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
-          on conflict do nothing""".update.run
+    for {
+      n <- sql"""insert into entity_links (owner_id, source_type, source_id, target_type, target_id, role, created_by)
+                 values ($ownerId, 'email_thread', $threadId, $targetType, $targetId, 'created', $createdBy)
+                 on conflict do nothing""".update.run
+      _ <-
+        if (n == 0) ().pure[ConnectionIO]
+        else
+          com.kanzen.events.EventRepo
+            .emit(
+              com.kanzen.events.Envelope(
+                com.kanzen.events.Events.Link.Created,
+                com.kanzen.events.Actor.user(createdBy),
+                com.kanzen.events.Subject(targetType, targetId),
+                ownerId,
+                None,
+                io.circe.Json.obj(
+                  "sourceType" -> io.circe.Json.fromString("email_thread"),
+                  "sourceId" -> io.circe.Json.fromString(threadId.toString),
+                  "role" -> io.circe.Json.fromString("created")
+                )
+              )
+            )
+            .void
+    } yield n
 
   /** Back-reference: the email threads linked to a record (e.g. an asset/expense/calendar event), so its page can
     * answer "what mail concerns this?". Scope-filtered — Staff never see threads outside their own/property (no leak).

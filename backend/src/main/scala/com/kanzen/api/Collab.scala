@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
-import com.kanzen.events.EventRepo
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.inbox.CollabInboxRepo
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import doobie.ConnectionIO
@@ -161,7 +161,23 @@ object Collab {
             val ms = r.mentions.getOrElse(Nil).distinct
             for {
               cid <- CollabInboxRepo.addComment(p.userId, r.entityType, r.entityId, p.userId, body, ms)
-              // F34: one `comment_mentioned` event per mention; the notification consumer fans out
+              // F34 — `comment.created` is the canonical event the realtime layer (F48) pushes to the entity's
+              // subscribers; `comment_mentioned` is the per-mention notification companion (existing).
+              _ <- EventRepo.emit(
+                Envelope(
+                  Events.Comment.Created,
+                  Actor.user(p.userId),
+                  Subject(r.entityType, r.entityId),
+                  p.userId,
+                  None,
+                  Json.obj(
+                    "commentId" -> cid.asJson,
+                    "authorId" -> p.userId.asJson,
+                    "mentions" -> ms.asJson,
+                    "preview" -> body.take(140).asJson
+                  )
+                )
+              )
               _ <- ms.traverse_ { uid =>
                 val payload = Json.obj(
                   "commentId" -> cid.asJson,
@@ -171,7 +187,7 @@ object Collab {
                   "mentionedUserId" -> uid.asJson,
                   "preview" -> body.take(140).asJson
                 )
-                EventRepo.emit("comment_mentioned", r.entityType, r.entityId, payload).void
+                EventRepo.emit(Events.Comment.Mentioned, r.entityType, r.entityId, payload).void
               }
               comments <- CollabInboxRepo.comments(r.entityType, r.entityId)
               row = comments.find(_.id == cid)
@@ -216,6 +232,28 @@ object Collab {
               newMentions <- r.mentions.getOrElse(Nil).distinct.pure[ConnectionIO]
               added <- (newMentions.toSet -- c.mentions.toSet).toList.pure[ConnectionIO]
               n <- CollabInboxRepo.updateComment(id, p.userId, body, newMentions)
+              // F34 — `comment.edited` lights up the realtime layer (F48); existing recipients see the "edited" badge
+              // appear without a refresh. Mention-add still fires comment_mentioned for newly-added recipients only.
+              _ <-
+                if (n == 0) ().pure[ConnectionIO]
+                else
+                  EventRepo
+                    .emit(
+                      Envelope(
+                        Events.Comment.Edited,
+                        Actor.user(p.userId),
+                        Subject(entityType, entityId),
+                        p.userId,
+                        None,
+                        Json.obj(
+                          "commentId" -> id.asJson,
+                          "authorId" -> p.userId.asJson,
+                          "mentions" -> newMentions.asJson,
+                          "preview" -> body.take(140).asJson
+                        )
+                      )
+                    )
+                    .void
               _ <- added.traverse_ { uid =>
                 val payload = Json.obj(
                   "commentId" -> id.asJson,
@@ -225,7 +263,7 @@ object Collab {
                   "mentionedUserId" -> uid.asJson,
                   "preview" -> body.take(140).asJson
                 )
-                EventRepo.emit("comment_mentioned", entityType, entityId, payload).void
+                EventRepo.emit(Events.Comment.Mentioned, entityType, entityId, payload).void
               }
               fresh <- CollabInboxRepo.comment(id)
             } yield

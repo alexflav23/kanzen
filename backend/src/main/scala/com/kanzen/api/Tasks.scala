@@ -125,22 +125,24 @@ object Tasks {
         eventType = Events.Task.Created,
         ownerId = p.userId,
         propertyId = r.propertyId
-      )(for {
-        t <- TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
-        _ <- r.propertyId.traverse_(pid => TaskRepo.addLink(t.id, "property", pid))
-        _ <- r.assetIds.getOrElse(Nil).traverse_(aid => TaskRepo.addLink(t.id, "asset", aid))
-        links <- TaskRepo.linksFor(List(t.id))
-      } yield TaskView(
-        t.id,
-        Some(r.projectId),
-        t.title,
-        t.status,
-        r.dueOn,
-        t.recurrence,
-        normPriority(r.priority),
-        r.assigneeId,
-        links.getOrElse(t.id, Nil).map(lkv)
-      ))(
+      )(
+        for {
+          t <- TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+          _ <- r.propertyId.traverse_(pid => TaskRepo.addLink(t.id, "property", pid))
+          _ <- r.assetIds.getOrElse(Nil).traverse_(aid => TaskRepo.addLink(t.id, "asset", aid))
+          links <- TaskRepo.linksFor(List(t.id))
+        } yield TaskView(
+          t.id,
+          Some(r.projectId),
+          t.title,
+          t.status,
+          r.dueOn,
+          t.recurrence,
+          normPriority(r.priority),
+          r.assigneeId,
+          links.getOrElse(t.id, Nil).map(lkv)
+        )
+      )(
         subjectOf = tv => Subject("task", tv.id),
         payloadOf = tv =>
           Json.obj("title" -> tv.title.asJson, "assigneeId" -> tv.assigneeId.asJson, "priority" -> tv.priority.asJson)
@@ -185,8 +187,8 @@ object Tasks {
         links <- TaskRepo.linksFor(List(id))
       } yield row.map(t => tv(t, links.getOrElse(id, Nil).map(lkv))))(
         subjectOf = _ => Subject("task", id),
-        payloadOf = _ =>
-          Json.obj("title" -> r.title.asJson, "assigneeId" -> r.assigneeId.asJson, "priority" -> r.priority.asJson)
+        payloadOf =
+          _ => Json.obj("title" -> r.title.asJson, "assigneeId" -> r.assigneeId.asJson, "priority" -> r.priority.asJson)
       )
     ).transact(xa).map {
       case Right(Some(view)) => Right(view)

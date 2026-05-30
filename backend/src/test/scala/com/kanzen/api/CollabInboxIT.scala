@@ -7,6 +7,7 @@ import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.people.PeopleRepo
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -284,5 +285,46 @@ object CollabInboxIT extends IOSuite {
       expect(detail.comments.exists(_.body.contains("concierge"))) and
       expect(detail.thread.status == "done") and
       expect(!stillOpen.exists(_.id == amazon.id)) // done → left the open queue ("goes away")
+  }
+
+  // F34 — the drift bar for the Collab/Comments + Inbox/Links domain. The realtime layer (F48) consumes
+  // `comment.created`, `comment.edited`, `comment_mentioned`, `link.created` directly — if any goes silent,
+  // chat goes silent, so the canary is the spec.
+  test("F34 — comments + links emit the canonical events on every mutation") { xa =>
+    val lornaUser = UUID.fromString("10000000-0000-0000-0000-000000000002")
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
+      eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get
+      // 1) add a comment with one mention → comment.created + comment_mentioned
+      added <- Collab
+        .addComment(
+          xa,
+          toby,
+          AddCommentReq("email_thread", eleanor.id, "Heads up @Lorna", Some(List(lornaUser)))
+        )
+        .map(_.toOption.get)
+      // 2) edit it → comment.edited
+      _ <- Collab
+        .editComment(xa, toby, added.id, EditCommentReq("Heads up @Lorna ✨", Some(List(lornaUser))))
+        .map(_.toOption.get)
+      commentEvents <-
+        sql"""select event_type from event_outbox
+              where (payload->>'commentId' = ${added.id.toString}
+                  or payload->'payload'->>'commentId' = ${added.id.toString})
+              order by created_at""".query[String].to[List].transact(xa)
+      // 3) link the thread directly to a fresh target id — race-proof against other tests' confirms
+      freshTarget = UUID.randomUUID()
+      _ <- com.kanzen.inbox.CollabInboxRepo
+        .link(toby.userId, eleanor.id, "asset", freshTarget, toby.userId)
+        .transact(xa)
+      linkEvents <-
+        sql"select event_type from event_outbox where event_type = 'link.created' and aggregate_id = $freshTarget"
+          .query[String]
+          .to[List]
+          .transact(xa)
+    } yield expect(commentEvents.contains("comment.created")) and
+      expect(commentEvents.contains("comment_mentioned")) and
+      expect(commentEvents.contains("comment.edited")) and
+      expect(linkEvents == List("link.created")) // exactly one link.created on the fresh target
   }
 }
