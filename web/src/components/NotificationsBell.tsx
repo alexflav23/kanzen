@@ -6,6 +6,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Pill } from "./Pill";
 import * as I from "./icons";
 import { useAuth } from "../state/AuthContext";
+import { useRealtime } from "../realtime/RealtimeProvider";
 import { getNotifications, markRead } from "../services/notifications";
 
 const styles = stylex.create({
@@ -43,6 +44,13 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const inbox = useQuery({ queryKey: ["notifications", token], queryFn: () => getNotifications(token), refetchInterval: 30_000 });
   const read = useMutation({ mutationFn: (id: string) => markRead(id, token), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
+
+  // F48 — an @mention or task assignment pings the bell instantly (no 30s wait for the poll).
+  useRealtime((ev) => {
+    if (ev.eventType === "comment_mentioned" || ev.eventType === "task.assigned") {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
 
   const unread = inbox.data?.unread ?? 0;
   const items = (inbox.data?.items ?? []).slice(0, 6);

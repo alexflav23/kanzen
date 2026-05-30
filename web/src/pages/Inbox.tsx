@@ -13,6 +13,7 @@ import { ReplyComposer } from "../components/ReplyComposer";
 import { CollabPanel } from "../components/CollabPanel";
 import { Check, Inbox as InboxIcon, Documents, Mail, Tasks } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
+import { useRealtime } from "../realtime/RealtimeProvider";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
 import {
@@ -129,6 +130,14 @@ export function Inbox() {
   const detailQ = useQuery({ queryKey: ["inbox-thread", selected, token], queryFn: () => threadDetail(selected!, token), enabled: !!selected });
 
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["inbox-threads"] }); qc.invalidateQueries({ queryKey: ["inbox-inboxes"] }); if (selected) qc.invalidateQueries({ queryKey: ["inbox-thread", selected] }); };
+
+  // F48 — thread lifecycle (assigned/status/replied) + proposal confirm/reject + comments land live, so a teammate's
+  // action on a shared mailbox reflects on every open inbox without a refresh.
+  useRealtime((ev) => {
+    if (ev.subject.type === "email_thread" && (ev.eventType.startsWith("email_thread.") || ev.eventType.startsWith("email_proposal.") || ev.eventType.startsWith("comment."))) {
+      invalidate();
+    }
+  });
   const assign = useMutation({ mutationFn: ({ id, who }: { id: string; who: string | null }) => assignThread(id, who, token), onSuccess: invalidate });
   const status = useMutation({ mutationFn: ({ id, s }: { id: string; s: string }) => setThreadStatus(id, s, token), onSuccess: () => { setSelected(null); invalidate(); } });
   const confirm = useMutation({

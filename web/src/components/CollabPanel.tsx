@@ -5,6 +5,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Avatar } from "./Avatar";
 import { Check, X } from "./icons";
 import { useAuth } from "../state/AuthContext";
+import { useRealtime } from "../realtime/RealtimeProvider";
 import { addComment, editComment, getComments, type CCollabComment } from "../services/collabInbox";
 import { listPeople } from "../services/people";
 
@@ -48,6 +49,17 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
   const [mentionPicker, setMentionPicker] = useState<{ atIdx: number; prefix: string } | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["collab-comments", entityType, entityId] });
+
+  // F48 — someone else's comment/edit on THIS entity lands without a refresh (the realtime push invalidates the query).
+  useRealtime((ev) => {
+    if (
+      (ev.eventType === "comment.created" || ev.eventType === "comment.edited") &&
+      ev.subject.type === entityType &&
+      ev.subject.id === entityId
+    ) {
+      invalidate();
+    }
+  });
 
   const addM = useMutation({
     mutationFn: () => addComment(entityType, entityId, body.trim(), mentions, token),

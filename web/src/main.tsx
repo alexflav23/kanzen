@@ -5,15 +5,18 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { AuthProvider } from "./state/AuthContext";
+import { RealtimeProvider } from "./realtime/RealtimeProvider";
 import { queryClient } from "./state/query";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ThemeProvider>
-          <App />
-        </ThemeProvider>
+        <RealtimeProvider>
+          <ThemeProvider>
+            <App />
+          </ThemeProvider>
+        </RealtimeProvider>
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
