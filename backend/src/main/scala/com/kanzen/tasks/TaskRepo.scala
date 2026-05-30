@@ -55,10 +55,15 @@ object TaskRepo {
     case Some(AssigneeScope(person, None)) => fr"and t.assignee_id = $person"
   }
 
-  def listTasks(projectId: Option[UUID], scope: Option[AssigneeScope] = None): ConnectionIO[List[TaskRow]] = {
+  def listTasks(
+      tenantId: UUID,
+      projectId: Option[UUID],
+      scope: Option[AssigneeScope] = None
+  ): ConnectionIO[List[TaskRow]] = {
     val base =
       fr"""select t.id, t.project_id, t.title, t.status, t.due_on, t.recurrence, t.priority, t.assignee_id
-           from tasks t left join task_projects pr on pr.id = t.project_id where t.status <> 'cancelled'"""
+           from tasks t left join task_projects pr on pr.id = t.project_id
+           where t.status <> 'cancelled' and t.tenant_id = $tenantId"""
     val proj = projectId.fold(Fragment.empty)(pid => fr"and t.project_id = $pid")
     // Todoist-style ordering: by priority (urgent → low), then soonest due, then newest.
     (base ++ proj ++ scopePred(scope) ++
@@ -72,6 +77,7 @@ object TaskRepo {
           where t.id = $taskId""" ++ scopePred(Some(scope)) ++ fr")").query[Boolean].unique
 
   def createTask(
+      tenantId: UUID,
       projectId: UUID,
       title: String,
       dueOn: Option[LocalDate],
@@ -79,36 +85,40 @@ object TaskRepo {
       priority: String = "normal",
       assigneeId: Option[UUID] = None
   ): ConnectionIO[Task] =
-    sql"""insert into tasks (project_id, title, due_on, recurrence, priority, assignee_id)
-          values ($projectId, $title, $dueOn, $recurrence, $priority, $assigneeId)
+    sql"""insert into tasks (tenant_id, project_id, title, due_on, recurrence, priority, assignee_id)
+          values ($tenantId, $projectId, $title, $dueOn, $recurrence, $priority, $assigneeId)
           returning id, title, status, recurrence""".query[Task].unique
 
   /** Create a task with no project (e.g. the agent turning an email into a task — it lands in the ungrouped task list).
     * Mirrors [[createTask]] but project_id is null.
     */
   def createUnfiled(
+      tenantId: UUID,
       title: String,
       dueOn: Option[LocalDate],
       priority: String,
       assigneeId: Option[UUID]
   ): ConnectionIO[Task] =
-    sql"""insert into tasks (project_id, title, due_on, priority, assignee_id)
-          values (null, $title, $dueOn, $priority, $assigneeId)
+    sql"""insert into tasks (tenant_id, project_id, title, due_on, priority, assignee_id)
+          values ($tenantId, null, $title, $dueOn, $priority, $assigneeId)
           returning id, title, status, recurrence""".query[Task].unique
 
-  /** Complete a task; if recurring, materialise the next occurrence and return its id. */
-  def complete(taskId: UUID): ConnectionIO[Option[UUID]] =
+  /** Complete a task; if recurring, materialise the next occurrence (in the same tenant) and return its id. */
+  def complete(taskId: UUID, tenantId: UUID): ConnectionIO[Option[UUID]] =
     for {
-      row <- sql"select recurrence, due_on, project_id, title, assignee_id, priority from tasks where id = $taskId"
-        .query[(Option[String], Option[LocalDate], UUID, String, Option[UUID], String)]
-        .unique
-      _ <- sql"update tasks set status = 'done', completed_at = now() where id = $taskId".update.run
+      row <-
+        sql"""select recurrence, due_on, project_id, title, assignee_id, priority from tasks
+              where id = $taskId and tenant_id = $tenantId"""
+          .query[(Option[String], Option[LocalDate], UUID, String, Option[UUID], String)]
+          .unique
+      _ <-
+        sql"update tasks set status = 'done', completed_at = now() where id = $taskId and tenant_id = $tenantId".update.run
       next <- row._1 match {
         case Some(freq) =>
           val nd = row._2.map(d => TaskService.nextDue(d, freq))
-          // the next occurrence inherits the assignee AND the priority
-          sql"""insert into tasks (project_id, title, due_on, recurrence, assignee_id, priority)
-                values (${row._3}, ${row._4}, $nd, $freq, ${row._5}, ${row._6}) returning id"""
+          // the next occurrence inherits the assignee AND the priority — and stays in the same tenant
+          sql"""insert into tasks (tenant_id, project_id, title, due_on, recurrence, assignee_id, priority)
+                values ($tenantId, ${row._3}, ${row._4}, $nd, $freq, ${row._5}, ${row._6}) returning id"""
             .query[UUID]
             .unique
             .map(Option(_))
@@ -119,6 +129,7 @@ object TaskRepo {
   /** Edit a task's core fields (Todoist-style). Returns the updated row (None if missing/cancelled). */
   def update(
       taskId: UUID,
+      tenantId: UUID,
       projectId: UUID,
       title: String,
       dueOn: Option[LocalDate],
@@ -128,17 +139,19 @@ object TaskRepo {
   ): ConnectionIO[Option[TaskRow]] =
     sql"""update tasks set project_id = $projectId, title = $title, due_on = $dueOn, recurrence = $recurrence,
             priority = $priority, assignee_id = $assigneeId
-          where id = $taskId and status <> 'cancelled'
+          where id = $taskId and tenant_id = $tenantId and status <> 'cancelled'
           returning id, project_id, title, status, due_on, recurrence, priority, assignee_id"""
       .query[TaskRow]
       .option
 
   /** Soft-delete (Todoist "Delete"): mark cancelled so it drops out of both the active list and completed history. */
-  def cancel(taskId: UUID): ConnectionIO[Int] =
-    sql"update tasks set status = 'cancelled' where id = $taskId".update.run
+  def cancel(taskId: UUID, tenantId: UUID): ConnectionIO[Int] =
+    sql"update tasks set status = 'cancelled' where id = $taskId and tenant_id = $tenantId".update.run
 
-  def get(taskId: UUID): ConnectionIO[Option[Task]] =
-    sql"select id, title, status, recurrence from tasks where id = $taskId".query[Task].option
+  def get(taskId: UUID, tenantId: UUID): ConnectionIO[Option[Task]] =
+    sql"select id, title, status, recurrence from tasks where id = $taskId and tenant_id = $tenantId"
+      .query[Task]
+      .option
 
   /** owner + title of a task (for the F34 event envelope). */
   def ownerAndTitle(taskId: UUID): ConnectionIO[Option[(Option[UUID], String)]] =

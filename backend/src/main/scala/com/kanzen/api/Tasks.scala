@@ -111,7 +111,7 @@ object Tasks {
       p,
       for {
         sc <- staffScope(p)
-        rows <- TaskRepo.listTasks(project, sc)
+        rows <- TaskRepo.listTasks(p.tenantId, project, sc)
         links <- TaskRepo.linksFor(rows.map(_.id))
       } yield rows.map(t => tv(t, links.getOrElse(t.id, Nil).map(lkv)))
     ).transact(xa)
@@ -127,7 +127,15 @@ object Tasks {
         propertyId = r.propertyId
       )(
         for {
-          t <- TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+          t <- TaskRepo.createTask(
+            p.tenantId,
+            r.projectId,
+            r.title,
+            r.dueOn,
+            r.recurrence,
+            normPriority(r.priority),
+            r.assigneeId
+          )
           _ <- r.propertyId.traverse_(pid => TaskRepo.addLink(t.id, "property", pid))
           _ <- r.assetIds.getOrElse(Nil).traverse_(aid => TaskRepo.addLink(t.id, "asset", aid))
           links <- TaskRepo.linksFor(List(t.id))
@@ -183,7 +191,16 @@ object Tasks {
         eventType = Events.Task.Updated,
         ownerId = p.userId
       )(for {
-        row <- TaskRepo.update(id, r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+        row <- TaskRepo.update(
+          id,
+          p.tenantId,
+          r.projectId,
+          r.title,
+          r.dueOn,
+          r.recurrence,
+          normPriority(r.priority),
+          r.assigneeId
+        )
         links <- TaskRepo.linksFor(List(id))
       } yield row.map(t => tv(t, links.getOrElse(id, Nil).map(lkv))))(
         subjectOf = _ => Subject("task", id),
@@ -204,14 +221,14 @@ object Tasks {
         action = "task.cancel",
         eventType = Events.Task.Cancelled,
         ownerId = p.userId
-      )(TaskRepo.cancel(id).void)(
+      )(TaskRepo.cancel(id, p.tenantId).void)(
         subjectOf = _ => Subject("task", id)
       )
     ).transact(xa)
 
   private def doComplete(p: Principal, id: UUID): ConnectionIO[CompleteResult] =
     for {
-      next <- TaskRepo.complete(id)
+      next <- TaskRepo.complete(id, p.tenantId)
       meta <- TaskRepo.ownerAndTitle(id)
       // F34: emit task.completed in the same tx as the write (transactional outbox).
       _ <- meta.traverse_ { case (owner, title) =>

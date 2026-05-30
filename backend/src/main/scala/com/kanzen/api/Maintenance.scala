@@ -123,7 +123,7 @@ object Maintenance {
                       (Left(badReq("this property has no linked task project")): Out[SpawnResult]).pure[ConnectionIO]
                     case Some(projId) =>
                       TaskRepo
-                        .createTask(projId, pl.title.getOrElse("Maintenance"), pl.nextDue, None)
+                        .createTask(p.tenantId, projId, pl.title.getOrElse("Maintenance"), pl.nextDue, None)
                         .map(t => Right(SpawnResult(t.id, pl.nextDue)): Out[SpawnResult])
                   }
               }

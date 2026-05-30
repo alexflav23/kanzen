@@ -397,7 +397,7 @@ object Inbox {
           if (!authz.can(Actions.byKey("task:create"))) (Left(forbidden): Out[CreatedFromThread]).pure[ConnectionIO]
           else
             for {
-              t <- TaskRepo.createUnfiled(title, r.dueOn, r.priority.getOrElse("normal"), r.assigneeId)
+              t <- TaskRepo.createUnfiled(p.tenantId, title, r.dueOn, r.priority.getOrElse("normal"), r.assigneeId)
               _ <- CollabInboxRepo.link(p.userId, id, "task", t.id, p.userId)
             } yield Right(CreatedFromThread(t.id, s"Task created: $title")): Out[CreatedFromThread]
         }
@@ -486,7 +486,7 @@ object Inbox {
             title <- (c.get[String]("title").toOption.getOrElse("Follow up")).pure[ConnectionIO]
             due = c.get[String]("date").toOption.flatMap(s => Try(LocalDate.parse(s)).toOption)
             assignee = c.get[UUID]("assigneeId").toOption
-            t <- TaskRepo.createUnfiled(title, due, str("priority", "normal"), assignee)
+            t <- TaskRepo.createUnfiled(p.tenantId, title, due, str("priority", "normal"), assignee)
             _ <- CollabInboxRepo.link(p.userId, tid, "task", t.id, p.userId)
             // a task may concern an asset (e.g. the car) — carry that link through too
             _ <- c

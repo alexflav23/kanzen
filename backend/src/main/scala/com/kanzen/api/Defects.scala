@@ -189,7 +189,7 @@ object Defects {
               case None =>
                 (Left(badReq("this property has no linked task project")): Out[DefectView]).pure[ConnectionIO]
               case Some(projectId) =>
-                TaskRepo.createTask(projectId, s"Fix: ${d.title}", None, None).flatMap { t =>
+                TaskRepo.createTask(p.tenantId, projectId, s"Fix: ${d.title}", None, None).flatMap { t =>
                   DefectRepo.setTask(id, t.id) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
                 }
             }

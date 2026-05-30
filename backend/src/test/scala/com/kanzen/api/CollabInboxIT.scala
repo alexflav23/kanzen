@@ -1,5 +1,6 @@
 package com.kanzen.api
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.api.Collab.{AddCommentReq, EditCommentReq}
 import com.kanzen.api.Inbox.{AssignReq, CommentReq, CreateTaskFromThreadReq, DraftReq, SendReq, StatusReq}
@@ -116,7 +117,7 @@ object CollabInboxIT extends IOSuite {
       taskProp = eDetail.proposals.find(_.actionType == "create_task").get
       taskReview <- Inbox.proposalDetail(xa, toby, taskProp.id).map(_.toOption.get)
       taskRes <- Inbox.confirmProposal(xa, toby, taskProp.id).map(_.toOption.get)
-      tasksAfter <- com.kanzen.tasks.TaskRepo.listTasks(None, None).transact(xa)
+      tasksAfter <- com.kanzen.tasks.TaskRepo.listTasks(Tenant.DefaultId, None, None).transact(xa)
       // a housekeeper note the agent routed to the grocery list
       groceries = threads.find(_.subject.exists(_.contains("next order"))).get
       gDetail <- Inbox.detail(xa, toby, groceries.id).map(_.toOption.get)
@@ -204,7 +205,7 @@ object CollabInboxIT extends IOSuite {
         .map(_.toOption.get)
       // the task surfaces on the thread's linked records — back-reference closed both ways
       linked <- Inbox.linked(xa, toby, "task", created.taskId).map(_.toOption.get)
-      tasks <- com.kanzen.tasks.TaskRepo.listTasks(None, None).transact(xa)
+      tasks <- com.kanzen.tasks.TaskRepo.listTasks(Tenant.DefaultId, None, None).transact(xa)
     } yield expect(tasks.exists(t => t.id == created.taskId && t.title.contains("Siti"))) and
       expect(linked.exists(_.id == crystal.id)) // the thread is linked from the task
   }

@@ -4,8 +4,10 @@ import cats.effect.IO
 import com.kanzen.api.Assets.CreateReq
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
+import com.kanzen.tasks.TaskRepo
 import com.kanzen.db.TestDb
 import com.kanzen.s3.ObjectStore
+import com.kanzen.tenant.Tenant
 import doobie.implicits._
 import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
@@ -56,5 +58,23 @@ object TenantNoLeakIT extends IOSuite {
       expect(!bList.exists(_.id == aAsset.id)) and // B is its own island too
       expect(aSeesBById.left.exists(_._1.code == 404)) and // no leak by direct id
       expect(bSeesAById.left.exists(_._1.code == 404))
+  }
+
+  test("tasks: a task created in tenant B never appears in tenant A's task list (and vice-versa)") { xa =>
+    for {
+      tenantB <- newTenant(xa)
+      aTask <- TaskRepo.createUnfiled(Tenant.DefaultId, "A-only task", None, "normal", None).transact(xa)
+      bTask <- TaskRepo.createUnfiled(tenantB, "B-only task", None, "normal", None).transact(xa)
+      aList <- TaskRepo.listTasks(Tenant.DefaultId, None).transact(xa)
+      bList <- TaskRepo.listTasks(tenantB, None).transact(xa)
+      // by-id read is tenant-scoped too
+      aSeesB <- TaskRepo.get(bTask.id, Tenant.DefaultId).transact(xa)
+      bSeesA <- TaskRepo.get(aTask.id, tenantB).transact(xa)
+    } yield expect(aList.exists(_.id == aTask.id)) and
+      expect(!aList.exists(_.id == bTask.id)) and
+      expect(bList.exists(_.id == bTask.id)) and
+      expect(!bList.exists(_.id == aTask.id)) and
+      expect(aSeesB.isEmpty) and // B's task is not fetchable as tenant A
+      expect(bSeesA.isEmpty)
   }
 }
