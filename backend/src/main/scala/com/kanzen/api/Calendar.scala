@@ -5,10 +5,13 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
 import com.kanzen.calendar.{CalEvent, CalendarRepo}
+import com.kanzen.events.{Actor, DomainWriter, Events, Subject}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -97,14 +100,34 @@ object Calendar {
     val cat = r.category.getOrElse("manual")
     if (r.title.trim.isEmpty) IO.pure(Left(badReq("title required")))
     else if (!CATEGORIES.contains(cat)) IO.pure(Left(badReq(s"category must be one of ${CATEGORIES.mkString(", ")}")))
-    else
+    else {
+      // F34 — audit + emit `calendar_event.created` alongside the row insert (single tx).
+      val mkRow = DomainWriter.write(
+        actor = Actor.user(p.userId),
+        action = "calendar.create",
+        eventType = Events.Calendar.Created,
+        ownerId = p.userId,
+        propertyId = r.propertyId
+      )(
+        CalendarRepo.createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None, r.startTime, r.endTime)
+      )(
+        subjectOf = id => Subject("calendar_event", id),
+        payloadOf = id =>
+          Json.obj(
+            "id" -> id.asJson,
+            "title" -> r.title.asJson,
+            "on" -> r.on.toString.asJson,
+            "category" -> cat.asJson,
+            "startTime" -> r.startTime.map(_.toString).asJson,
+            "endTime" -> r.endTime.map(_.toString).asJson
+          )
+      )
       write(
         p,
-        CalendarRepo
-          .createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None, r.startTime, r.endTime)
-          .map(id => EventView(id, r.title, Some(r.on), r.startTime, r.endTime, cat, "manual", readOnly = false)),
+        mkRow.map(id => EventView(id, r.title, Some(r.on), r.startTime, r.endTime, cat, "manual", readOnly = false)),
         createA
       ).transact(xa)
+    }
   }
 
   def update(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateReq): IO[Out[Ok]] = {
@@ -115,13 +138,42 @@ object Calendar {
         if (!a.can(editA)) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
         else
-          CalendarRepo.update(id, r.title, r.on, r.category, r.startTime, r.endTime).map(n => Right(Ok(n > 0)): Out[Ok])
+          DomainWriter
+            .write(
+              actor = Actor.user(p.userId),
+              action = "calendar.update",
+              eventType = Events.Calendar.Updated,
+              ownerId = p.userId
+            )(CalendarRepo.update(id, r.title, r.on, r.category, r.startTime, r.endTime).map(n => Ok(n > 0)))(
+              subjectOf = _ => Subject("calendar_event", id),
+              payloadOf = _ =>
+                Json.obj(
+                  "id" -> id.asJson,
+                  "title" -> r.title.asJson,
+                  "on" -> r.on.toString.asJson,
+                  "category" -> r.category.asJson,
+                  "startTime" -> r.startTime.map(_.toString).asJson,
+                  "endTime" -> r.endTime.map(_.toString).asJson
+                )
+            )
+            .map(ok => Right(ok): Out[Ok])
     } yield res
     tx.transact(xa)
   }
 
   def delete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Ok]] =
-    write(p, CalendarRepo.softDelete(id).map(n => Ok(n > 0))).transact(xa)
+    write(
+      p,
+      DomainWriter.write(
+        actor = Actor.user(p.userId),
+        action = "calendar.delete",
+        eventType = Events.Calendar.Deleted,
+        ownerId = p.userId
+      )(CalendarRepo.softDelete(id).map(n => Ok(n > 0)))(
+        subjectOf = _ => Subject("calendar_event", id),
+        payloadOf = _ => Json.obj("id" -> id.asJson)
+      )
+    ).transact(xa)
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()

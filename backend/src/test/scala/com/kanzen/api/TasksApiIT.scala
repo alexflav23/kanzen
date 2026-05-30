@@ -6,6 +6,7 @@ import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.people.PeopleRepo
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -150,5 +151,23 @@ object TasksApiIT extends IOSuite {
       expect(t.priority == "high") and
       // assignee AND priority carry to the spawned occurrence
       expect(next.exists(_.assigneeId.contains(marciaId))) and expect(next.exists(_.priority == "high"))
+  }
+
+  // F34 — the bar for the Tasks domain. Every mutation emits. Future task mutations that skip DomainWriter fail this.
+  test("F34 — task mutations emit `task.{created,updated,completed,cancelled}`") { xa =>
+    import com.kanzen.api.Tasks.UpdateTaskReq
+    for {
+      proj <- Tasks.createProject(xa, toby, CreateProjectReq("F34 canary", None)).map(_.toOption.get)
+      created <- Tasks.create(xa, toby, CreateTaskReq(proj.id, "F34 canary task", None, None)).map(_.toOption.get)
+      _ <- Tasks
+        .update(xa, toby, created.id, UpdateTaskReq(proj.id, "Renamed", None, None, priority = Some("high")))
+        .map(_.toOption.get)
+      _ <- Tasks.complete(xa, toby, created.id).map(_.toOption.get)
+      // Recurrence is None — completing won't spawn a next; soft-delete (cancel) now to assert `task.cancelled`.
+      _ <- Tasks.delete(xa, toby, created.id).map(_.toOption.get)
+      types <- sql"""select event_type from event_outbox
+                     where aggregate_type = 'task' and aggregate_id = ${created.id}
+                     order by created_at""".query[String].to[List].transact(xa)
+    } yield expect(types == List("task.created", "task.updated", "task.completed", "task.cancelled"))
   }
 }

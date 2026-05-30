@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
-import com.kanzen.events.{Actor, Envelope, EventRepo, Subject}
+import com.kanzen.events.{Actor, DomainWriter, Envelope, EventRepo, Events, Subject}
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import com.kanzen.tasks.{TaskLink, TaskProject, TaskRepo, TaskRow}
 import io.circe.Json
@@ -118,7 +118,14 @@ object Tasks {
   def create(xa: Transactor[IO], p: Principal, r: CreateTaskReq): IO[Out[TaskView]] =
     write(
       p,
-      for {
+      // F34 — audit + emit `task.created` alongside the insert (single tx).
+      DomainWriter.write(
+        actor = Actor.user(p.userId),
+        action = "task.create",
+        eventType = Events.Task.Created,
+        ownerId = p.userId,
+        propertyId = r.propertyId
+      )(for {
         t <- TaskRepo.createTask(r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
         _ <- r.propertyId.traverse_(pid => TaskRepo.addLink(t.id, "property", pid))
         _ <- r.assetIds.getOrElse(Nil).traverse_(aid => TaskRepo.addLink(t.id, "asset", aid))
@@ -133,6 +140,10 @@ object Tasks {
         normPriority(r.priority),
         r.assigneeId,
         links.getOrElse(t.id, Nil).map(lkv)
+      ))(
+        subjectOf = tv => Subject("task", tv.id),
+        payloadOf = tv =>
+          Json.obj("title" -> tv.title.asJson, "assigneeId" -> tv.assigneeId.asJson, "priority" -> tv.priority.asJson)
       ),
       createA
     ).transact(xa)
@@ -162,17 +173,39 @@ object Tasks {
     scopedWrite(p, id)(doComplete(p, id)).transact(xa)
 
   def update(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateTaskReq): IO[Out[TaskView]] =
-    scopedWrite(p, id)(for {
-      row <- TaskRepo.update(id, r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
-      links <- TaskRepo.linksFor(List(id))
-    } yield row.map(t => tv(t, links.getOrElse(id, Nil).map(lkv)))).transact(xa).map {
+    scopedWrite(p, id)(
+      // F34 — emit `task.updated` alongside the update (and `task.assigned` when assignee changed; deferred).
+      DomainWriter.write(
+        actor = Actor.user(p.userId),
+        action = "task.update",
+        eventType = Events.Task.Updated,
+        ownerId = p.userId
+      )(for {
+        row <- TaskRepo.update(id, r.projectId, r.title, r.dueOn, r.recurrence, normPriority(r.priority), r.assigneeId)
+        links <- TaskRepo.linksFor(List(id))
+      } yield row.map(t => tv(t, links.getOrElse(id, Nil).map(lkv))))(
+        subjectOf = _ => Subject("task", id),
+        payloadOf = _ =>
+          Json.obj("title" -> r.title.asJson, "assigneeId" -> r.assigneeId.asJson, "priority" -> r.priority.asJson)
+      )
+    ).transact(xa).map {
       case Right(Some(view)) => Right(view)
       case Right(None) => Left((StatusCode.NotFound, ApiError(404, "not_found", "No such task.")))
       case Left(e) => Left(e)
     }
 
   def delete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Unit]] =
-    scopedWrite[Unit](p, id)(TaskRepo.cancel(id).void).transact(xa)
+    scopedWrite[Unit](p, id)(
+      // F34 — task cancellation is observable: emit `task.cancelled` alongside the soft delete.
+      DomainWriter.write(
+        actor = Actor.user(p.userId),
+        action = "task.cancel",
+        eventType = Events.Task.Cancelled,
+        ownerId = p.userId
+      )(TaskRepo.cancel(id).void)(
+        subjectOf = _ => Subject("task", id)
+      )
+    ).transact(xa)
 
   private def doComplete(p: Principal, id: UUID): ConnectionIO[CompleteResult] =
     for {
@@ -182,7 +215,7 @@ object Tasks {
       _ <- meta.traverse_ { case (owner, title) =>
         EventRepo.emit(
           Envelope(
-            "task.completed",
+            Events.Task.Completed, // F34 — constant from the canonical catalogue
             Actor.user(p.userId),
             Subject("task", id),
             owner.getOrElse(p.userId),

@@ -92,4 +92,24 @@ object CalendarApiIT extends IOSuite {
       expect(timed.exists(_.endTime.contains(LocalTime.of(11, 0)))) and
       expect(task.forall(_.startTime.isEmpty)) // task/maintenance overlays are all-day
   }
+
+  // F34 — the bar that prevents drift on the Calendar domain. Every domain mutation must emit. If a future calendar
+  // write skips DomainWriter, this test fails. Adding new mutation kinds → extend the expected event-type set here.
+  test("F34 — calendar mutations emit `calendar_event.{created,updated,deleted}`") { xa =>
+    for {
+      created <- Calendar
+        .create(xa, lorna, CreateReq("Emission canary", today.plusDays(2), Some("booking"), None, None, None))
+        .map(_.toOption.get)
+      _ <- Calendar
+        .update(xa, lorna, created.id, UpdateReq("Emission canary v2", today.plusDays(2), "booking", None, None))
+        .map(_.toOption.get)
+      _ <- Calendar.delete(xa, lorna, created.id).map(_.toOption.get)
+      types <- sql"""select event_type from event_outbox
+                     where aggregate_type = 'calendar_event' and aggregate_id = ${created.id}
+                     order by created_at"""
+        .query[String]
+        .to[List]
+        .transact(xa)
+    } yield expect(types == List("calendar_event.created", "calendar_event.updated", "calendar_event.deleted"))
+  }
 }
