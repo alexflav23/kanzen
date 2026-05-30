@@ -7,6 +7,8 @@ import { Pill } from "../components/Pill";
 import { Plus, Mail, Tasks, Calendar, Documents, Star, Shield } from "../components/icons";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { useAuth } from "../state/AuthContext";
+import { getMe } from "../services/auth";
+import { ColourPicker } from "../components/ColourPicker";
 import { createRole, deletePermission, deleteRole, getPermissions, getRoles, setPermission, type RuleInput } from "../services/roles";
 import { ApiError } from "../services/http";
 import { RbacBuilder } from "../features/rbac/RbacBuilder";
@@ -95,6 +97,7 @@ const isRoot = (role: string, resource: string, field: string | null) =>
 
 export function Settings() {
   const { token, can } = useAuth();
+  const meQ = useQuery({ queryKey: ["me", token], queryFn: () => getMe(token) });
   const qc = useQueryClient();
   const roles = useQuery({ queryKey: ["roles", token], queryFn: () => getRoles(token), enabled: can("*", "admin") });
   const perms = useQuery({ queryKey: ["permissions", token], queryFn: () => getPermissions(token), enabled: can("*", "admin") });
@@ -194,16 +197,24 @@ export function Settings() {
       )}
 
       {tab === "preferences" && (
-        <div {...stylex.props(styles.grid2)}>
-          <Card style={styles.pad}>
-            <div {...stylex.props(styles.cardLabel)}>Financial</div>
-            <dl {...stylex.props(styles.metaGrid)}>{FINANCIAL.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
-          </Card>
-          <Card style={styles.pad}>
-            <div {...stylex.props(styles.cardLabel)}>Security</div>
-            <dl {...stylex.props(styles.metaGrid)}>{SECURITY.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
-          </Card>
-        </div>
+        <>
+          {/* F47 — identity colour, available to every signed-in user (not gated to staff/HR records). */}
+          {meQ.data && (
+            <div style={{ marginBottom: "16px" }}>
+              <ColourPicker name={meQ.data.name} current={meQ.data.colour} />
+            </div>
+          )}
+          <div {...stylex.props(styles.grid2)}>
+            <Card style={styles.pad}>
+              <div {...stylex.props(styles.cardLabel)}>Financial</div>
+              <dl {...stylex.props(styles.metaGrid)}>{FINANCIAL.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
+            </Card>
+            <Card style={styles.pad}>
+              <div {...stylex.props(styles.cardLabel)}>Security</div>
+              <dl {...stylex.props(styles.metaGrid)}>{SECURITY.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}</dl>
+            </Card>
+          </div>
+        </>
       )}
 
       {tab === "audit" && <AuditLog />}

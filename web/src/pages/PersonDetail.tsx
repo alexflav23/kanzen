@@ -10,6 +10,7 @@ import { MediaGallery } from "../components/MediaGallery";
 import { daysUntil, getPerson } from "../services/people";
 import { listProperties } from "../services/properties";
 import { useAuth } from "../state/AuthContext";
+import { ColourPicker } from "../components/ColourPicker";
 import { Loading, ErrorState } from "../components/states";
 
 const styles = stylex.create({
@@ -45,7 +46,7 @@ function Row({ k, children }: { k: string; children: ReactNode }) {
 export function PersonDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { token, can } = useAuth();
+  const { token, can, userId } = useAuth();
   const personQ = useQuery({ queryKey: ["person", id, token], queryFn: () => getPerson(id, token) });
   const propsQ = useQuery({ queryKey: ["properties", token], queryFn: () => listProperties(token) });
   const canWrite = can("person", "write");
@@ -127,6 +128,18 @@ export function PersonDetail() {
           </div>
         </Card>
       </div>
+
+      {/* F47 — identity colour picker, shown only when viewing your own record */}
+      {p.userId && userId && p.userId === userId && (
+        <div {...stylex.props(styles.section)}>
+          <Card>
+            <CardHeader><CardTitle>Your colour</CardTitle></CardHeader>
+            <div {...stylex.props(styles.pad)}>
+              <ColourPicker name={p.name} current={p.colour} />
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

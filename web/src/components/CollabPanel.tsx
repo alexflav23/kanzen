@@ -34,10 +34,12 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
   const peopleQ = useQuery({ queryKey: ["people", token], queryFn: () => listPeople(token) });
   // user id → display name (only people who *are* users; you can only mention real users)
   const mentionable = useMemo(
-    () => (peopleQ.data ?? []).flatMap((p) => (p.userId ? [{ userId: p.userId, name: p.name }] : [])),
+    () => (peopleQ.data ?? []).flatMap((p) => (p.userId ? [{ userId: p.userId, name: p.name, colour: p.colour }] : [])),
     [peopleQ.data],
   );
   const usersById = useMemo(() => new Map(mentionable.map((u) => [u.userId, u.name])), [mentionable]);
+  // F47 — userId → identity colour, used to glow the comment author avatar so the eye tracks "who" without reading text
+  const coloursByUser = useMemo(() => new Map(mentionable.map((u) => [u.userId, u.colour ?? null])), [mentionable]);
 
   const [body, setBody] = useState("");
   const [mentions, setMentions] = useState<string[]>([]);
@@ -144,7 +146,7 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
         const isMine = c.authorId === userId;
         return (
           <div key={c.id} {...stylex.props(styles.row)} data-testid="collab-comment">
-            <Avatar name={c.authorName ?? "Someone"} size={22} />
+            <Avatar name={c.authorName ?? "Someone"} size={22} colour={coloursByUser.get(c.authorId) ?? null} />
             <div {...stylex.props(styles.rowMain)}>
               <div {...stylex.props(styles.meta)}>
                 <span {...stylex.props(styles.author)}>{c.authorName ?? "Someone"}</span>
@@ -172,7 +174,7 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
           <div {...stylex.props(styles.popover)} role="listbox" aria-label="Mention a person" data-testid="mention-picker">
             {filtered.map((p) => (
               <button key={p.userId} type="button" role="option" {...stylex.props(styles.popoverItem)} onClick={() => choosePerson(p)}>
-                <Avatar name={p.name} size={20} />
+                <Avatar name={p.name} size={20} colour={p.colour} />
                 <span>{p.name}</span>
               </button>
             ))}

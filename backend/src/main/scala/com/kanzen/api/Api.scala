@@ -24,7 +24,7 @@ object Api {
     val devEps = dev.map(Dev.serverEndpoint).toList
     val public = interp.toRoutes(Blobs.serverEndpoints(store, blobSecret))
     val secured = interp.toRoutes(
-      List(Me.serverEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
+      List(Me.serverEndpoint(auth, xa), Me.colourServerEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
         ++ Assets.serverEndpoints(auth, xa, store) ++ Valuations.serverEndpoints(auth, xa)
         ++ AssetEvents.serverEndpoints(auth, xa) ++ Provenance.serverEndpoints(auth, xa)
@@ -51,7 +51,7 @@ object Api {
         ++ Collections.serverEndpoints(auth, xa)
         ++ Groups.serverEndpoints(auth, xa) ++ Brands.serverEndpoints(auth, xa) ++ devEps
     )
-    val swagger = List(Health.endpoint, Me.endpoint) ++ Blobs.endpoints ++ Properties.endpoints ++
+    val swagger = List(Health.endpoint, Me.endpoint, Me.colourEndpoint) ++ Blobs.endpoints ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++

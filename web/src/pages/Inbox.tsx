@@ -199,7 +199,7 @@ export function Inbox() {
                   <div {...stylex.props(styles.snip)}>{t.snippet}</div>
                   <div {...stylex.props(styles.trowMeta)}>
                     {t.proposalCount > 0 && <Pill tone="accent">{t.proposalCount} suggested</Pill>}
-                    {t.assigneeId && peopleById.get(t.assigneeId) && <Avatar name={peopleById.get(t.assigneeId)!.name} size={20} />}
+                    {t.assigneeId && peopleById.get(t.assigneeId) && <Avatar name={peopleById.get(t.assigneeId)!.name} size={20} colour={peopleById.get(t.assigneeId)!.colour} />}
                   </div>
                 </button>
               ))}

@@ -11,11 +11,18 @@ export const PersonSchema = z.object({
   propertyId: z.string().nullable(),
   permitExpiry: z.string().nullable(), // ISO date
   reviewDue: z.string().nullable(),
+  // F47 — the underlying login user's identity colour (palette key or hex). null if no user_id or no colour set.
+  colour: z.string().nullable().default(null),
 });
 export type Person = z.infer<typeof PersonSchema>;
 
 export function listPeople(token: string | null): Promise<Person[]> {
   return api("/api/people", z.array(PersonSchema), { token });
+}
+
+/** F47 — update *your own* identity colour (palette key or hex). The server validates the format. */
+export function setMyColour(token: string | null, colour: string): Promise<unknown> {
+  return api("/api/me/colour", z.unknown(), { method: "PATCH", token, body: { colour } });
 }
 
 // F10 detail (W7.1) — the richer HR record behind a person row.

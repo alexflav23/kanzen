@@ -31,6 +31,8 @@ export const MeSchema = z.object({
   name: z.string(),
   email: z.string(),
   role: z.string(),
+  // F47 — identity colour (palette key or hex). May be empty for legacy users until backfill runs.
+  colour: z.string().default(""),
   permissions: z.array(PermSchema),
   impersonatedBy: z.string().nullable(),
 });

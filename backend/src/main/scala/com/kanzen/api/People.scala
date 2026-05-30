@@ -8,6 +8,7 @@ import com.kanzen.people.{Person, PeopleRepo}
 import com.kanzen.property.PropertyRepo
 import doobie.ConnectionIO
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.{Decoder, Json}
 import io.circe.generic.auto._
@@ -43,7 +44,9 @@ object People {
       workPermitNo: Option[String],
       emergencyContacts: List[EmergencyContact],
       payrollRef: Option[String],
-      notes: Option[String]
+      notes: Option[String],
+      // F47 — the identity colour of the underlying login user (palette key / hex). Drives the avatar glow.
+      colour: Option[String]
   )
   final case class CreateReq(
       name: String,
@@ -58,7 +61,7 @@ object People {
   private def contacts(j: Json): List[EmergencyContact] =
     Decoder[List[EmergencyContact]].decodeJson(j).getOrElse(Nil)
 
-  private def view(p: Person): PersonView =
+  private def view(p: Person, colours: Map[UUID, String]): PersonView =
     PersonView(
       p.id,
       p.userId,
@@ -74,8 +77,21 @@ object People {
       p.workPermitNo,
       contacts(p.emergencyContacts),
       p.payrollRef,
-      p.notes
+      p.notes,
+      p.userId.flatMap(colours.get)
     )
+
+  /** Batch-fetch the F47 identity colour for each unique user_id we're about to render. One small query per request. */
+  private def colourMap(ids: Set[UUID]): ConnectionIO[Map[UUID, String]] =
+    if (ids.isEmpty) Map.empty[UUID, String].pure[ConnectionIO]
+    else {
+      import doobie.util.fragments.in
+      val nel = cats.data.NonEmptyList.fromListUnsafe(ids.toList)
+      (fr"select id, colour from users where" ++ in(fr"id", nel))
+        .query[(UUID, String)]
+        .to[List]
+        .map(_.collect { case (u, c) if c.nonEmpty => u -> c }.toMap)
+    }
 
   private val forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "no access to people"))
@@ -92,7 +108,8 @@ object People {
         if (!authz.can(Actions.byKey("person:view"))) List.empty[Person].pure[ConnectionIO]
         else if (p.role == "staff") PeopleRepo.listForUser(p.userId)
         else PeopleRepo.list.map(_.filter(_.propertyId.forall(scoped.contains)))
-    } yield if (!authz.can(Actions.byKey("person:view"))) Left(forbidden) else Right(rows.map(view))
+      colours <- colourMap(rows.flatMap(_.userId).toSet)
+    } yield if (!authz.can(Actions.byKey("person:view"))) Left(forbidden) else Right(rows.map(view(_, colours)))
     tx.transact(xa)
   }
 
@@ -101,6 +118,7 @@ object People {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       person <- PeopleRepo.find(id)
+      colours <- colourMap(person.flatMap(_.userId).toSet)
     } yield
       if (!authz.can(Actions.byKey("person:view"))) Left(forbidden)
       else
@@ -108,9 +126,9 @@ object People {
           case None => Left(notFound)
           case Some(per) =>
             if (p.role == "staff") {
-              if (per.userId.contains(p.userId)) Right(view(per))
+              if (per.userId.contains(p.userId)) Right(view(per, colours))
               else Left(forbidden) // other staff records denied (AC3)
-            } else if (per.propertyId.forall(scoped.contains)) Right(view(per))
+            } else if (per.propertyId.forall(scoped.contains)) Right(view(per, colours))
             else Left(notFound) // out of scope — no leak
         }
     tx.transact(xa)
@@ -131,7 +149,7 @@ object People {
             req.permitExpiry,
             req.reviewDue
           )
-          .map(per => Right(view(per)): Out[PersonView])
+          .flatMap(per => colourMap(per.userId.toSet).map(c => Right(view(per, c)): Out[PersonView]))
     }
     tx.transact(xa)
   }
@@ -143,13 +161,14 @@ object People {
       rows <-
         if (authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(days)
         else List.empty[Person].pure[ConnectionIO]
+      colours <- colourMap(rows.flatMap(_.userId).toSet)
     } yield
       if (!authz.can(Actions.byKey("person:view"))) Left(forbidden)
       else {
         val visible = rows.filter(per =>
           if (p.role == "staff") per.userId.contains(p.userId) else per.propertyId.forall(scoped.contains)
         )
-        Right(visible.map(view))
+        Right(visible.map(view(_, colours)))
       }
     tx.transact(xa)
   }

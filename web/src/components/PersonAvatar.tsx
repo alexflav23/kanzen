@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Avatar } from "./Avatar";
 
-type Person = { id: string; name: string; role?: string | null; propertyId?: string | null };
+type Person = { id: string; name: string; role?: string | null; propertyId?: string | null; colour?: string | null };
 
 const styles = stylex.create({
   wrap: { position: "relative", display: "inline-flex" },
@@ -38,12 +38,12 @@ export function PersonAvatar({ person, propertyName, photoUrl, canReassign, peop
   return (
     <span {...stylex.props(styles.wrap)} onMouseEnter={enter} onMouseLeave={leave}>
       <Link to={`/people/${person.id}`} {...stylex.props(styles.trigger)} aria-label={`${person.name} — view profile`} onFocus={enter} onBlur={leave}>
-        <Avatar name={person.name} photoUrl={photoUrl} size={size} />
+        <Avatar name={person.name} photoUrl={photoUrl} size={size} colour={person.colour} />
       </Link>
       {open && (
         <div {...stylex.props(styles.pop)} role="dialog" aria-label={`${person.name} — profile`} data-testid="person-card" onMouseEnter={enter} onMouseLeave={leave}>
           <div {...stylex.props(styles.head)}>
-            <Avatar name={person.name} photoUrl={photoUrl} size={40} />
+            <Avatar name={person.name} photoUrl={photoUrl} size={40} colour={person.colour} />
             <div>
               <div {...stylex.props(styles.name)}>{person.name}</div>
               {person.role && <div {...stylex.props(styles.role)}>{person.role}</div>}
