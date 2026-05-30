@@ -23,6 +23,7 @@ object BillRepo {
   private val cols = fr"id, payee, amount_minor, currency, variance_flag, property_id, category"
 
   def create(
+      tenantId: UUID,
       payee: String,
       propertyId: Option[UUID],
       category: Option[String],
@@ -30,8 +31,8 @@ object BillRepo {
       currency: String,
       frequency: Option[String]
   ): ConnectionIO[Bill] =
-    (fr"""insert into bills (payee, property_id, category, amount_minor, currency, frequency)
-          values ($payee, $propertyId, $category, $amountMinor, $currency, $frequency)
+    (fr"""insert into bills (tenant_id, payee, property_id, category, amount_minor, currency, frequency)
+          values ($tenantId, $payee, $propertyId, $category, $amountMinor, $currency, $frequency)
           returning""" ++ cols).query[Bill].unique
 
   def recordSeen(id: UUID, seenMinor: Long): ConnectionIO[Boolean] =
@@ -43,11 +44,11 @@ object BillRepo {
                  amount_minor = $seenMinor, variance_flag = $flag where id = $id""".update.run
     } yield flag
 
-  def get(id: UUID): ConnectionIO[Option[Bill]] =
-    (fr"select" ++ cols ++ fr"from bills where id = $id").query[Bill].option
+  def get(id: UUID, tenantId: UUID): ConnectionIO[Option[Bill]] =
+    (fr"select" ++ cols ++ fr"from bills where id = $id and tenant_id = $tenantId").query[Bill].option
 
-  def list: ConnectionIO[List[Bill]] =
-    (fr"select" ++ cols ++ fr"from bills where deleted_at is null and active order by next_due nulls last")
+  def list(tenantId: UUID): ConnectionIO[List[Bill]] =
+    (fr"select" ++ cols ++ fr"from bills where deleted_at is null and active and tenant_id = $tenantId order by next_due nulls last")
       .query[Bill]
       .to[List]
 }

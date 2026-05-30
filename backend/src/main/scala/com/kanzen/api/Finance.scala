@@ -110,12 +110,12 @@ object Finance {
 
   // ---- bills (F15) ----
   def listBills(xa: Transactor[IO], p: Principal): IO[Out[List[BillView]]] =
-    read(p, BillRepo.list.map(_.map(bv))).transact(xa)
+    read(p, BillRepo.list(p.tenantId).map(_.map(bv))).transact(xa)
   def createBill(xa: Transactor[IO], p: Principal, r: CreateBillReq): IO[Out[BillView]] =
     write(
       p,
       BillRepo
-        .create(r.payee, r.propertyId, r.category, r.amountMinor, r.currency, r.frequency)
+        .create(p.tenantId, r.payee, r.propertyId, r.category, r.amountMinor, r.currency, r.frequency)
         .flatMap(b =>
           emitFinance(
             p,

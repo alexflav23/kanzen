@@ -65,6 +65,7 @@ object Expenses {
         ExpenseRepo
           .submit(
             p.userId,
+            p.tenantId,
             req.payee,
             req.description,
             req.amountMinor,
@@ -101,7 +102,7 @@ object Expenses {
   def list(xa: Transactor[IO], p: Principal, status: Option[String]): IO[Out[List[ExpenseView]]] = {
     val tx = Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(Actions.byKey("expense:view"))) (Left(forbidden): Out[List[ExpenseView]]).pure[ConnectionIO]
-      else ExpenseRepo.list(status).map(es => Right(es.map(view)): Out[List[ExpenseView]])
+      else ExpenseRepo.list(p.tenantId, status).map(es => Right(es.map(view)): Out[List[ExpenseView]])
     }
     tx.transact(xa)
   }
@@ -111,12 +112,12 @@ object Expenses {
       xa: Transactor[IO],
       p: Principal,
       id: UUID,
-      action: (UUID, UUID) => ConnectionIO[Int],
+      action: (UUID, UUID, UUID) => ConnectionIO[Int], // (id, tenantId, by)
       eventType: String
   ): IO[Out[ExpenseView]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exp <- ExpenseRepo.get(id)
+      exp <- ExpenseRepo.get(id, p.tenantId)
       res <- exp match {
         case None => (Left(notFound): Out[ExpenseView]).pure[ConnectionIO]
         case Some(e) =>
@@ -124,8 +125,8 @@ object Expenses {
           else if (ExpenseService.needsApproval(e.amountMinor, e.currency) && p.role != "principal")
             (Left(needsPrincipal): Out[ExpenseView]).pure[ConnectionIO]
           else
-            action(id, p.userId) *> emitExpense(p, e, eventType) *>
-              ExpenseRepo.get(id).map(_.map(view).toRight(notFound))
+            action(id, p.tenantId, p.userId) *> emitExpense(p, e, eventType) *>
+              ExpenseRepo.get(id, p.tenantId).map(_.map(view).toRight(notFound))
       }
     } yield res
     tx.transact(xa)

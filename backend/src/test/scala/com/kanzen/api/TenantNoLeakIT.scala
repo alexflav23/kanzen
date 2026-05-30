@@ -4,6 +4,7 @@ import cats.effect.IO
 import com.kanzen.api.Assets.CreateReq
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
+import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.tasks.TaskRepo
 import com.kanzen.db.TestDb
 import com.kanzen.s3.ObjectStore
@@ -76,5 +77,43 @@ object TenantNoLeakIT extends IOSuite {
       expect(!bList.exists(_.id == aTask.id)) and
       expect(aSeesB.isEmpty) and // B's task is not fetchable as tenant A
       expect(bSeesA.isEmpty)
+  }
+
+  test("finance: bills + expenses are tenant-isolated (no leak via the list nor by id nor totals)") { xa =>
+    for {
+      tenantB <- newTenant(xa)
+      ownerB = UUID.randomUUID()
+      aBill <- BillRepo.create(Tenant.DefaultId, "A Water", None, None, 5000L, "GBP", Some("monthly")).transact(xa)
+      bBill <- BillRepo.create(tenantB, "B Power", None, None, 9000L, "GBP", Some("monthly")).transact(xa)
+      aExp <- ExpenseRepo
+        .submit(
+          UUID.randomUUID(),
+          Tenant.DefaultId,
+          Some("A vendor"),
+          None,
+          1000L,
+          "GBP",
+          None,
+          None,
+          false,
+          false,
+          None,
+          UUID.randomUUID()
+        )
+        .transact(xa)
+      bExp <- ExpenseRepo
+        .submit(ownerB, tenantB, Some("B vendor"), None, 2000L, "GBP", None, None, true, false, None, ownerB)
+        .transact(xa)
+      aBills <- BillRepo.list(Tenant.DefaultId).transact(xa)
+      bBills <- BillRepo.list(tenantB).transact(xa)
+      aExps <- ExpenseRepo.list(Tenant.DefaultId, None).transact(xa)
+      bExps <- ExpenseRepo.list(tenantB, None).transact(xa)
+      aBSeesBill <- BillRepo.get(bBill.id, Tenant.DefaultId).transact(xa)
+      aBSeesExp <- ExpenseRepo.get(bExp.id, Tenant.DefaultId).transact(xa)
+    } yield expect(aBills.exists(_.id == aBill.id)) and expect(!aBills.exists(_.id == bBill.id)) and
+      expect(bBills.exists(_.id == bBill.id)) and expect(!bBills.exists(_.id == aBill.id)) and
+      expect(aExps.exists(_.id == aExp.id)) and expect(!aExps.exists(_.id == bExp.id)) and
+      expect(bExps.exists(_.id == bExp.id)) and expect(!bExps.exists(_.id == aExp.id)) and
+      expect(aBSeesBill.isEmpty) and expect(aBSeesExp.isEmpty) // no leak by direct id across tenants
   }
 }

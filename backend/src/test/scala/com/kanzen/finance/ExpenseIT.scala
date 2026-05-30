@@ -1,6 +1,7 @@
 package com.kanzen.finance
 
 import cats.effect.IO
+import com.kanzen.tenant.Tenant
 import com.kanzen.db.TestDb
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -16,9 +17,9 @@ object ExpenseIT extends IOSuite {
   test("above-threshold expense persists as pending_approval, then approves") { xa =>
     val prog = for {
       e <- ExpenseRepo.create(Some("HVAC quarterly"), 184000L, "GBP", Some(UUID.randomUUID()))
-      afterCreate <- ExpenseRepo.get(e.id)
-      _ <- ExpenseRepo.approve(e.id, UUID.randomUUID())
-      afterApprove <- ExpenseRepo.get(e.id)
+      afterCreate <- ExpenseRepo.get(e.id, Tenant.DefaultId)
+      _ <- ExpenseRepo.approve(e.id, Tenant.DefaultId, UUID.randomUUID())
+      afterApprove <- ExpenseRepo.get(e.id, Tenant.DefaultId)
     } yield (afterCreate, afterApprove)
     prog.transact(xa).map { case (created, approved) =>
       expect(created.exists(_.status == "pending_approval")) and

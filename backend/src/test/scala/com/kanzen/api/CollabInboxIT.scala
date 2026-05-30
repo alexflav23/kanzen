@@ -82,7 +82,7 @@ object CollabInboxIT extends IOSuite {
       result <- Inbox.confirmProposal(xa, toby, proposal.id).map(_.toOption.get)
       // re-fetch: the proposal is no longer 'proposed', and a link to the created expense exists
       after <- Inbox.detail(xa, toby, ocado.id).map(_.toOption.get)
-      expenses <- com.kanzen.finance.ExpenseRepo.list(None).transact(xa)
+      expenses <- com.kanzen.finance.ExpenseRepo.list(Tenant.DefaultId, None).transact(xa)
     } yield expect(detail.attachments.exists(_.filename.endsWith(".pdf"))) and
       expect(result.created == "expense") and
       expect(after.proposals.forall(_.status != "proposed")) and // executed, not still pending

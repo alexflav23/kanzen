@@ -48,7 +48,8 @@ object Tax {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       summary <-
-        if (authz.can(Actions.byKey("ledger:view"))) ExpenseRepo.deductibleSummary else (0L, 0L, 0).pure[ConnectionIO]
+        if (authz.can(Actions.byKey("ledger:view"))) ExpenseRepo.deductibleSummary(p.tenantId)
+        else (0L, 0L, 0).pure[ConnectionIO]
     } yield
       if (!authz.can(Actions.byKey("ledger:view"))) Left(forbidden)
       else Right(DeductibleReport(summary._1, summary._2, summary._3))

@@ -34,6 +34,7 @@ object ExpenseRepo {
   /** API path: full submit with property/category/deductibility. */
   def submit(
       ownerId: UUID,
+      tenantId: UUID,
       payee: Option[String],
       description: Option[String],
       amountMinor: Long,
@@ -46,30 +47,36 @@ object ExpenseRepo {
       requestedBy: UUID
   ): ConnectionIO[Expense] = {
     val status = ExpenseService.initialStatus(amountMinor, currency)
-    (fr"""insert into expenses (owner_id, payee, description, amount_minor, currency, status, property_id, category_id, deductible, vat_reclaimable, tax_category, requested_by)
-          values ($ownerId, $payee, $description, $amountMinor, $currency, $status, $propertyId, $categoryId, $deductible, $vatReclaimable, $taxCategory, $requestedBy)
+    (fr"""insert into expenses (owner_id, tenant_id, payee, description, amount_minor, currency, status, property_id, category_id, deductible, vat_reclaimable, tax_category, requested_by)
+          values ($ownerId, $tenantId, $payee, $description, $amountMinor, $currency, $status, $propertyId, $categoryId, $deductible, $vatReclaimable, $taxCategory, $requestedBy)
           returning""" ++ cols).query[Expense].unique
   }
 
-  def approve(id: UUID, @annotation.unused by: UUID): ConnectionIO[Int] =
-    sql"update expenses set status = 'approved' where id = $id and deleted_at is null".update.run
+  def approve(id: UUID, tenantId: UUID, @annotation.unused by: UUID): ConnectionIO[Int] =
+    sql"update expenses set status = 'approved' where id = $id and tenant_id = $tenantId and deleted_at is null".update.run
 
-  def reject(id: UUID, @annotation.unused by: UUID): ConnectionIO[Int] =
-    sql"update expenses set status = 'rejected' where id = $id and deleted_at is null".update.run
+  def reject(id: UUID, tenantId: UUID, @annotation.unused by: UUID): ConnectionIO[Int] =
+    sql"update expenses set status = 'rejected' where id = $id and tenant_id = $tenantId and deleted_at is null".update.run
 
-  def get(id: UUID): ConnectionIO[Option[Expense]] =
-    (fr"select" ++ cols ++ fr"from expenses where id = $id and deleted_at is null").query[Expense].option
+  def get(id: UUID, tenantId: UUID): ConnectionIO[Option[Expense]] =
+    (fr"select" ++ cols ++ fr"from expenses where id = $id and tenant_id = $tenantId and deleted_at is null")
+      .query[Expense]
+      .option
 
-  def list(status: Option[String]): ConnectionIO[List[Expense]] = {
-    val base = fr"select" ++ cols ++ fr"from expenses where deleted_at is null"
+  def list(tenantId: UUID, status: Option[String]): ConnectionIO[List[Expense]] = {
+    val base = fr"select" ++ cols ++ fr"from expenses where deleted_at is null and tenant_id = $tenantId"
     val filtered = status.fold(base)(s => base ++ fr"and status = $s")
     (filtered ++ fr"order by created_at desc").query[Expense].to[List]
   }
 
-  /** F38 — (deductible total, VAT-reclaimable total, deductible count) over approved expenses. */
-  def deductibleSummary: ConnectionIO[(Long, Long, Int)] =
+  /** F38 — (deductible total, VAT-reclaimable total, deductible count) over approved expenses (tenant-scoped: no leak
+    * via totals).
+    */
+  def deductibleSummary(tenantId: UUID): ConnectionIO[(Long, Long, Int)] =
     sql"""select coalesce(sum(amount_minor) filter (where deductible), 0),
                  coalesce(sum(amount_minor) filter (where vat_reclaimable), 0),
                  count(*) filter (where deductible)
-          from expenses where deleted_at is null and status = 'approved'""".query[(Long, Long, Int)].unique
+          from expenses where deleted_at is null and status = 'approved' and tenant_id = $tenantId"""
+      .query[(Long, Long, Int)]
+      .unique
 }

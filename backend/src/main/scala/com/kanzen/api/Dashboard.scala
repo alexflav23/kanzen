@@ -34,7 +34,7 @@ object Dashboard {
         if (authz.can(Actions.byKey("asset:view"))) AssetRepo.list(p.tenantId, None, None)
         else List.empty.pure[ConnectionIO]
       pending <-
-        if (authz.can(Actions.byKey("expense:view"))) ExpenseRepo.list(Some("pending_approval"))
+        if (authz.can(Actions.byKey("expense:view"))) ExpenseRepo.list(p.tenantId, Some("pending_approval"))
         else List.empty.pure[ConnectionIO]
       permits <-
         if (p.role != "staff" && authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(60)

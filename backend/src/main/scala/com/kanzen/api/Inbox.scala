@@ -465,6 +465,7 @@ object Inbox {
             amt = c.get[Long]("amountMinor").toOption.getOrElse(0L)
             ex <- ExpenseRepo.submit(
               p.userId,
+              p.tenantId,
               Some(payee),
               c.get[String]("description").toOption,
               amt,
