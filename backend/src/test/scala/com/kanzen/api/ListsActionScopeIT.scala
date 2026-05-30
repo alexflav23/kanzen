@@ -1,6 +1,7 @@
 package com.kanzen.api
 
 import cats.effect.IO
+import com.kanzen.tenant.Tenant
 import com.kanzen.auth.Principal
 import com.kanzen.authz.PermissionRepo
 import com.kanzen.lists.ListRepo
@@ -34,7 +35,7 @@ object ListsActionScopeIT extends IOSuite {
         sql"insert into permission_set_grants (set_id, resource, action, effect) values ($setId, 'list', 'order', 'deny')".update.run
           .transact(xa)
       _ <- sql"insert into role_sets (role_name, set_id) values ($role, $setId)".update.run.transact(xa)
-      listId <- ListRepo.createList(None, s"RBAC list $s", None).transact(xa)
+      listId <- ListRepo.createList(Tenant.DefaultId, None, s"RBAC list $s", None).transact(xa)
       p = Principal(u, "u", "u@k.local", role)
       edited <- Lists.update(
         xa,
@@ -64,7 +65,7 @@ object ListsActionScopeIT extends IOSuite {
         sql"insert into permission_set_grants (set_id, resource, action, effect) values ($setId, 'list', 'order', 'allow')".update.run
           .transact(xa)
       _ <- sql"insert into role_sets (role_name, set_id) values ($role, $setId)".update.run.transact(xa)
-      listId <- ListRepo.createList(None, s"RBAC list2 $s", None).transact(xa)
+      listId <- ListRepo.createList(Tenant.DefaultId, None, s"RBAC list2 $s", None).transact(xa)
       p = Principal(u, "u", "u@k.local", role)
       ordered <- Lists.placeOrder(xa, p, listId)
       edited <- Lists.update(

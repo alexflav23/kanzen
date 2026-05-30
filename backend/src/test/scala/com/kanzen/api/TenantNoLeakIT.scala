@@ -8,6 +8,7 @@ import com.kanzen.calendar.CalendarRepo
 import com.kanzen.docs.DocumentRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.inbox.CollabInboxRepo
+import com.kanzen.lists.ListRepo
 import com.kanzen.people.PeopleRepo
 import com.kanzen.property.PropertyRepo
 import com.kanzen.tasks.TaskRepo
@@ -261,5 +262,18 @@ object TenantNoLeakIT extends IOSuite {
       expect(bRoster.exists(_.id == bPerson.id)) and
       expect(!aVendors.exists(_.id == bVendor.id)) and
       expect(aSeesBVendor.isEmpty) and expect(aSeesBPerson.isEmpty) // no leak by direct id
+  }
+
+  test("lists: a tenant's shopping lists never appear for another tenant") { xa =>
+    for {
+      tenantB <- newTenant(xa)
+      aList <- ListRepo.createList(Tenant.DefaultId, None, "A Groceries", None).transact(xa)
+      bList <- ListRepo.createList(tenantB, None, "B Groceries", None).transact(xa)
+      aLists <- ListRepo.lists(Tenant.DefaultId).transact(xa)
+      bLists <- ListRepo.lists(tenantB).transact(xa)
+      aSeesB <- ListRepo.listExists(bList, Tenant.DefaultId).transact(xa)
+    } yield expect(aLists.exists(_.id == aList)) and expect(!aLists.exists(_.id == bList)) and
+      expect(bLists.exists(_.id == bList)) and expect(!bLists.exists(_.id == aList)) and
+      expect(!aSeesB) // B's list isn't reachable as tenant A
   }
 }

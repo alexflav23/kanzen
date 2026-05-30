@@ -1,6 +1,7 @@
 package com.kanzen.lists
 
 import cats.effect.IO
+import com.kanzen.tenant.Tenant
 import com.kanzen.db.TestDb
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -13,7 +14,7 @@ object ListIT extends IOSuite {
 
   test("staff proposes an item (needs approval) -> Principal approves -> added; recurring goes straight in") { xa =>
     val prog = for {
-      list <- ListRepo.createList(None, "Wardian household supplies", Some("Waitrose"))
+      list <- ListRepo.createList(Tenant.DefaultId, None, "Wardian household supplies", Some("Waitrose"))
       doveProposed <- ListRepo.addItem(
         list,
         "Dove Shower Gel",

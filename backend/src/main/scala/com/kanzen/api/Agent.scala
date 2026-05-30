@@ -70,7 +70,7 @@ object Agent {
     ).transact(xa)
 
   def actions(xa: Transactor[IO], p: Principal, status: String): IO[Out[List[ActionView]]] =
-    read(p, AgentRepo.listActions(status).map(_.map(av))).transact(xa)
+    read(p, AgentRepo.listActions(p.tenantId, status).map(_.map(av))).transact(xa)
   private def av(a: AgentActionRow): ActionView =
     ActionView(a.id, a.actionType, a.status, a.category, a.subject, locked = a.category.exists(TrustService.locked))
 

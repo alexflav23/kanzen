@@ -121,12 +121,12 @@ object Lists {
     if (p.role == "staff") PeopleRepo.assigneeScope(p.userId) else Option.empty[AssigneeScope].pure[ConnectionIO]
 
   def lists(xa: Transactor[IO], p: Principal): IO[Out[List[ListView]]] =
-    read(p, staffScope(p).flatMap(sc => ListRepo.lists(sc)).map(_.map(lv))).transact(xa)
+    read(p, staffScope(p).flatMap(sc => ListRepo.lists(p.tenantId, sc)).map(_.map(lv))).transact(xa)
   def createList(xa: Transactor[IO], p: Principal, r: CreateListReq): IO[Out[ListView]] =
     write(
       p,
       ListRepo
-        .createList(r.propertyId, r.name, r.vendor)
+        .createList(p.tenantId, r.propertyId, r.name, r.vendor)
         .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active", "normal", None)),
       createA
     ).transact(xa)
@@ -135,7 +135,7 @@ object Lists {
   def update(xa: Transactor[IO], p: Principal, listId: UUID, r: EditListReq): IO[Out[ListView]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- ListRepo.listExists(listId)
+      exists <- ListRepo.listExists(listId, p.tenantId)
       res <-
         if (!authz.can(editA)) (Left(forbidden): Out[ListView]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[ListView]).pure[ConnectionIO]
@@ -207,7 +207,7 @@ object Lists {
   def placeOrder(xa: Transactor[IO], p: Principal, listId: UUID): IO[Out[Unit]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- ListRepo.listExists(listId)
+      exists <- ListRepo.listExists(listId, p.tenantId)
       res <-
         if (!authz.can(orderA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]

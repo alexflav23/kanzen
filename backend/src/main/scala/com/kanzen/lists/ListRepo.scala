@@ -37,8 +37,8 @@ final case class ShoppingList(
 
 /** F08 — shopping lists + items with the propose/approve/roll-forward workflow. */
 object ListRepo {
-  def createList(propertyId: Option[UUID], name: String, vendor: Option[String]): ConnectionIO[UUID] =
-    sql"insert into shopping_lists (property_id, name, vendor) values ($propertyId, $name, $vendor) returning id"
+  def createList(tenantId: UUID, propertyId: Option[UUID], name: String, vendor: Option[String]): ConnectionIO[UUID] =
+    sql"insert into shopping_lists (tenant_id, property_id, name, vendor) values ($tenantId, $propertyId, $name, $vendor) returning id"
       .query[UUID]
       .unique
 
@@ -59,7 +59,7 @@ object ListRepo {
           where id = $listId and deleted_at is null""".update.run
 
   /** A Staff viewer sees only runs assigned to them, or unassigned runs in their property. */
-  def lists(scope: Option[AssigneeScope] = None): ConnectionIO[List[ShoppingList]] = {
+  def lists(tenantId: UUID, scope: Option[AssigneeScope] = None): ConnectionIO[List[ShoppingList]] = {
     val sc = scope match {
       case None => Fragment.empty
       case Some(AssigneeScope(person, Some(prop))) =>
@@ -67,14 +67,16 @@ object ListRepo {
       case Some(AssigneeScope(person, None)) => fr"and assignee_id = $person"
     }
     (fr"""select id, name, vendor, property_id, type, cycle, next_order, status, priority, assignee_id
-          from shopping_lists where deleted_at is null""" ++ sc ++
+          from shopping_lists where deleted_at is null and tenant_id = $tenantId""" ++ sc ++
       fr"order by case priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end, name")
       .query[ShoppingList]
       .to[List]
   }
 
-  def listExists(listId: UUID): ConnectionIO[Boolean] =
-    sql"select exists(select 1 from shopping_lists where id = $listId and deleted_at is null)".query[Boolean].unique
+  def listExists(listId: UUID, tenantId: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from shopping_lists where id = $listId and tenant_id = $tenantId and deleted_at is null)"
+      .query[Boolean]
+      .unique
 
   def itemExists(itemId: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from list_items where id = $itemId)".query[Boolean].unique
