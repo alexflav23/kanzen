@@ -28,6 +28,7 @@ import { Notifications } from "./pages/Notifications";
 import { Settings } from "./pages/Settings";
 import { Customization } from "./pages/Customization";
 import { Directory } from "./pages/Directory";
+import { Onboard } from "./pages/Onboard";
 import { CommandPalette } from "./components/CommandPalette";
 import { NotificationsBell } from "./components/NotificationsBell";
 import { BootSplash } from "./components/BootSplash";
@@ -221,6 +222,7 @@ function Shell() {
               )}
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/onboard" element={<Onboard />} />
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/inventory" element={<Inventory />} />

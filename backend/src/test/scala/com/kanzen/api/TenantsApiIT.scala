@@ -56,4 +56,29 @@ object TenantsApiIT extends IOSuite {
       expect(newSetup.currentStep.contains("verify_email") && !newSetup.completed) and // new tenant must finish setup
       expect(defaultSetup.completed) // the seeded default tenant is pre-completed (no banner)
   }
+
+  test("the wizard advances step-by-step and completing the last step finishes onboarding") { xa =>
+    for {
+      resp <- Tenants
+        .create(
+          xa,
+          CreateTenantReq("Beta House", uniqueSlug, PrincipalReq("Bea", s"bea-${UUID.randomUUID()}@beta.test"))
+        )
+        .map(_.toOption.get)
+      tid = resp.tenantId
+      // advance through each step; current_step tracks the next one
+      s1 <- Tenants.advance(xa, tid, "verify_email").map(_.toOption.get)
+      s2 <- Tenants.advance(xa, tid, "workspace").map(_.toOption.get)
+      // jump ahead (steps are independently skippable) then finish on the last step
+      _ <- Tenants.advance(xa, tid, "first_property")
+      _ <- Tenants.advance(xa, tid, "initial_people")
+      _ <- Tenants.advance(xa, tid, "mailboxes")
+      _ <- Tenants.advance(xa, tid, "optional_integrations")
+      done <- Tenants.advance(xa, tid, "tour").map(_.toOption.get)
+      bad <- Tenants.advance(xa, tid, "nonsense")
+    } yield expect(s1.currentStep.contains("workspace") && !s1.completed) and
+      expect(s2.currentStep.contains("first_property")) and
+      expect(done.completed && done.currentStep.isEmpty) and // the tour is the last step → onboarding complete
+      expect(bad.left.exists(_._1.code == 400)) // unknown step rejected
+  }
 }

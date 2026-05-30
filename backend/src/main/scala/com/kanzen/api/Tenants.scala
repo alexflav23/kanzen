@@ -76,6 +76,7 @@ object Tenants {
 
   // F46 §4 — the onboarding state the Dashboard banner reads. `completed` true → no banner.
   final case class SetupState(currentStep: Option[String], completed: Boolean)
+  final case class AdvanceReq(step: String)
 
   private val err = statusCode.and(jsonBody[ApiError])
 
@@ -104,6 +105,23 @@ object Tenants {
         case None => SetupState(None, completed = true) // no row (e.g. legacy) → treat as done, no banner
       }
 
+  val advanceEndpoint: Endpoint[String, AdvanceReq, (StatusCode, ApiError), SetupState, Any] =
+    sttp.tapir.endpoint.post
+      .in("api" / "tenant" / "setup" / "advance")
+      .securityIn(auth.bearer[String]())
+      .in(jsonBody[AdvanceReq])
+      .errorOut(err)
+      .out(jsonBody[SetupState])
+      .summary("Mark an onboarding step done + advance to the next (the wizard's Save & continue / Skip)")
+
+  def advance(xa: Transactor[IO], tenantId: UUID, step: String): IO[Out[SetupState]] =
+    if (!TenantRepo.stepOrder.contains(step)) IO.pure(Left(bad(s"unknown onboarding step '$step'")))
+    else
+      (TenantRepo.advance(tenantId, step) *> TenantRepo.setupState(tenantId)).transact(xa).map {
+        case Some((s, c)) => Right(SetupState(s, c))
+        case None => Right(SetupState(None, completed = true))
+      }
+
   def publicServerEndpoints(xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
     List(createEndpoint.serverLogic(req => create(xa, req)))
 
@@ -111,8 +129,17 @@ object Tenants {
     List(
       setupEndpoint
         .serverSecurityLogic(a.securityLogic)
-        .serverLogic(p => (_: Unit) => setup(xa, p.tenantId).map(Right(_): Out[SetupState]))
+        .serverLogic(p => (_: Unit) => setup(xa, p.tenantId).map(Right(_): Out[SetupState])),
+      advanceEndpoint
+        .serverSecurityLogic(a.securityLogic)
+        // only the tenant's principal drives the wizard (F46 §5)
+        .serverLogic(p =>
+          (r: AdvanceReq) =>
+            if (p.role != "principal")
+              IO.pure(Left((StatusCode.Forbidden, ApiError(403, "forbidden", "Only the principal can run setup."))))
+            else advance(xa, p.tenantId, r.step)
+        )
     )
 
-  val endpoints: List[AnyEndpoint] = List(createEndpoint, setupEndpoint)
+  val endpoints: List[AnyEndpoint] = List(createEndpoint, setupEndpoint, advanceEndpoint)
 }

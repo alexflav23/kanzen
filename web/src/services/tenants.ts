@@ -28,6 +28,13 @@ export type SetupState = z.infer<typeof SetupState>;
 export const getSetupState = (token: string | null) =>
   api("/api/tenant/setup", SetupState, { token });
 
+/** F46 — mark a step done + advance to the next (Save & continue / Skip). Returns the new state. */
+export const advanceSetup = (step: string, token: string | null) =>
+  api("/api/tenant/setup/advance", SetupState, { method: "POST", body: { step }, token });
+
+/** The wizard's step order (mirrors the backend) + which steps the dev sandbox can actually complete. */
+export const STEP_ORDER = ["verify_email", "workspace", "first_property", "initial_people", "mailboxes", "optional_integrations", "tour"] as const;
+
 /** Human label for each onboarding step (matches F46 §3). */
 export const STEP_LABEL: Record<string, string> = {
   verify_email: "Verify your email",
