@@ -10,6 +10,7 @@ import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.inbox.CollabInboxRepo
 import com.kanzen.property.PropertyRepo
 import com.kanzen.tasks.TaskRepo
+import com.kanzen.wealth.WealthRepo
 
 import java.time.LocalDate
 import com.kanzen.db.TestDb
@@ -224,5 +225,20 @@ object TenantNoLeakIT extends IOSuite {
     } yield expect(aList.exists(_.id == aDoc.id)) and expect(!aList.exists(_.id == bDoc.id)) and
       expect(aSeesBById.isEmpty) and // no leak by id
       expect(aDedup.exists(_.id == aDoc.id)) // dedup resolves to A's own doc, never B's
+  }
+
+  // Wealth is Principal-private — every wealth query is keyed by owner_id (the principal's userId), which is distinct
+  // per tenant, so it's already tenant-isolated (stronger than a tenant filter). This block pins that property.
+  test("wealth: Principal-private owner_id scoping is tenant-safe (a foreign owner sees none of A's entities)") { xa =>
+    for {
+      tenantB <- newTenant(xa)
+      ownerB = UUID.randomUUID()
+      bEntity <- WealthRepo.createEntity(ownerB, "B Holdings Ltd", "company", Some("sg"), "SGD", None).transact(xa)
+      aEntities <- WealthRepo.entities(tobyA.userId).transact(xa) // A's principal sees the seeded book
+      bEntities <- WealthRepo.entities(ownerB).transact(xa)
+    } yield expect(aEntities.nonEmpty) and // A's seeded entities are there
+      expect(!aEntities.exists(_.id == bEntity)) and // B's entity never surfaces for A
+      expect(bEntities.exists(_.id == bEntity)) and
+      expect(bEntities.sizeIs == 1) // B sees only its own
   }
 }
