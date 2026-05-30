@@ -4,6 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.asset.{AssetEvent, AssetEventRepo, AssetRepo}
 import com.kanzen.audit.AuditRepo
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz}
 import io.circe.Json
@@ -118,6 +119,23 @@ object AssetEvents {
                 Some(assetId),
                 Json.obj("cost" -> req.costMinor.asJson, "party" -> req.party.asJson, "note" -> req.note.asJson),
                 Some(p.userId)
+              )
+              // F34 — `asset_event.logged` lets the realtime layer (F48) live-update the asset's Timeline/Activity
+              // and gives the RAG IndexConsumer the immediate re-render path (vs the ~15s reconcile loop).
+              _ <- EventRepo.emit(
+                Envelope(
+                  Events.Asset.EventLogged,
+                  Actor.user(p.userId),
+                  Subject("asset", assetId),
+                  p.userId,
+                  None,
+                  Json.obj(
+                    "kind" -> req.eventType.asJson,
+                    "cost" -> req.costMinor.asJson,
+                    "party" -> req.party.asJson,
+                    "note" -> req.note.asJson
+                  )
+                )
               )
             } yield Right(view(e)): Out[EventView]
       } yield res

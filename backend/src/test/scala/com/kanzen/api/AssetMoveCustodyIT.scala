@@ -1,12 +1,13 @@
 package com.kanzen.api
 
 import cats.effect.IO
-import com.kanzen.api.Assets.{CreateReq, CustodyReq, HeroReq, MoveReq}
+import com.kanzen.api.Assets.{CreateReq, CustodyReq, EditReq, HeroReq, MoveReq}
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.docs.DocumentRepo
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -90,6 +91,46 @@ object AssetMoveCustodyIT extends IOSuite {
       set <- Assets.setHero(xa, toby, id, HeroReq(doc.id)).map(_.toOption.get)
       missing <- Assets.setHero(xa, toby, id, HeroReq(UUID.randomUUID()))
     } yield expect(set.heroDocumentId.contains(doc.id)) and expect(missing.left.exists(_._1.code == 400))
+  }
+
+  // F34 — the drift bar for the Registry domain. The realtime layer (F48) + the RAG IndexConsumer both consume these;
+  // a fresh asset per run makes the aggregate_id query race-proof.
+  test("F34 — asset mutations emit asset.{created,updated,moved,custody_changed,set_hero} + asset_event.logged") { xa =>
+    for {
+      id <- newAsset(xa)
+      cat <- AssetRepo.createCategory("EditCat", None).transact(xa)
+      _ <- Assets.update(xa, toby, id, EditReq("Renamed", Some("Patek"), cat, "owned")).map(_.toOption.get)
+      _ <- Assets.move(xa, toby, id, MoveReq(Some(wardianLoc), Some("to the study"))).map(_.toOption.get)
+      _ <- Assets.changeCustody(xa, toby, id, CustodyReq("with_repair_shop", Some("sent to AP"))).map(_.toOption.get)
+      doc <- DocumentRepo
+        .insert(
+          UUID.randomUUID(),
+          toby.userId,
+          "hero.png",
+          "photo",
+          Some("image/png"),
+          Some(10L),
+          s"k/hero-${UUID.randomUUID()}.png",
+          s"sha-${UUID.randomUUID()}",
+          "household",
+          "manual",
+          None
+        )
+        .transact(xa)
+      _ <- Assets.setHero(xa, toby, id, HeroReq(doc.id)).map(_.toOption.get)
+      _ <- AssetEvents
+        .log(xa, toby, id, AssetEvents.LogReq("serviced", Some(12000L), Some("GBP"), Some("annual")))
+        .map(
+          _.toOption.get
+        )
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = $id".query[String].to[List].transact(xa)
+    } yield expect(events.contains("asset.created")) and
+      expect(events.contains("asset.updated")) and
+      expect(events.contains("asset.moved")) and
+      expect(events.contains("asset.custody_changed")) and
+      expect(events.contains("asset.set_hero")) and
+      expect(events.contains("asset_event.logged"))
   }
 
   test("staff cannot move or change custody (403)") { xa =>

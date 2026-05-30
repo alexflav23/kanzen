@@ -14,6 +14,7 @@ import com.kanzen.asset.{
   ValuationRepo
 }
 import com.kanzen.audit.AuditRepo
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authz, Scope}
 import com.kanzen.docs.DocumentRepo
@@ -275,6 +276,12 @@ object Assets {
   def detail(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[AssetDetail]] =
     loadDetail(p, id).transact(xa)
 
+  /** F34 — emit an asset-subject event (the realtime layer (F48) live-updates the asset view; the RAG IndexConsumer
+    * re-indexes immediately rather than waiting on the ~15s reconcile loop). Runs in the caller's tx beside the write.
+    */
+  private def emitAsset(p: Principal, id: UUID, eventType: String, payload: Json): ConnectionIO[Unit] =
+    EventRepo.emit(Envelope(eventType, Actor.user(p.userId), Subject("asset", id), p.userId, None, payload)).void
+
   def create(xa: Transactor[IO], p: Principal, req: CreateReq): IO[Out[AssetDetail]] = {
     if (!MODES.contains(req.trackingMode))
       IO.pure(Left(badReq(s"tracking_mode must be one of ${MODES.mkString(", ")}")))
@@ -315,7 +322,18 @@ object Assets {
                 req.locationId,
                 attrs
               )
-              .map(a => Right(detailOf(a)): Out[AssetDetail])
+              .flatMap(a =>
+                emitAsset(
+                  p,
+                  a.id,
+                  Events.Asset.Created,
+                  Json.obj(
+                    "title" -> req.title.asJson,
+                    "categoryId" -> req.categoryId.asJson,
+                    "vertical" -> req.vertical.asJson
+                  )
+                ).as(Right(detailOf(a)): Out[AssetDetail])
+              )
       } yield res
       tx.transact(xa)
     }
@@ -337,6 +355,16 @@ object Assets {
           else if (!catOk) (Left(badReq("category not found")): Out[AssetDetail]).pure[ConnectionIO]
           else
             AssetRepo.update(id, req.title.trim, req.maker, req.categoryId, req.ownershipStatus) *>
+              emitAsset(
+                p,
+                id,
+                Events.Asset.Updated,
+                Json.obj(
+                  "title" -> req.title.trim.asJson,
+                  "ownershipStatus" -> req.ownershipStatus.asJson,
+                  "categoryId" -> req.categoryId.asJson
+                )
+              ) *>
               AssetRepo.get(id).map(_.map(detailOf).toRight(notFound): Out[AssetDetail])
       } yield res
       tx.transact(xa)
@@ -370,6 +398,16 @@ object Assets {
               Some(id),
               Json.obj("locationId" -> req.locationId.map(_.toString).asJson, "note" -> req.note.asJson),
               Some(p.userId)
+            ) *>
+            emitAsset(
+              p,
+              id,
+              Events.Asset.Moved,
+              Json.obj(
+                "to_location_id" -> req.locationId.map(_.toString).asJson,
+                "moved_by" -> p.userId.asJson,
+                "note" -> req.note.asJson
+              )
             )).as(Right(()): Out[Unit])
     } yield res
     tx.transact(xa).flatMap {
@@ -399,6 +437,16 @@ object Assets {
                 Some(id),
                 Json.obj("custodyStatus" -> req.custodyStatus.asJson, "note" -> req.note.asJson),
                 Some(p.userId)
+              ) *>
+              emitAsset(
+                p,
+                id,
+                Events.Asset.CustodyChanged,
+                Json.obj(
+                  "to_status" -> req.custodyStatus.asJson,
+                  "changed_by" -> p.userId.asJson,
+                  "note" -> req.note.asJson
+                )
               )).as(Right(()): Out[Unit])
       } yield res
       tx.transact(xa).flatMap {
@@ -427,7 +475,9 @@ object Assets {
               Some(id),
               Json.obj("documentId" -> req.documentId.toString.asJson),
               Some(p.userId)
-            )).as(Right(()): Out[Unit])
+            ) *>
+            emitAsset(p, id, Events.Asset.SetHero, Json.obj("document_id" -> req.documentId.toString.asJson)))
+            .as(Right(()): Out[Unit])
     } yield res
     tx.transact(xa).flatMap {
       case Left(e) => IO.pure(Left(e))
