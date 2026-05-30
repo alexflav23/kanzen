@@ -327,4 +327,45 @@ object CollabInboxIT extends IOSuite {
       expect(commentEvents.contains("comment.edited")) and
       expect(linkEvents == List("link.created")) // exactly one link.created on the fresh target
   }
+
+  // F34 — the drift bar for the Inbox/thread + proposal domain. The realtime layer (F48) pushes these to a thread's
+  // subscribers so the inbox list + open thread update without a refresh; if any goes silent, the thread freezes.
+  // Race-proof: operates on the Octopus + Selfridges threads, whose proposals no other test confirms/rejects.
+  test("F34 — inbox thread + proposal mutations emit the canonical events") { xa =>
+    val octopusThread = UUID.fromString("49100000-0000-0000-0000-000000000004")
+    val octopusProposal = UUID.fromString("49300000-0000-0000-0000-000000000004") // reconcile_bill — rejected here
+    val selfridgesThread = UUID.fromString("49100000-0000-0000-0000-000000000007")
+    val selfridgesProposal = UUID.fromString("49300000-0000-0000-0000-000000000007") // create_receipt — confirmed here
+    for {
+      marciaPid <- PeopleRepo.assigneeScope(marcia.userId).transact(xa).map(_.get.personId)
+      // 1) thread lifecycle on the Octopus thread → assigned + status_changed + replied
+      _ <- Inbox.assign(xa, toby, octopusThread, AssignReq(Some(marciaPid))).map(_.toOption.get)
+      _ <- Inbox.setStatus(xa, toby, octopusThread, StatusReq("done")).map(_.toOption.get)
+      _ <- Inbox.send(xa, toby, octopusThread, SendReq("<p>Looking into the variance.</p>")).map(_.toOption.get)
+      threadEvents <-
+        sql"select event_type from event_outbox where aggregate_id = $octopusThread"
+          .query[String]
+          .to[List]
+          .transact(xa)
+      // 2) confirm a live proposal (Selfridges → expense) + reject another (Octopus) → proposal events
+      _ <- Inbox.confirmProposal(xa, toby, selfridgesProposal).map(_.toOption.get)
+      _ <- Inbox.rejectProposal(xa, toby, octopusProposal).map(_.toOption.get)
+      confirmEvents <-
+        sql"""select event_type from event_outbox
+              where event_type = 'email_proposal.confirmed' and aggregate_id = $selfridgesThread"""
+          .query[String]
+          .to[List]
+          .transact(xa)
+      rejectEvents <-
+        sql"""select event_type from event_outbox
+              where event_type = 'email_proposal.rejected' and aggregate_id = $octopusThread"""
+          .query[String]
+          .to[List]
+          .transact(xa)
+    } yield expect(threadEvents.contains("email_thread.assigned")) and
+      expect(threadEvents.contains("email_thread.status_changed")) and
+      expect(threadEvents.contains("email_thread.replied")) and
+      expect(confirmEvents.nonEmpty) and // exactly-once confirm fires email_proposal.confirmed
+      expect(rejectEvents.nonEmpty)
+  }
 }

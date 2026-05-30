@@ -5,6 +5,7 @@ import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Actions, Authorizer, Authz}
 import com.kanzen.calendar.CalendarRepo
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
 import com.kanzen.finance.ExpenseRepo
 import com.kanzen.inbox._
 import com.kanzen.lists.ListRepo
@@ -15,6 +16,7 @@ import doobie.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -205,6 +207,14 @@ object Inbox {
         else body.map(a => Right(a): Out[A])
     } yield res
 
+  /** F34 — emit a thread-subject event (the realtime layer (F48) pushes these to the thread's subscribers so the inbox
+    * list + open thread update without a refresh). Runs inside the caller's tx alongside the write.
+    */
+  private def emitThread(p: Principal, threadId: UUID, eventType: String, payload: Json): ConnectionIO[Unit] =
+    EventRepo
+      .emit(Envelope(eventType, Actor.user(p.userId), Subject("email_thread", threadId), p.userId, None, payload))
+      .void
+
   def inboxes(xa: Transactor[IO], p: Principal): IO[Out[List[InboxView]]] =
     read(p, staffScope(p).flatMap(s => CollabInboxRepo.inboxes(s, p.role)).map(_.map(iv))).transact(xa)
 
@@ -341,12 +351,19 @@ object Inbox {
   }
 
   def assign(xa: Transactor[IO], p: Principal, id: UUID, r: AssignReq): IO[Out[Unit]] =
-    onThread(p, id, assignA)(CollabInboxRepo.assign(id, r.assigneeId).void).transact(xa)
+    onThread(p, id, assignA)(
+      CollabInboxRepo.assign(id, r.assigneeId) *>
+        emitThread(p, id, Events.Thread.Assigned, Json.obj("assigneeId" -> r.assigneeId.asJson))
+    ).transact(xa)
 
   def setStatus(xa: Transactor[IO], p: Principal, id: UUID, r: StatusReq): IO[Out[Unit]] =
     if (!validStatus(r.status))
       IO.pure(Left((StatusCode.UnprocessableEntity, ApiError(422, "bad_status", "Unknown status."))))
-    else onThread(p, id, statusA)(CollabInboxRepo.setStatus(id, r.status).void).transact(xa)
+    else
+      onThread(p, id, statusA)(
+        CollabInboxRepo.setStatus(id, r.status) *>
+          emitThread(p, id, Events.Thread.StatusSet, Json.obj("status" -> r.status.asJson))
+      ).transact(xa)
 
   def markRead(xa: Transactor[IO], p: Principal, id: UUID, r: ReadReq): IO[Out[Unit]] =
     onThread(p, id, statusA)(CollabInboxRepo.markRead(id, r.unread).void).transact(xa)
@@ -407,6 +424,7 @@ object Inbox {
           subject = t.flatMap(_.subject).map(s => if (s.startsWith("Re:")) s else s"Re: $s")
           html = sanitizeHtml(r.bodyHtml)
           _ <- CollabInboxRepo.sendMessage(p.userId, id, from, to, subject, html, htmlToText(html), p.userId)
+          _ <- emitThread(p, id, Events.Thread.Replied, Json.obj("to" -> to.asJson, "subject" -> subject.asJson))
         } yield ()
       }.transact(xa)
 
@@ -525,7 +543,18 @@ object Inbox {
         case Some(pr) =>
           CollabInboxRepo.visible(pr.threadId.get, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[ConfirmResult]).pure[ConnectionIO]
-            else execute(p, pr, authz)
+            else
+              execute(p, pr, authz).flatTap {
+                // F34 — `email_proposal.confirmed` only on a real confirm (execute may still 403 on the inner authz)
+                case Right(_) =>
+                  emitThread(
+                    p,
+                    pr.threadId.get,
+                    Events.EmailProposal.Confirmed,
+                    Json.obj("proposalId" -> pr.id.asJson, "actionType" -> pr.actionType.asJson)
+                  )
+                case Left(_) => ().pure[ConnectionIO]
+              }
           }
       }
     } yield res
@@ -542,7 +571,10 @@ object Inbox {
         case Some(tid) =>
           CollabInboxRepo.visible(tid, scope, p.role).flatMap { vis =>
             if (!vis || !authz.can(viewA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
-            else CollabInboxRepo.rejectProposal(id).as(Right(()): Out[Unit])
+            else
+              CollabInboxRepo.rejectProposal(id) *>
+                emitThread(p, tid, Events.EmailProposal.Rejected, Json.obj("proposalId" -> id.asJson))
+                  .as(Right(()): Out[Unit])
           }
       }
     } yield res
