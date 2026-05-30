@@ -86,6 +86,15 @@ object Inbox {
   final case class DraftReq(bodyHtml: String)
   final case class SendReq(bodyHtml: String)
 
+  /** W9.4b: turn a thread into a task (linked back to the thread). */
+  final case class CreateTaskFromThreadReq(
+      title: String,
+      dueOn: Option[LocalDate],
+      priority: Option[String],
+      assigneeId: Option[UUID]
+  )
+  final case class CreatedFromThread(taskId: UUID, label: String)
+
   /** What confirming a proposal created (for the success toast). */
   final case class ConfirmResult(created: String, recordType: Option[String], label: Option[String])
 
@@ -353,6 +362,31 @@ object Inbox {
         )
     ).transact(xa)
 
+  /** Turn an email thread into a task (W9.4b spec §9): creates the task under the actor's authz, links the thread to it
+    * (entity_links thread↔task), so the task surfaces on the thread and the thread's `<LinkedEmails>` on the task.
+    */
+  def threadToTask(
+      xa: Transactor[IO],
+      p: Principal,
+      id: UUID,
+      r: CreateTaskFromThreadReq
+  ): IO[Out[CreatedFromThread]] = {
+    val title = r.title.trim
+    if (title.isEmpty)
+      IO.pure(Left((StatusCode.UnprocessableEntity, ApiError(422, "empty", "Task needs a title."))))
+    else
+      onThread(p, id, Actions.byKey("inbox:view")) {
+        Authz.forUser(p.userId, p.role).flatMap { authz =>
+          if (!authz.can(Actions.byKey("task:create"))) (Left(forbidden): Out[CreatedFromThread]).pure[ConnectionIO]
+          else
+            for {
+              t <- TaskRepo.createUnfiled(title, r.dueOn, r.priority.getOrElse("normal"), r.assigneeId)
+              _ <- CollabInboxRepo.link(p.userId, id, "task", t.id, p.userId)
+            } yield Right(CreatedFromThread(t.id, s"Task created: $title")): Out[CreatedFromThread]
+        }
+      }.transact(xa).map(_.flatten)
+  }
+
   /** Save/replace the thread's shared draft (collaborators can co-author; gated like a comment). */
   def saveDraft(xa: Transactor[IO], p: Principal, id: UUID, r: DraftReq): IO[Out[Unit]] =
     onThread(p, id, commentA)(CollabInboxRepo.upsertDraft(p.userId, id, p.userId, sanitizeHtml(r.bodyHtml)).void)
@@ -568,6 +602,13 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[Unit])
     .summary("Mark read/unread")
+  val threadToTaskEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "threads" / path[UUID]("id") / "task")
+    .in(jsonBody[CreateTaskFromThreadReq])
+    .errorOut(err)
+    .out(jsonBody[CreatedFromThread])
+    .summary("Turn an email thread into a task (linked back to the thread)")
   val commentEndpoint = endpoint.post
     .securityIn(bearer)
     .in("api" / "inbox" / "threads" / path[UUID]("id") / "comments")
@@ -627,7 +668,10 @@ object Inbox {
     readEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => markRead(xa, p, id, r) }),
     commentEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => comment(xa, p, id, r) }),
     draftEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => saveDraft(xa, p, id, r) }),
-    sendEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => send(xa, p, id, r) })
+    sendEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => send(xa, p, id, r) }),
+    threadToTaskEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, r) => threadToTask(xa, p, id, r) })
   )
 
   val endpoints: List[AnyEndpoint] = List(
@@ -642,6 +686,7 @@ object Inbox {
     commentEndpoint,
     draftEndpoint,
     sendEndpoint,
+    threadToTaskEndpoint,
     confirmEndpoint,
     rejectEndpoint
   )

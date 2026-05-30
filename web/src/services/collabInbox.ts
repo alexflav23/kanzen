@@ -70,3 +70,19 @@ export const rejectProposal = (id: string, token: string | null) =>
 /** Back-reference: the email threads linked to a record (asset/expense/calendar). Scope-filtered server-side. */
 export const linkedThreads = (targetType: string, targetId: string, token: string | null) =>
   api(`/api/inbox/links?targetType=${targetType}&targetId=${targetId}`, z.array(CThreadSchema), { token });
+
+/** W9.4b — turn an email thread into a task. Links the thread to the task (entity_links) both ways. */
+export const CreatedFromThreadSchema = z.object({ taskId: z.string(), label: z.string() });
+export const threadToTask = (id: string, body: { title: string; dueOn?: string | null; priority?: string | null; assigneeId?: string | null }, token: string | null) =>
+  api(`/api/inbox/threads/${id}/task`, CreatedFromThreadSchema, { method: "POST", body, token });
+
+/** W9.4b — generic collab API: comments on any entity (the foundation for <CollabPanel>). */
+export const CCollabCommentSchema = z.object({
+  id: z.string(), entityType: z.string(), entityId: z.string(), authorId: z.string(),
+  authorName: z.string().nullable(), body: z.string(), mentions: z.array(z.string()), createdAt: z.string(),
+});
+export type CCollabComment = z.infer<typeof CCollabCommentSchema>;
+export const getComments = (entityType: string, entityId: string, token: string | null) =>
+  api(`/api/comments?entityType=${entityType}&entityId=${entityId}`, z.array(CCollabCommentSchema), { token });
+export const addComment = (entityType: string, entityId: string, body: string, mentions: string[], token: string | null) =>
+  api(`/api/comments`, CCollabCommentSchema, { method: "POST", body: { entityType, entityId, body, mentions }, token });

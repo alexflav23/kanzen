@@ -1,7 +1,8 @@
 package com.kanzen.api
 
 import cats.effect.IO
-import com.kanzen.api.Inbox.{AssignReq, CommentReq, DraftReq, SendReq, StatusReq}
+import com.kanzen.api.Collab.AddCommentReq
+import com.kanzen.api.Inbox.{AssignReq, CommentReq, CreateTaskFromThreadReq, DraftReq, SendReq, StatusReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.people.PeopleRepo
@@ -186,6 +187,50 @@ object CollabInboxIT extends IOSuite {
       after <- Inbox.detail(xa, toby, crystal.id).map(_.toOption.get)
       out = after.messages.filter(_.direction == "outbound").last // the reply we just sent (a prior one is seeded)
     } yield expect(out.bodyHtml.exists(!_.contains("<script"))) and expect(out.bodyHtml.exists(_.contains("Thanks")))
+  }
+
+  test("W9.4b — thread→task: an email becomes a task, linked back to the thread") { xa =>
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
+      crystal = threads.find(_.subject.exists(_.contains("Pool service"))).get
+      created <- Inbox
+        .threadToTask(
+          xa,
+          toby,
+          crystal.id,
+          CreateTaskFromThreadReq("Brief Siti before the pool team arrive", None, Some("high"), None)
+        )
+        .map(_.toOption.get)
+      // the task surfaces on the thread's linked records — back-reference closed both ways
+      linked <- Inbox.linked(xa, toby, "task", created.taskId).map(_.toOption.get)
+      tasks <- com.kanzen.tasks.TaskRepo.listTasks(None, None).transact(xa)
+    } yield expect(tasks.exists(t => t.id == created.taskId && t.title.contains("Siti"))) and
+      expect(linked.exists(_.id == crystal.id)) // the thread is linked from the task
+  }
+
+  test("W9.4b — generic /api/comments on a thread: a @mention emits a comment_mentioned F34 event") { xa =>
+    val lornaUser = UUID.fromString("10000000-0000-0000-0000-000000000002")
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
+      eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get
+      before <- sql"select count(*) from event_outbox where event_type = 'comment_mentioned'"
+        .query[Long]
+        .unique
+        .transact(xa)
+      _ <- Collab
+        .addComment(
+          xa,
+          toby,
+          AddCommentReq("email_thread", eleanor.id, "@Lorna can you book Marcus?", Some(List(lornaUser)))
+        )
+        .map(_.toOption.get)
+      after <- sql"select count(*) from event_outbox where event_type = 'comment_mentioned'"
+        .query[Long]
+        .unique
+        .transact(xa)
+      list <- Collab.comments(xa, toby, "email_thread", eleanor.id).map(_.toOption.get)
+    } yield expect(after == before + 1) and // exactly one event for the one mention
+      expect(list.exists(c => c.mentions.contains(lornaUser) && c.body.contains("Marcus")))
   }
 
   test("assign · comment · done round-trip") { xa =>

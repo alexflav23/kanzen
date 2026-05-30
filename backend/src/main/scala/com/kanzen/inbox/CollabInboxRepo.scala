@@ -52,7 +52,14 @@ final case class ProposalRow(
     summary: Option[String],
     confidence: Option[BigDecimal]
 )
-final case class CommentRow(id: UUID, authorName: Option[String], body: String, createdAt: Instant)
+final case class CommentRow(
+    id: UUID,
+    authorId: UUID,
+    authorName: Option[String],
+    body: String,
+    mentions: List[UUID],
+    createdAt: Instant
+)
 final case class AttachmentRow(id: UUID, filename: String, contentType: Option[String], sizeBytes: Option[Long])
 
 /** A proposal with its action type + extracted payload, for execution on confirm. */
@@ -156,7 +163,7 @@ object CollabInboxRepo {
           where thread_id = $threadId order by created_at""".query[ProposalRow].to[List]
 
   def comments(entityType: String, entityId: UUID): ConnectionIO[List[CommentRow]] =
-    sql"""select c.id, u.display_name, c.body, c.created_at
+    sql"""select c.id, c.author_id, u.display_name, c.body, c.mentions, c.created_at
           from entity_comments c left join users u on u.id = c.author_id
           where c.entity_type = $entityType and c.entity_id = $entityId order by c.created_at"""
       .query[CommentRow]

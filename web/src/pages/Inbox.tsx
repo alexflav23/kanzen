@@ -10,12 +10,12 @@ import { Avatar } from "../components/Avatar";
 import { AgentRibbon } from "../components/AgentRibbon";
 import { ProposalReviewModal } from "../components/ProposalReviewModal";
 import { ReplyComposer } from "../components/ReplyComposer";
-import { Check, Inbox as InboxIcon, Documents, Mail } from "../components/icons";
+import { Check, Inbox as InboxIcon, Documents, Mail, Tasks } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
 import {
-  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail,
+  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail, threadToTask,
   type CInbox, type CThread,
 } from "../services/collabInbox";
 
@@ -141,6 +141,10 @@ export function Inbox() {
     mutationFn: ({ id, html }: { id: string; html: string }) => sendReply(id, html, token),
     onSuccess: () => { setReplying(false); setToast("Reply sent"); setTimeout(() => setToast(null), 3500); invalidate(); },
   });
+  const toTask = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => threadToTask(id, { title, priority: "normal" }, token),
+    onSuccess: (r) => { setToast(r.label ?? "Task created"); setTimeout(() => setToast(null), 3500); invalidate(); },
+  });
   const autosaveDraft = (id: string, html: string) => {
     if (draftTimer.current) clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => { void saveDraft(id, html, token); }, 700);
@@ -221,6 +225,9 @@ export function Inbox() {
                           {peopleOpts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       )}
+                    <button type="button" {...stylex.props(styles.btn)} data-testid="thread-to-task" disabled={toTask.isPending} onClick={() => toTask.mutate({ id: detail.thread.id, title: detail.thread.subject ?? "Follow up" })}>
+                      <Tasks size={13} /> Task
+                    </button>
                     {detail.thread.status === "open" || detail.thread.status === "snoozed"
                       ? <button type="button" {...stylex.props(styles.btn)} data-testid="thread-archive" onClick={() => status.mutate({ id: detail.thread.id, s: "archived" })}><Check size={13} /> Archive</button>
                       : <button type="button" {...stylex.props(styles.btn)} data-testid="thread-reopen" onClick={() => status.mutate({ id: detail.thread.id, s: "open" })}>Reopen</button>}
