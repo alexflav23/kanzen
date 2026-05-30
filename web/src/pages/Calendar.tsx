@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle } from "../components/Card";
@@ -7,7 +8,7 @@ import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { createEvent, listEvents, type CalEvent } from "../services/calendar";
+import { createEvent, deleteEvent, listEvents, updateEvent, type CalEvent } from "../services/calendar";
 
 const styles = stylex.create({
   errorText: { color: colors.danger, fontSize: "12.5px" },
@@ -25,16 +26,19 @@ const styles = stylex.create({
   evTitle: { fontSize: "14px", fontWeight: 500, color: colors.ink },
   ro: { fontSize: "11px", color: colors.ink3, marginTop: "2px" },
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", flexShrink: 0 },
-  overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50 },
-  modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px" },
+  overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50, animationName: stylex.keyframes({ from: { opacity: 0 }, to: { opacity: 1 } }), animationDuration: "120ms" },
+  modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px", animationName: stylex.keyframes({ from: { opacity: 0, transform: "translateY(6px) scale(0.97)" }, to: { opacity: 1, transform: "translateY(0) scale(1)" } }), animationDuration: "160ms", animationTimingFunction: "ease-out" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
   field: { display: "block", marginBottom: "12px" },
   twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
   control: { width: "100%", padding: "8px 10px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink, fontSize: "13.5px", boxSizing: "border-box" },
-  actions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
-  ghost: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px" },
-  primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px" },
+  actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", marginTop: "20px" },
+  spacer: { flex: 1 },
+  ghost: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px", fontFamily: "inherit" },
+  primary: { padding: "8px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", fontFamily: "inherit" },
+  danger: { padding: "8px 16px", borderRadius: radius.sm, border: `1px solid ${colors.dangerSoft}`, backgroundColor: colors.dangerSoft, color: colors.danger, cursor: "pointer", fontSize: "13px", fontWeight: 500, fontFamily: "inherit" },
+  confirmText: { fontSize: "13px", color: colors.ink2 },
   // view toggle + month grid
   headRight: { display: "flex", alignItems: "center", gap: "10px" },
   seg: { display: "inline-flex", gap: "2px", padding: "3px", borderRadius: radius.md, backgroundColor: colors.bgSunken },
@@ -163,30 +167,131 @@ function NewEventModal({ token, date, time, onClose }: { token: string | null; d
 }
 
 // where a read-only overlay event can actually be edited (it isn't a native calendar event)
-const sourceHome = (s: string) => (s === "task" ? "Tasks" : s === "maintenance" ? "Maintenance" : s === "leave" ? "People" : null);
+const sourceHome = (s: string): { label: string; route: string } | null =>
+  s === "task" ? { label: "Tasks", route: "/tasks" }
+  : s === "maintenance" ? { label: "Maintenance", route: "/maintenance" }
+  : s === "leave" ? { label: "People", route: "/people" }
+  : null;
 
-/** Event detail — opened by clicking any event (chip / agenda row / timed block). Shows what we hold for the
- * event; native events are editable from their source, read-only overlays point back to where they live. */
+/** Event detail — opened by clicking any event. Native events get Edit + Delete in place; read-only overlays
+ *  (task / maintenance / leave) get a deep-link to the surface where they actually live, with a clear
+ *  read-only framing. Esc + outside click close; subtle fade/pop-in animation. */
 function EventDetailModal({ event, onClose }: { event: CalEvent; onClose: () => void }) {
-  const time = event.startTime ? `${fmtTime(event.startTime)}${event.endTime ? `–${fmtTime(event.endTime)}` : ""}` : "All day";
+  const { token } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const home = sourceHome(event.source);
+
+  // Edit form state (mirrors NewEventModal). Prefilled from the current event.
+  const [title, setTitle] = useState(event.title);
+  const [on, setOn] = useState(event.startOn ?? iso(new Date()));
+  const [category, setCategory] = useState(event.category);
+  const [startTime, setStartTime] = useState(event.startTime ? event.startTime.slice(0, 5) : "");
+  const [endTime, setEndTime] = useState(event.endTime ? event.endTime.slice(0, 5) : "");
+
+  const editM = useMutation({
+    mutationFn: () => updateEvent(token, event.id, {
+      title: title.trim(), on, category,
+      startTime: startTime || null, endTime: startTime ? (endTime || null) : null,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["calendar"] }); onClose(); },
+  });
+  const delM = useMutation({
+    mutationFn: () => deleteEvent(token, event.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["calendar"] }); onClose(); },
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const time = event.startTime ? `${fmtTime(event.startTime)}${event.endTime ? `–${fmtTime(event.endTime)}` : ""}` : "All day";
+  const isEdit = mode === "edit" && !event.readOnly;
+
   return (
     <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" aria-label="Event detail" onClick={onClose}>
       <div {...stylex.props(styles.modal)} data-testid="event-detail" onClick={(e) => e.stopPropagation()}>
-        <div {...stylex.props(styles.modalTitle)}>{event.title}</div>
-        <dl {...stylex.props(styles.dl)}>
-          <div><dt {...stylex.props(styles.dt)}>Date</dt><dd {...stylex.props(styles.dd)}>{fmtDate(event.startOn)}</dd></div>
-          <div><dt {...stylex.props(styles.dt)}>Time</dt><dd {...stylex.props(styles.dd)}>{time}</dd></div>
-          <div><dt {...stylex.props(styles.dt)}>Category</dt><dd><Pill tone={catTone(event.category)}>{event.category}</Pill></dd></div>
-          <div><dt {...stylex.props(styles.dt)}>Source</dt><dd {...stylex.props(styles.dd)}>{event.source}</dd></div>
-        </dl>
-        {event.readOnly && (
+        <div {...stylex.props(styles.modalTitle)}>{isEdit ? "Edit event" : event.title}</div>
+
+        {!isEdit && (
+          <dl {...stylex.props(styles.dl)}>
+            <div><dt {...stylex.props(styles.dt)}>Date</dt><dd {...stylex.props(styles.dd)}>{fmtDate(event.startOn)}</dd></div>
+            <div><dt {...stylex.props(styles.dt)}>Time</dt><dd {...stylex.props(styles.dd)}>{time}</dd></div>
+            <div><dt {...stylex.props(styles.dt)}>Category</dt><dd><Pill tone={catTone(event.category)}>{event.category}</Pill></dd></div>
+            <div><dt {...stylex.props(styles.dt)}>Source</dt><dd {...stylex.props(styles.dd)}>{event.source}</dd></div>
+          </dl>
+        )}
+
+        {isEdit && (
+          <form onSubmit={(e) => { e.preventDefault(); if (title.trim()) editM.mutate(); }}>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Title</span>
+              <input {...stylex.props(styles.control)} aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></label>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Date</span>
+              <input {...stylex.props(styles.control)} aria-label="Date" type="date" value={on} onChange={(e) => setOn(e.target.value)} /></label>
+            <div {...stylex.props(styles.field, styles.twoCol)}>
+              <label><span {...stylex.props(styles.label)}>Start time</span>
+                <input {...stylex.props(styles.control)} aria-label="Start time" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label>
+              <label><span {...stylex.props(styles.label)}>End time</span>
+                <input {...stylex.props(styles.control)} aria-label="End time" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label>
+            </div>
+            <label {...stylex.props(styles.field)}><span {...stylex.props(styles.label)}>Category</span>
+              <select {...stylex.props(styles.control)} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
+                {NEW_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select></label>
+            {editM.isError && <div {...stylex.props(styles.errorText)} role="alert">Couldn't save the changes.</div>}
+            <input type="submit" hidden />
+          </form>
+        )}
+
+        {event.readOnly && !isEdit && (
           <div {...stylex.props(styles.note)} data-testid="event-readonly">
-            Read-only overlay{home ? ` — manage it under ${home}` : ""}. Calendar dates for {event.source}s follow the underlying record.
+            Read-only overlay{home ? ` — manage it under ${home.label}` : ""}. Calendar dates for {event.source}s follow the underlying record.
           </div>
         )}
+        {delM.isError && <div {...stylex.props(styles.errorText)} role="alert">Couldn't delete the event.</div>}
+
         <div {...stylex.props(styles.actions)}>
-          <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Close</button>
+          {/* Read-only overlay → deep-link to source */}
+          {event.readOnly && home && (
+            <button type="button" {...stylex.props(styles.primary)} data-testid="event-open-source"
+              onClick={() => { onClose(); navigate(home.route); }}>Open in {home.label}</button>
+          )}
+
+          {/* Native event, view mode → Edit + Delete + Close */}
+          {!event.readOnly && !isEdit && !confirmingDelete && (<>
+            <button type="button" {...stylex.props(styles.danger)} data-testid="event-delete"
+              onClick={() => setConfirmingDelete(true)}>Delete</button>
+            <span {...stylex.props(styles.spacer)} aria-hidden="true" />
+            <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Close</button>
+            <button type="button" {...stylex.props(styles.primary)} data-testid="event-edit" onClick={() => setMode("edit")}>Edit</button>
+          </>)}
+
+          {/* Confirm step — no double-click traps for destructive action */}
+          {confirmingDelete && (<>
+            <span {...stylex.props(styles.confirmText)}>Delete this event?</span>
+            <span {...stylex.props(styles.spacer)} aria-hidden="true" />
+            <button type="button" {...stylex.props(styles.ghost)} onClick={() => setConfirmingDelete(false)} disabled={delM.isPending}>Cancel</button>
+            <button type="button" {...stylex.props(styles.danger)} data-testid="event-delete-confirm"
+              disabled={delM.isPending} onClick={() => delM.mutate()}>{delM.isPending ? "Deleting…" : "Delete"}</button>
+          </>)}
+
+          {/* Edit mode → Cancel + Save */}
+          {isEdit && (<>
+            <span {...stylex.props(styles.spacer)} aria-hidden="true" />
+            <button type="button" {...stylex.props(styles.ghost)} onClick={() => setMode("view")}>Cancel</button>
+            <button type="button" {...stylex.props(styles.primary)} data-testid="event-save"
+              disabled={editM.isPending || !title.trim()}
+              onClick={() => editM.mutate()}>{editM.isPending ? "Saving…" : "Save"}</button>
+          </>)}
+
+          {/* Pure read-only with no source → just Close */}
+          {event.readOnly && !home && (
+            <button type="button" {...stylex.props(styles.ghost)} onClick={onClose}>Close</button>
+          )}
         </div>
       </div>
     </div>

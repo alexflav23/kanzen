@@ -35,3 +35,20 @@ export type CreateEventReq = {
 export function createEvent(token: string | null, req: CreateEventReq): Promise<CalEvent> {
   return api("/api/calendar/events", CalEventSchema, { method: "POST", token, body: req });
 }
+
+/** Edit a native calendar event in place. The backend requires title + on + category; times are optional. */
+export type UpdateEventReq = {
+  title: string;
+  on: string;
+  category: string;
+  startTime?: string | null;
+  endTime?: string | null;
+};
+export function updateEvent(token: string | null, id: string, req: UpdateEventReq): Promise<unknown> {
+  return api(`/api/calendar/events/${id}`, z.unknown(), { method: "PATCH", token, body: req });
+}
+
+/** Soft-delete a native calendar event. Read-only overlays (task / maintenance) can't be deleted from here. */
+export function deleteEvent(token: string | null, id: string): Promise<unknown> {
+  return api(`/api/calendar/events/${id}`, z.unknown(), { method: "DELETE", token });
+}

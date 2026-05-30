@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
 
@@ -14,16 +15,18 @@ vi.mock("../services/calendar", () => {
       { id: "t1", title: "Order pool chemicals", startOn: rel(-1), startTime: null, endTime: null, category: "task", source: "task", readOnly: true },
     ],
     createEvent: vi.fn(async () => ({ id: "new", title: "Window cleaners", startOn: rel(0), startTime: null, endTime: null, category: "manual", source: "manual", readOnly: false })),
+    updateEvent: vi.fn(async () => ({})),
+    deleteEvent: vi.fn(async () => ({})),
   };
 });
 
 import { Calendar } from "../pages/Calendar";
-import { createEvent } from "../services/calendar";
+import { createEvent, deleteEvent, updateEvent } from "../services/calendar";
 
 const renderCal = () =>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AuthProvider><Calendar /></AuthProvider>
+      <MemoryRouter><AuthProvider><Calendar /></AuthProvider></MemoryRouter>
     </QueryClientProvider>,
   );
 
@@ -97,6 +100,44 @@ describe("Calendar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add event" }));
     await waitFor(() =>
       expect(createEvent).toHaveBeenCalledWith("t", { title: "Window cleaners", on: expect.any(String), category: "manual", propertyId: null }),
+    );
+  });
+
+  it("native event modal: Edit opens the form; Delete asks to confirm, then deletes", async () => {
+    renderCal();
+    fireEvent.click(await screen.findByText(/Plumber visit/));
+    const modal = await screen.findByTestId("event-detail");
+    // Edit + Delete affordances both visible
+    expect(within(modal).getByTestId("event-edit")).toBeInTheDocument();
+    fireEvent.click(within(modal).getByTestId("event-edit"));
+    // form fields prefilled with the existing event
+    expect((within(modal).getByLabelText("Title") as HTMLInputElement).value).toMatch(/Plumber/);
+    expect((within(modal).getByLabelText("Start time") as HTMLInputElement).value).toBe("09:30");
+    // back out + delete with confirm step
+    fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(modal).getByTestId("event-delete"));
+    fireEvent.click(within(modal).getByTestId("event-delete-confirm"));
+    await waitFor(() => expect(deleteEvent).toHaveBeenCalledWith("t", "c1"));
+  });
+
+  it("read-only overlay modal: no Edit/Delete; offers to open in the source surface", async () => {
+    renderCal();
+    fireEvent.click(await screen.findByText(/Order pool chemicals/));
+    const modal = await screen.findByTestId("event-detail");
+    expect(within(modal).queryByTestId("event-edit")).toBeNull();
+    expect(within(modal).queryByTestId("event-delete")).toBeNull();
+    expect(within(modal).getByTestId("event-open-source")).toHaveTextContent("Open in Tasks");
+  });
+
+  it("native event Save patches the calendar event", async () => {
+    renderCal();
+    fireEvent.click(await screen.findByText(/Plumber visit/));
+    const modal = await screen.findByTestId("event-detail");
+    fireEvent.click(within(modal).getByTestId("event-edit"));
+    fireEvent.change(within(modal).getByLabelText("Title"), { target: { value: "Plumber visit — rescheduled" } });
+    fireEvent.click(within(modal).getByTestId("event-save"));
+    await waitFor(() =>
+      expect(updateEvent).toHaveBeenCalledWith("t", "c1", expect.objectContaining({ title: "Plumber visit — rescheduled" })),
     );
   });
 });
