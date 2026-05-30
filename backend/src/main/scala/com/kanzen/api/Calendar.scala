@@ -94,7 +94,8 @@ object Calendar {
       to: LocalDate,
       category: Option[String]
   ): IO[Out[List[EventView]]] =
-    read(p, CalendarRepo.merged(from, to).map(_.map(ev).filter(e => category.forall(_ == e.category)))).transact(xa)
+    read(p, CalendarRepo.merged(p.tenantId, from, to).map(_.map(ev).filter(e => category.forall(_ == e.category))))
+      .transact(xa)
 
   def create(xa: Transactor[IO], p: Principal, r: CreateReq): IO[Out[EventView]] = {
     val cat = r.category.getOrElse("manual")
@@ -109,7 +110,18 @@ object Calendar {
         ownerId = p.userId,
         propertyId = r.propertyId
       )(
-        CalendarRepo.createNative(p.userId, r.title, r.on, cat, r.propertyId, "manual", None, r.startTime, r.endTime)
+        CalendarRepo.createNative(
+          p.userId,
+          p.tenantId,
+          r.title,
+          r.on,
+          cat,
+          r.propertyId,
+          "manual",
+          None,
+          r.startTime,
+          r.endTime
+        )
       )(
         subjectOf = id => Subject("calendar_event", id),
         payloadOf = id =>
@@ -133,7 +145,7 @@ object Calendar {
   def update(xa: Transactor[IO], p: Principal, id: UUID, r: UpdateReq): IO[Out[Ok]] = {
     val tx = for {
       a <- Authz.forUser(p.userId, p.role)
-      exists <- CalendarRepo.exists(id)
+      exists <- CalendarRepo.exists(id, p.tenantId)
       res <-
         if (!a.can(editA)) (Left(forbidden): Out[Ok]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Ok]).pure[ConnectionIO]
@@ -144,7 +156,9 @@ object Calendar {
               action = "calendar.update",
               eventType = Events.Calendar.Updated,
               ownerId = p.userId
-            )(CalendarRepo.update(id, r.title, r.on, r.category, r.startTime, r.endTime).map(n => Ok(n > 0)))(
+            )(
+              CalendarRepo.update(id, p.tenantId, r.title, r.on, r.category, r.startTime, r.endTime).map(n => Ok(n > 0))
+            )(
               subjectOf = _ => Subject("calendar_event", id),
               payloadOf = _ =>
                 Json.obj(
@@ -169,7 +183,7 @@ object Calendar {
         action = "calendar.delete",
         eventType = Events.Calendar.Deleted,
         ownerId = p.userId
-      )(CalendarRepo.softDelete(id).map(n => Ok(n > 0)))(
+      )(CalendarRepo.softDelete(id, p.tenantId).map(n => Ok(n > 0)))(
         subjectOf = _ => Subject("calendar_event", id),
         payloadOf = _ => Json.obj("id" -> id.asJson)
       )

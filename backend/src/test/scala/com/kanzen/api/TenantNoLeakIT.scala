@@ -4,8 +4,11 @@ import cats.effect.IO
 import com.kanzen.api.Assets.CreateReq
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
+import com.kanzen.calendar.CalendarRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.tasks.TaskRepo
+
+import java.time.LocalDate
 import com.kanzen.db.TestDb
 import com.kanzen.s3.ObjectStore
 import com.kanzen.tenant.Tenant
@@ -115,5 +118,21 @@ object TenantNoLeakIT extends IOSuite {
       expect(aExps.exists(_.id == aExp.id)) and expect(!aExps.exists(_.id == bExp.id)) and
       expect(bExps.exists(_.id == bExp.id)) and expect(!bExps.exists(_.id == aExp.id)) and
       expect(aBSeesBill.isEmpty) and expect(aBSeesExp.isEmpty) // no leak by direct id across tenants
+  }
+
+  test("calendar: a tenant only sees its own events in the merged window") { xa =>
+    val day = LocalDate.of(2026, 7, 15)
+    for {
+      tenantB <- newTenant(xa)
+      aEv <- CalendarRepo
+        .createNative(UUID.randomUUID(), Tenant.DefaultId, "A dentist", day, "manual", None, "manual", None)
+        .transact(xa)
+      bEv <- CalendarRepo
+        .createNative(UUID.randomUUID(), tenantB, "B board meeting", day, "manual", None, "manual", None)
+        .transact(xa)
+      aMerged <- CalendarRepo.merged(Tenant.DefaultId, day, day).transact(xa)
+      bMerged <- CalendarRepo.merged(tenantB, day, day).transact(xa)
+    } yield expect(aMerged.exists(_.id == aEv)) and expect(!aMerged.exists(_.id == bEv)) and
+      expect(bMerged.exists(_.id == bEv)) and expect(!bMerged.exists(_.id == aEv))
   }
 }

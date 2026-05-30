@@ -35,6 +35,7 @@ object CalendarRepo {
   /** Native event authoring (no google_event_id until pushed to Google). Times are property-local. */
   def createNative(
       ownerId: UUID,
+      tenantId: UUID,
       title: String,
       on: LocalDate,
       category: String,
@@ -44,13 +45,14 @@ object CalendarRepo {
       startTime: Option[LocalTime] = None,
       endTime: Option[LocalTime] = None
   ): ConnectionIO[UUID] =
-    sql"""insert into calendar_event_refs (owner_id, title, start_on, start_time, end_time, category, source, source_id, property_id)
-          values ($ownerId, $title, $on, $startTime, $endTime, $category, $source, $sourceId, $propertyId) returning id"""
+    sql"""insert into calendar_event_refs (owner_id, tenant_id, title, start_on, start_time, end_time, category, source, source_id, property_id)
+          values ($ownerId, $tenantId, $title, $on, $startTime, $endTime, $category, $source, $sourceId, $propertyId) returning id"""
       .query[UUID]
       .unique
 
   def update(
       id: UUID,
+      tenantId: UUID,
       title: String,
       on: LocalDate,
       category: String,
@@ -58,13 +60,15 @@ object CalendarRepo {
       endTime: Option[LocalTime] = None
   ): ConnectionIO[Int] =
     sql"""update calendar_event_refs set title = $title, start_on = $on, start_time = $startTime, end_time = $endTime,
-          category = $category where id = $id and deleted_at is null""".update.run
+          category = $category where id = $id and tenant_id = $tenantId and deleted_at is null""".update.run
 
-  def softDelete(id: UUID): ConnectionIO[Int] =
-    sql"update calendar_event_refs set deleted_at = now() where id = $id and deleted_at is null".update.run
+  def softDelete(id: UUID, tenantId: UUID): ConnectionIO[Int] =
+    sql"update calendar_event_refs set deleted_at = now() where id = $id and tenant_id = $tenantId and deleted_at is null".update.run
 
-  def exists(id: UUID): ConnectionIO[Boolean] =
-    sql"select exists(select 1 from calendar_event_refs where id = $id and deleted_at is null)".query[Boolean].unique
+  def exists(id: UUID, tenantId: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from calendar_event_refs where id = $id and tenant_id = $tenantId and deleted_at is null)"
+      .query[Boolean]
+      .unique
 
   /** Source-paired event for (source, source_id) — keeps maintenance/agent events idempotent. */
   def bySource(source: String, sourceId: UUID): ConnectionIO[Option[UUID]] =
@@ -75,14 +79,15 @@ object CalendarRepo {
   /** The merged view: native/Google events in range + read-only overlays from due tasks and maintenance plans. Native =
     * system-of-linkage; tasks/maintenance are derived, not stored.
     */
-  def merged(from: LocalDate, to: LocalDate): ConnectionIO[List[CalEvent]] =
+  def merged(tenantId: UUID, from: LocalDate, to: LocalDate): ConnectionIO[List[CalEvent]] =
     sql"""select id, title, start_on, start_time, end_time, coalesce(category, 'manual'), source
-            from calendar_event_refs where deleted_at is null and start_on between $from and $to
+            from calendar_event_refs
+            where deleted_at is null and tenant_id = $tenantId and start_on between $from and $to
           union all
           select id, title, due_on, null::time, null::time, 'task', 'task'
-            from tasks where due_on between $from and $to and status <> 'done'
+            from tasks where tenant_id = $tenantId and due_on between $from and $to and status <> 'done'
           union all
           select id, title, next_due, null::time, null::time, 'maintenance', 'maintenance'
-            from maintenance_plans where next_due between $from and $to and active
+            from maintenance_plans where tenant_id = $tenantId and next_due between $from and $to and active
           order by 3, 4 nulls first""".query[CalEvent].to[List]
 }

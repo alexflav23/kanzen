@@ -447,7 +447,16 @@ object Inbox {
               .toOption
               .flatMap(s => Try(LocalDate.parse(s)).toOption)
               .getOrElse(LocalDate.now)
-            eid <- CalendarRepo.createNative(p.userId, title, date, str("category", "manual"), prop, "agent", Some(tid))
+            eid <- CalendarRepo.createNative(
+              p.userId,
+              p.tenantId,
+              title,
+              date,
+              str("category", "manual"),
+              prop,
+              "agent",
+              Some(tid)
+            )
             _ <- CollabInboxRepo.link(p.userId, tid, "calendar", eid, p.userId)
             // a service/maintenance event may also concern an asset (e.g. the car) — link the thread to it too
             _ <- c
