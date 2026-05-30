@@ -102,4 +102,27 @@ object PropertiesApiIT extends IOSuite {
       case Right(_) => failure("expected 403")
     }
   }
+
+  test("F34 — property mutations emit property.{created,updated,archived}") { xa =>
+    import com.kanzen.api.Properties.{CreateReq, PatchReq}
+    import doobie.implicits._
+    import doobie.postgres.implicits._
+    for {
+      created <- Properties
+        .create(
+          xa,
+          principal("principal"),
+          CreateReq("Lisbon Flat", None, Some("pt"), Some("residential"), Some("owned"), "EUR")
+        )
+        .map(_.toOption.get)
+      _ <- Properties
+        .patch(xa, principal("principal"), created.id, PatchReq("Lisbon Apartment", None, Some("pt"), None, None))
+        .map(_.toOption.get)
+      _ <- Properties.archive(xa, principal("principal"), created.id).map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${created.id}".query[String].to[List].transact(xa)
+    } yield expect(events.contains("property.created")) and
+      expect(events.contains("property.updated")) and
+      expect(events.contains("property.archived"))
+  }
 }

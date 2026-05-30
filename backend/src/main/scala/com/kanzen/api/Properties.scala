@@ -8,7 +8,10 @@ import com.kanzen.property.{Property, PropertyCounts, PropertyRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -126,7 +129,20 @@ object Properties {
             req.ownership,
             req.currency
           )
-          .map(pr => Right(toView(pr)): Out[PropertyView])
+          .flatMap(pr =>
+            EventRepo
+              .emit(
+                Envelope(
+                  Events.Property.Created,
+                  Actor.user(p.userId),
+                  Subject("property", pr.id),
+                  p.userId,
+                  Some(pr.id),
+                  Json.obj("name" -> req.name.asJson)
+                )
+              )
+              .as(Right(toView(pr)): Out[PropertyView])
+          )
     }
     tx.transact(xa)
   }
@@ -142,6 +158,16 @@ object Properties {
           else if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else
             PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
+              EventRepo.emit(
+                Envelope(
+                  Events.Property.Updated,
+                  Actor.user(p.userId),
+                  Subject("property", id),
+                  p.userId,
+                  Some(id),
+                  Json.obj("name" -> req.name.asJson)
+                )
+              ) *>
               PropertyRepo.findProperty(id, p.tenantId).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
@@ -157,8 +183,18 @@ object Properties {
         case Some(_) =>
           if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else
-            PropertyRepo
-              .archive(id) *> PropertyRepo.findProperty(id, p.tenantId).map(_.map(pr => toView(pr)).toRight(notFound))
+            PropertyRepo.archive(id) *>
+              EventRepo.emit(
+                Envelope(
+                  Events.Property.Archived,
+                  Actor.user(p.userId),
+                  Subject("property", id),
+                  p.userId,
+                  Some(id),
+                  Json.obj()
+                )
+              ) *>
+              PropertyRepo.findProperty(id, p.tenantId).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
