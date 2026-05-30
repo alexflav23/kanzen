@@ -9,7 +9,10 @@ import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -127,7 +130,20 @@ object Lists {
       p,
       ListRepo
         .createList(p.tenantId, r.propertyId, r.name, r.vendor)
-        .map(id => ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active", "normal", None)),
+        .flatMap(id =>
+          EventRepo
+            .emit(
+              Envelope(
+                Events.ListItem.ListCreated,
+                Actor.user(p.userId),
+                Subject("list", id),
+                p.userId,
+                r.propertyId,
+                Json.obj("name" -> r.name.asJson)
+              )
+            )
+            .as(ListView(id, r.name, r.vendor, r.propertyId, "grocery", None, None, "active", "normal", None))
+        ),
       createA
     ).transact(xa)
 
@@ -211,7 +227,20 @@ object Lists {
       res <-
         if (!authz.can(orderA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
-        else ListRepo.placeOrder(listId).as(Right(()): Out[Unit])
+        else
+          ListRepo.placeOrder(listId) *>
+            EventRepo
+              .emit(
+                Envelope(
+                  Events.ListItem.Ordered,
+                  Actor.user(p.userId),
+                  Subject("list", listId),
+                  p.userId,
+                  None,
+                  Json.obj()
+                )
+              )
+              .as(Right(()): Out[Unit])
     } yield res
     tx.transact(xa)
   }

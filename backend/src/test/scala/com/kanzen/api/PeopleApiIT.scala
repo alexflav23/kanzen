@@ -74,4 +74,15 @@ object PeopleApiIT extends IOSuite {
       denied <- People.create(xa, marcia, People.CreateReq("Nope", None, None, None, None, None, None))
     } yield expect(ok.isRight) and expect(denied.left.exists(_._1.code == 403))
   }
+  test("F34 — person create emits person.created") { xa =>
+    import doobie.implicits._
+    import doobie.postgres.implicits._
+    for {
+      per <- People
+        .create(xa, lorna, People.CreateReq("F34 Hire", Some("Gardener"), Some("uk"), None, None, None, None))
+        .map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${per.id}".query[String].to[List].transact(xa)
+    } yield expect(events.contains("person.created"))
+  }
 }

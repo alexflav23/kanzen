@@ -76,4 +76,16 @@ object MaintenanceApiIT extends IOSuite {
       expect(noProp.left.exists(_._1.code == 400)) and // plan has no property → can't route a task
       expect(staff.left.exists(_._1.code == 403))
   }
+  test("F34 — maintenance create + complete emit maintenance.{scheduled,completed}") { xa =>
+    import doobie.implicits._
+    import doobie.postgres.implicits._
+    for {
+      plan <- Maintenance
+        .create(xa, lorna, CreateReq("F34 plan", None, None, "annually", LocalDate.now.plusDays(3), Some(7)))
+        .map(_.toOption.get)
+      _ <- Maintenance.complete(xa, lorna, plan.id, CompleteReq(None, None)).map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${plan.id}".query[String].to[List].transact(xa)
+    } yield expect(events.contains("maintenance.scheduled")) and expect(events.contains("maintenance.completed"))
+  }
 }

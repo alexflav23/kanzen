@@ -21,6 +21,7 @@ object Events {
     val Cancelled = "task.cancelled"
   }
   object ListItem {
+    val ListCreated = "list.created"
     val Proposed = "list.item_proposed"
     val Approved = "list.item_approved"
     val Ordered = "list.ordered"
@@ -28,6 +29,10 @@ object Events {
   object Maintenance {
     val Scheduled = "maintenance.scheduled"
     val Completed = "maintenance.completed"
+  }
+  object Person {
+    val Created = "person.created"
+    val Updated = "person.updated"
   }
 
   // ── Comms (W9) ─────────────────────────────────────────────────────────────

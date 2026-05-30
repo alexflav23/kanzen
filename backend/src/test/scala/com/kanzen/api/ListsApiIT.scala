@@ -56,4 +56,14 @@ object ListsApiIT extends IOSuite {
       ) and
       expect(items.exists(_.addedBy.contains("Marcia"))) // resolved from the join
   }
+  test("F34 — list create + place-order emit list.created / list.ordered") { xa =>
+    import doobie.implicits._
+    import doobie.postgres.implicits._
+    for {
+      list <- Lists.createList(xa, toby, CreateListReq("F34 list", None, None)).map(_.toOption.get)
+      _ <- Lists.placeOrder(xa, toby, list.id).map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${list.id}".query[String].to[List].transact(xa)
+    } yield expect(events.contains("list.created")) and expect(events.contains("list.ordered"))
+  }
 }

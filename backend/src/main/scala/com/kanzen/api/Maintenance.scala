@@ -10,7 +10,10 @@ import com.kanzen.tasks.TaskRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -81,7 +84,20 @@ object Maintenance {
       else
         MaintenanceRepo
           .insert(p.userId, r.title, r.propertyId, r.vendor, r.frequency, r.firstDue, r.leadDays.getOrElse(5))
-          .map(pl => Right(view(pl, today)): Out[PlanView])
+          .flatMap(pl =>
+            EventRepo
+              .emit(
+                Envelope(
+                  Events.Maintenance.Scheduled,
+                  Actor.user(p.userId),
+                  Subject("maintenance", pl.id),
+                  p.userId,
+                  r.propertyId,
+                  Json.obj("title" -> r.title.asJson, "frequency" -> r.frequency.asJson)
+                )
+              )
+              .as(Right(view(pl, today)): Out[PlanView])
+          )
     }
     tx.transact(xa)
   }
@@ -96,7 +112,20 @@ object Maintenance {
         else
           MaintenanceRepo
             .complete(id, r.performedOn.getOrElse(LocalDate.now()), r.costMinor)
-            .map(nd => Right(CompleteResult(nd)): Out[CompleteResult])
+            .flatMap(nd =>
+              EventRepo
+                .emit(
+                  Envelope(
+                    Events.Maintenance.Completed,
+                    Actor.user(p.userId),
+                    Subject("maintenance", id),
+                    p.userId,
+                    None,
+                    Json.obj("nextDue" -> nd.toString.asJson)
+                  )
+                )
+                .as(Right(CompleteResult(nd)): Out[CompleteResult])
+            )
     } yield res
     tx.transact(xa)
   }

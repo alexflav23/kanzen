@@ -11,7 +11,10 @@ import doobie.implicits._
 import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.{Decoder, Json}
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -150,7 +153,18 @@ object People {
             req.permitExpiry,
             req.reviewDue
           )
-          .flatMap(per => colourMap(per.userId.toSet).map(c => Right(view(per, c)): Out[PersonView]))
+          .flatMap(per =>
+            EventRepo.emit(
+              Envelope(
+                Events.Person.Created,
+                Actor.user(p.userId),
+                Subject("person", per.id),
+                p.userId,
+                req.propertyId,
+                Json.obj("name" -> req.name.asJson, "role" -> req.role.asJson)
+              )
+            ) *> colourMap(per.userId.toSet).map(c => Right(view(per, c)): Out[PersonView])
+          )
     }
     tx.transact(xa)
   }
