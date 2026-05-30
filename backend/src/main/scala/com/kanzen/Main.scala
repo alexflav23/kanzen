@@ -9,14 +9,18 @@ import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import com.kanzen.events.{Consumers, Relay}
 import com.kanzen.identity.Principals
+import com.kanzen.realtime.RealtimeHub
 import com.kanzen.s3.{ObjectStore, S3ObjectStore}
 import doobie.util.transactor.Transactor
 import org.http4s.HttpApp
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.implicits._
 import org.http4s.server.middleware.{CORS, Logger}
+import org.http4s.server.websocket.WebSocketBuilder2
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
+
+import scala.concurrent.duration._
 
 /** F00 — backend entrypoint. Boot order (mirrors athena): load + validate config (report all missing keys) → Flyway
   * migrate → primary API server (`:8080`, `/api` + `/docs`) + admin health server (`:9990`). Grows here: + Doobie
@@ -31,14 +35,20 @@ object Main extends IOApp.Simple {
       xa: Transactor[IO],
       store: ObjectStore,
       blobSecret: String,
-      dev: Option[DevAuth]
+      dev: Option[DevAuth],
+      hub: RealtimeHub,
+      wsb: WebSocketBuilder2[IO]
   ): HttpApp[IO] =
     Logger.httpApp[IO](logHeaders = true, logBody = false)(
-      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, store, blobSecret, dev).orNotFound)
+      CORS.policy.withAllowOriginAll(Api.routes(auth, xa, store, blobSecret, dev, hub, wsb).orNotFound)
     )
 
   private def server(h: Host, p: Port, app: HttpApp[IO]) =
     EmberServerBuilder.default[IO].withHost(h).withPort(p).withHttpApp(app).build
+
+  /** The primary server needs the WebSocket builder for F48's `/api/ws`, so it's built via `withHttpWebSocketApp`. */
+  private def wsServer(h: Host, p: Port, appOf: WebSocketBuilder2[IO] => HttpApp[IO]) =
+    EmberServerBuilder.default[IO].withHost(h).withPort(p).withHttpWebSocketApp(appOf).build
 
   def run: IO[Unit] =
     AppConfig.load() match {
@@ -80,17 +90,22 @@ object Main extends IOApp.Simple {
             )
             .use { store =>
               Database.transactor(cfg.db.url, cfg.db.user, cfg.db.password).use { xa =>
-                val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
-                val servers = (
-                  server(host"0.0.0.0", p, primaryApp(auth, xa, store, blobSecret, dev)),
-                  server(host"0.0.0.0", a, Admin.routes.orNotFound)
-                ).tupled.useForever
-                // F34: the transactional-outbox relay runs alongside the servers (in-process
-                // consumers in sandbox; Pulsar transport is infra, deferred to hardening).
-                val relay = log.info("F34 event relay started") *> Relay.run(xa, Consumers.sandbox)
-                // F32/NL-2: the RAG index reconcile loop — first pass backfills, then keeps every asset + update fresh.
-                val reconcile = log.info("NL-2 RAG index reconcile started") *> com.kanzen.index.IndexReconcile.loop(xa)
-                IO.both(servers, IO.both(relay, reconcile)).void
+                RealtimeHub.create.flatMap { hub =>
+                  val auth = Auth(jwks, cfg.cognito.issuer, cfg.cognito.audience, Principals.resolver(xa))
+                  val servers = (
+                    wsServer(host"0.0.0.0", p, wsb => primaryApp(auth, xa, store, blobSecret, dev, hub, wsb)),
+                    server(host"0.0.0.0", a, Admin.routes.orNotFound)
+                  ).tupled.useForever
+                  // F34: the transactional-outbox relay runs alongside the servers (in-process consumers in sandbox;
+                  // Pulsar transport is infra, deferred to hardening). F48: each drained row is also pushed (best-effort)
+                  // to the realtime hub → every websocket. A 300ms poll keeps realtime sub-second in dev.
+                  val relay = log.info("F34 event relay started") *>
+                    Relay.run(xa, Consumers.sandbox, 300.millis, hub.publish)
+                  // F32/NL-2: the RAG index reconcile loop — first pass backfills, then keeps every asset + update fresh.
+                  val reconcile =
+                    log.info("NL-2 RAG index reconcile started") *> com.kanzen.index.IndexReconcile.loop(xa)
+                  IO.both(servers, IO.both(relay, reconcile)).void
+                }
               }
             }
         } yield ()

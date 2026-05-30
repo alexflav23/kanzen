@@ -15,20 +15,29 @@ import scala.concurrent.duration._
   */
 object Relay {
 
-  /** Drain all currently-unpublished events once; returns how many were processed. */
-  def drainOnce(xa: Transactor[IO], consumers: List[Consumer]): IO[Int] = {
-    val tx = for {
+  /** Drain all currently-unpublished events once inside one tx; returns the rows processed (durable consumers ran + the
+    * rows were marked published).
+    */
+  private def drainTx(consumers: List[Consumer]): doobie.ConnectionIO[List[EventRepo.OutboxRow]] =
+    for {
       rows <- EventRepo.unpublishedRows
       _ <- rows.traverse_(r => consumers.traverse_(_.handle(r)) *> EventRepo.markPublished(r.id).void)
-    } yield rows.size
-    tx.transact(xa)
-  }
+    } yield rows
+
+  /** Drain all currently-unpublished events once; returns how many were processed. */
+  def drainOnce(xa: Transactor[IO], consumers: List[Consumer]): IO[Int] =
+    drainTx(consumers).transact(xa).map(_.size)
 
   /** Boot fiber: poll the outbox forever. A failed drain is logged-and-retried (events stay unpublished), so a
-    * transient consumer error never loses an event.
+    * transient consumer error never loses an event. After each durable drain commits, the published rows are handed to
+    * `sink` (best-effort) — F48 uses this to push to the in-process realtime hub. A sink failure never blocks the
+    * durable path (the row is already published; the realtime push is fire-and-forget).
     */
-  def run(xa: Transactor[IO], consumers: List[Consumer], every: FiniteDuration = 5.seconds)(implicit
-      T: Temporal[IO]
-  ): IO[Nothing] =
-    (drainOnce(xa, consumers).attempt *> T.sleep(every)).foreverM
+  def run(
+      xa: Transactor[IO],
+      consumers: List[Consumer],
+      every: FiniteDuration = 5.seconds,
+      sink: EventRepo.OutboxRow => IO[Unit] = _ => IO.unit
+  )(implicit T: Temporal[IO]): IO[Nothing] =
+    (drainTx(consumers).transact(xa).flatMap(_.traverse_(r => sink(r).attempt.void)).attempt *> T.sleep(every)).foreverM
 }

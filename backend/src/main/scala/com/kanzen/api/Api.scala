@@ -3,9 +3,11 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, DevAuth}
+import com.kanzen.realtime.{Realtime, RealtimeHub}
 import com.kanzen.s3.ObjectStore
 import doobie.util.transactor.Transactor
 import org.http4s.HttpRoutes
+import org.http4s.server.websocket.WebSocketBuilder2
 import sttp.tapir.server.http4s.Http4sServerInterpreter
 import sttp.tapir.swagger.bundle.SwaggerInterpreter
 
@@ -18,7 +20,9 @@ object Api {
       xa: Transactor[IO],
       store: ObjectStore,
       blobSecret: String,
-      dev: Option[DevAuth]
+      dev: Option[DevAuth],
+      hub: RealtimeHub,
+      wsb: WebSocketBuilder2[IO]
   ): HttpRoutes[IO] = {
     val interp = Http4sServerInterpreter[IO]()
     val devEps = dev.map(Dev.serverEndpoint).toList
@@ -59,6 +63,8 @@ object Api {
         .map(_ => Dev.endpoint)
         .toList
     val docs = interp.toRoutes(SwaggerInterpreter().fromEndpoints[IO](swagger, "Kanzen API", "0.1.0"))
-    Health.routes <+> public <+> secured <+> docs
+    // F48 — the realtime websocket (GET /api/ws); a raw http4s route (not Tapir) so it can own the WS upgrade.
+    val ws = Realtime.routes(auth, xa, hub, wsb)
+    Health.routes <+> public <+> secured <+> ws <+> docs
   }
 }
