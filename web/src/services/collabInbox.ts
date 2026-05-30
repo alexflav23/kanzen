@@ -80,9 +80,12 @@ export const threadToTask = (id: string, body: { title: string; dueOn?: string |
 export const CCollabCommentSchema = z.object({
   id: z.string(), entityType: z.string(), entityId: z.string(), authorId: z.string(),
   authorName: z.string().nullable(), body: z.string(), mentions: z.array(z.string()), createdAt: z.string(),
+  updatedAt: z.string().nullable(),
 });
 export type CCollabComment = z.infer<typeof CCollabCommentSchema>;
 export const getComments = (entityType: string, entityId: string, token: string | null) =>
   api(`/api/comments?entityType=${entityType}&entityId=${entityId}`, z.array(CCollabCommentSchema), { token });
 export const addComment = (entityType: string, entityId: string, body: string, mentions: string[], token: string | null) =>
   api(`/api/comments`, CCollabCommentSchema, { method: "POST", body: { entityType, entityId, body, mentions }, token });
+export const editComment = (id: string, body: string, mentions: string[], token: string | null) =>
+  api(`/api/comments/${id}`, CCollabCommentSchema, { method: "PATCH", body: { body, mentions }, token });

@@ -10,6 +10,8 @@ type AuthState = {
   /** The effective principal's role, derived synchronously from the bearer token's claims
    * (`custom:role`) so coarse role gating recalibrates atomically with the token. */
   role: string | null;
+  /** The current user id (`sub`), for identifying "your own" content (e.g. click-to-edit). */
+  userId: string | null;
   /** Resource-level permission check for the *effective* principal (recalibrates the UI). */
   can: (resource: string, level?: "read" | "write" | "admin") => boolean;
   /** True while /api/me is loading (so consumers can avoid flicker). */
@@ -113,11 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // coarse, role-scoped UI gating; `can()` still uses the authoritative permissions from /api/me.
   const claims = useMemo(() => decodeToken(token), [token]);
   const role = claims?.role ?? me?.role ?? null;
+  // userId comes from /api/me (authoritative resolution); the JWT's sub is the email in dev tokens.
+  const userId = me?.userId ?? null;
   const impersonating = !!(claims?.impersonatedBy ?? me?.impersonatedBy);
 
   const value = useMemo<AuthState>(
-    () => ({ token, persona, me, role, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken }),
-    [token, persona, me, role, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken],
+    () => ({ token, persona, me, role, userId, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken }),
+    [token, persona, me, role, userId, can, meLoading, impersonating, signIn, signOut, impersonate, stopImpersonating, setToken],
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

@@ -14,7 +14,7 @@ test("the collaborative inbox lists threads and surfaces the agent's proposal on
   await expect(proposal).toBeVisible();
   await expect(proposal).toContainText("% sure"); // confidence — the auto-suggested intelligence
   // internal notes sit on their own (warm "Apple-note") surface, distinct from the email body
-  await expect(page.getByTestId("internal-notes")).toBeVisible();
+  await expect(page.getByTestId("collab-panel")).toBeVisible();
   // clicking the suggestion opens the review popup with the itemised receipt + total, then Confirm
   await proposal.click();
   const modal = page.getByTestId("proposal-modal");

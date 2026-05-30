@@ -9,6 +9,7 @@ import com.kanzen.inbox.CollabInboxRepo
 import com.kanzen.people.{AssigneeScope, PeopleRepo}
 import doobie.ConnectionIO
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import io.circe.Json
 import io.circe.syntax._
@@ -39,7 +40,8 @@ object Collab {
       authorName: Option[String],
       body: String,
       mentions: List[UUID],
-      createdAt: String
+      createdAt: String,
+      updatedAt: Option[String]
   )
   final case class AddCommentReq(
       entityType: String,
@@ -47,6 +49,9 @@ object Collab {
       body: String,
       mentions: Option[List[UUID]]
   )
+
+  /** W9.4b-ii: editing a comment — body + (re)derived mention set. The server only notifies *new* mentions. */
+  final case class EditCommentReq(body: String, mentions: Option[List[UUID]])
 
   private val forbidden: (StatusCode, ApiError) = (StatusCode.Forbidden, ApiError(403, "forbidden", "Forbidden."))
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "Not found."))
@@ -136,7 +141,8 @@ object Collab {
                     r.authorName,
                     r.body,
                     r.mentions,
-                    r.createdAt.toString
+                    r.createdAt.toString,
+                    r.updatedAt.map(_.toString)
                   )
                 )
               ): Out[List[CommentView]]
@@ -178,10 +184,71 @@ object Collab {
                 row.flatMap(_.authorName),
                 body,
                 ms,
-                row.map(_.createdAt.toString).getOrElse("")
+                row.map(_.createdAt.toString).getOrElse(""),
+                row.flatMap(_.updatedAt.map(_.toString))
               )
             ): Out[CommentView]
           }
+      } yield out).transact(xa)
+  }
+
+  /** Edit a comment — author-only. Re-derives the mention set and emits `comment_mentioned` ONLY for newly-added
+    * mentions (no double-notify of existing recipients on a typo fix).
+    */
+  def editComment(xa: Transactor[IO], p: Principal, id: UUID, r: EditCommentReq): IO[Out[CommentView]] = {
+    val body = r.body.trim
+    if (body.isEmpty) IO.pure(Left(unprocessable))
+    else
+      (for {
+        existing <- CollabInboxRepo.comment(id)
+        out <- existing match {
+          case None => (Left(notFound): Out[CommentView]).pure[ConnectionIO]
+          case Some(c) if c.authorId != p.userId =>
+            // only the author can edit (no admin override for now — keep the surface tight)
+            (Left(forbidden): Out[CommentView]).pure[ConnectionIO]
+          case Some(c) =>
+            for {
+              refs <- sql"select entity_type, entity_id from entity_comments where id = $id"
+                .query[(String, UUID)]
+                .unique
+              entityType <- refs._1.pure[ConnectionIO]
+              entityId <- refs._2.pure[ConnectionIO]
+              newMentions <- r.mentions.getOrElse(Nil).distinct.pure[ConnectionIO]
+              added <- (newMentions.toSet -- c.mentions.toSet).toList.pure[ConnectionIO]
+              n <- CollabInboxRepo.updateComment(id, p.userId, body, newMentions)
+              _ <- added.traverse_ { uid =>
+                val payload = Json.obj(
+                  "commentId" -> id.asJson,
+                  "entityType" -> entityType.asJson,
+                  "entityId" -> entityId.asJson,
+                  "authorId" -> p.userId.asJson,
+                  "mentionedUserId" -> uid.asJson,
+                  "preview" -> body.take(140).asJson
+                )
+                EventRepo.emit("comment_mentioned", entityType, entityId, payload).void
+              }
+              fresh <- CollabInboxRepo.comment(id)
+            } yield
+              if (n == 0) Left(forbidden): Out[CommentView]
+              else
+                fresh
+                  .map(f =>
+                    Right(
+                      CommentView(
+                        f.id,
+                        entityType,
+                        entityId,
+                        f.authorId,
+                        f.authorName,
+                        f.body,
+                        f.mentions,
+                        f.createdAt.toString,
+                        f.updatedAt.map(_.toString)
+                      )
+                    ): Out[CommentView]
+                  )
+                  .getOrElse(Left(notFound))
+        }
       } yield out).transact(xa)
   }
 
@@ -203,12 +270,24 @@ object Collab {
     .errorOut(err)
     .out(jsonBody[CommentView])
     .summary("Add a comment on any entity — internal-only, mentions emit F34 events")
+  val editCommentEndpoint = endpoint.patch
+    .securityIn(bearer)
+    .in("api" / "comments" / path[UUID]("id"))
+    .in(jsonBody[EditCommentReq])
+    .errorOut(err)
+    .out(jsonBody[CommentView])
+    .summary("Edit a comment — author-only; only NEW mentions notify")
 
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     getCommentsEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (et, eid) => comments(xa, p, et, eid) }),
-    addCommentEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: AddCommentReq) => addComment(xa, p, r))
+    addCommentEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => (r: AddCommentReq) => addComment(xa, p, r)),
+    editCommentEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => { case (id, r) => editComment(xa, p, id, r) })
   )
-  val endpoints: List[AnyEndpoint] = List(getCommentsEndpoint, addCommentEndpoint)
+  val endpoints: List[AnyEndpoint] = List(getCommentsEndpoint, addCommentEndpoint, editCommentEndpoint)
 }

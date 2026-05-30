@@ -10,12 +10,13 @@ import { Avatar } from "../components/Avatar";
 import { AgentRibbon } from "../components/AgentRibbon";
 import { ProposalReviewModal } from "../components/ProposalReviewModal";
 import { ReplyComposer } from "../components/ReplyComposer";
+import { CollabPanel } from "../components/CollabPanel";
 import { Check, Inbox as InboxIcon, Documents, Mail, Tasks } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
 import {
-  addThreadComment, assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail, threadToTask,
+  assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail, threadToTask,
   type CInbox, type CThread,
 } from "../services/collabInbox";
 
@@ -111,7 +112,6 @@ export function Inbox() {
   const [mailbox, setMailbox] = useState<string | "all">("all"); // top tab
   const [railSel, setRailSel] = useState<RailSel>("inbox"); // left-rail folder/view
   const [selected, setSelected] = useState<string | null>(params.get("thread"));
-  const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null); // proposal id under review
   const [replying, setReplying] = useState(false);
@@ -131,7 +131,6 @@ export function Inbox() {
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["inbox-threads"] }); qc.invalidateQueries({ queryKey: ["inbox-inboxes"] }); if (selected) qc.invalidateQueries({ queryKey: ["inbox-thread", selected] }); };
   const assign = useMutation({ mutationFn: ({ id, who }: { id: string; who: string | null }) => assignThread(id, who, token), onSuccess: invalidate });
   const status = useMutation({ mutationFn: ({ id, s }: { id: string; s: string }) => setThreadStatus(id, s, token), onSuccess: () => { setSelected(null); invalidate(); } });
-  const comment = useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => addThreadComment(id, body, token), onSuccess: () => { setDraft(""); invalidate(); } });
   const confirm = useMutation({
     mutationFn: (id: string) => confirmProposal(id, token),
     onSuccess: (r) => { setReviewing(null); setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
@@ -283,21 +282,7 @@ export function Inbox() {
                     </div>
                   )}
 
-                  <section {...stylex.props(styles.notes)} aria-label="Internal notes" data-testid="internal-notes">
-                    <div {...stylex.props(styles.notesHead)}>Internal notes</div>
-                    {detail.comments.map((c) => (
-                      <div key={c.id} {...stylex.props(styles.comment)}>
-                        <div><span {...stylex.props(styles.cAuthor)}>{c.authorName ?? "Someone"}</span><span {...stylex.props(styles.cTime)}>{ago(c.createdAt)}</span></div>
-                        <div {...stylex.props(styles.cBody)}>{c.body}</div>
-                      </div>
-                    ))}
-                    <div {...stylex.props(styles.addRow)}>
-                      <input {...stylex.props(styles.addInput)} aria-label="Add an internal note" placeholder="Add an internal note…" value={draft} onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) comment.mutate({ id: detail.thread.id, body: draft.trim() }); }} />
-                      <button type="button" {...stylex.props(styles.noteBtn)} disabled={!draft.trim() || comment.isPending} onClick={() => comment.mutate({ id: detail.thread.id, body: draft.trim() })}>Note</button>
-                    </div>
-                    <div {...stylex.props(styles.note)}>Notes stay inside Kanzen — they're never sent to the sender.</div>
-                  </section>
+                  <CollabPanel entityType="email_thread" entityId={detail.thread.id} />
                 </div>
               </div>
             )}

@@ -1,7 +1,7 @@
 package com.kanzen.api
 
 import cats.effect.IO
-import com.kanzen.api.Collab.AddCommentReq
+import com.kanzen.api.Collab.{AddCommentReq, EditCommentReq}
 import com.kanzen.api.Inbox.{AssignReq, CommentReq, CreateTaskFromThreadReq, DraftReq, SendReq, StatusReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
@@ -213,24 +213,57 @@ object CollabInboxIT extends IOSuite {
     for {
       threads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
       eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get
-      before <- sql"select count(*) from event_outbox where event_type = 'comment_mentioned'"
-        .query[Long]
-        .unique
-        .transact(xa)
-      _ <- Collab
+      created <- Collab
         .addComment(
           xa,
           toby,
           AddCommentReq("email_thread", eleanor.id, "@Lorna can you book Marcus?", Some(List(lornaUser)))
         )
         .map(_.toOption.get)
-      after <- sql"select count(*) from event_outbox where event_type = 'comment_mentioned'"
-        .query[Long]
-        .unique
-        .transact(xa)
+      // filter by THIS comment's id so the assertion is race-proof against other parallel tests
+      events <-
+        sql"""select count(*) from event_outbox where event_type = 'comment_mentioned'
+              and payload->>'commentId' = ${created.id.toString}"""
+          .query[Long]
+          .unique
+          .transact(xa)
       list <- Collab.comments(xa, toby, "email_thread", eleanor.id).map(_.toOption.get)
-    } yield expect(after == before + 1) and // exactly one event for the one mention
+    } yield expect(events == 1L) and // exactly one event for the one mention
       expect(list.exists(c => c.mentions.contains(lornaUser) && c.body.contains("Marcus")))
+  }
+
+  test("W9.4b-ii — edit a comment: author can; non-author 403; new mention notifies, re-mention does not") { xa =>
+    val lornaUser = UUID.fromString("10000000-0000-0000-0000-000000000002")
+    val siti = UUID.fromString("10000000-0000-0000-0000-000000000004")
+    for {
+      threads <- Inbox.threads(xa, toby, None, Some("inbox"), None).map(_.toOption.get)
+      eleanor = threads.find(_.subject.exists(_.contains("dinner"))).get
+      created <- Collab
+        .addComment(xa, toby, AddCommentReq("email_thread", eleanor.id, "Lets sort it 😀", Some(List(lornaUser))))
+        .map(_.toOption.get)
+      // count is filtered to THIS comment so other tests don't perturb the delta
+      countQ = sql"""select count(*) from event_outbox where event_type = 'comment_mentioned'
+                     and payload->>'commentId' = ${created.id.toString}""".query[Long].unique
+      initial <- countQ.transact(xa)
+      // marcia (non-author, even though she's staff) cannot edit toby's comment
+      marciaTry <- Collab.editComment(xa, marcia, created.id, EditCommentReq("hijack", Some(Nil)))
+      // author edits: same body+mentions → no new event; adding Siti emits one more
+      _ <- Collab
+        .editComment(xa, toby, created.id, EditCommentReq("Lets sort it 😀✨", Some(List(lornaUser))))
+        .map(_.toOption.get)
+      afterSameMentions <- countQ.transact(xa)
+      _ <- Collab
+        .editComment(xa, toby, created.id, EditCommentReq("Lets sort it 😀✨", Some(List(lornaUser, siti))))
+        .map(_.toOption.get)
+      afterAddedMention <- countQ.transact(xa)
+      list <- Collab.comments(xa, toby, "email_thread", eleanor.id).map(_.toOption.get)
+      edited = list.find(_.id == created.id).get
+    } yield expect(marciaTry.isLeft) and // 403 for non-author
+      expect(initial == 1L) and // the original mention emitted once on creation
+      expect(afterSameMentions == initial) and // re-mention does NOT re-notify
+      expect(afterAddedMention == initial + 1) and // a newly-added mention DOES notify (just one)
+      expect(edited.body.contains("✨")) and // emoji round-trips
+      expect(edited.updatedAt.isDefined) // "edited" badge data
   }
 
   test("assign · comment · done round-trip") { xa =>

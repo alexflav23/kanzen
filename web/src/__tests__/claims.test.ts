@@ -8,9 +8,9 @@ const jwt = (payload: Record<string, unknown>) => {
 };
 
 describe("decodeToken", () => {
-  it("reads email + role from the bearer's claims", () => {
-    const c = decodeToken(jwt({ email: "flavian@kanzen.local", "custom:role": "principal" }));
-    expect(c).toEqual({ email: "flavian@kanzen.local", role: "principal", impersonatedBy: null });
+  it("reads email + role (+ sub as userId) from the bearer's claims", () => {
+    const c = decodeToken(jwt({ sub: "u1", email: "flavian@kanzen.local", "custom:role": "principal" }));
+    expect(c).toEqual({ email: "flavian@kanzen.local", role: "principal", userId: "u1", impersonatedBy: null });
   });
 
   it("surfaces the real admin when impersonating", () => {

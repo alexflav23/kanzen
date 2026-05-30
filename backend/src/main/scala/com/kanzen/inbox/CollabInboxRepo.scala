@@ -58,7 +58,8 @@ final case class CommentRow(
     authorName: Option[String],
     body: String,
     mentions: List[UUID],
-    createdAt: Instant
+    createdAt: Instant,
+    updatedAt: Option[Instant]
 )
 final case class AttachmentRow(id: UUID, filename: String, contentType: Option[String], sizeBytes: Option[Long])
 
@@ -163,11 +164,22 @@ object CollabInboxRepo {
           where thread_id = $threadId order by created_at""".query[ProposalRow].to[List]
 
   def comments(entityType: String, entityId: UUID): ConnectionIO[List[CommentRow]] =
-    sql"""select c.id, c.author_id, u.display_name, c.body, c.mentions, c.created_at
+    sql"""select c.id, c.author_id, u.display_name, c.body, c.mentions, c.created_at, c.updated_at
           from entity_comments c left join users u on u.id = c.author_id
           where c.entity_type = $entityType and c.entity_id = $entityId order by c.created_at"""
       .query[CommentRow]
       .to[List]
+
+  /** One comment by id (for the edit path — we need the author + existing mentions to compute diff). */
+  def comment(id: UUID): ConnectionIO[Option[CommentRow]] =
+    sql"""select c.id, c.author_id, u.display_name, c.body, c.mentions, c.created_at, c.updated_at
+          from entity_comments c left join users u on u.id = c.author_id
+          where c.id = $id""".query[CommentRow].option
+
+  /** Edit a comment — body + mentions; only the author. Returns updated row count. */
+  def updateComment(id: UUID, authorId: UUID, body: String, mentions: List[UUID]): ConnectionIO[Int] =
+    sql"""update entity_comments set body = $body, mentions = $mentions, updated_at = now()
+          where id = $id and author_id = $authorId""".update.run
 
   def assign(threadId: UUID, assigneeId: Option[UUID]): ConnectionIO[Int] =
     sql"update email_threads set assignee_id = $assigneeId where id = $threadId".update.run

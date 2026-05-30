@@ -8,6 +8,8 @@
 export type TokenClaims = {
   email: string | null;
   role: string | null;
+  /** The user id (`sub`) — used to identify "your own" content in UI (e.g. click-to-edit your comments). */
+  userId: string | null;
   /** The real admin's email when this session is an admin acting-as another user. */
   impersonatedBy: string | null;
 };
@@ -32,6 +34,7 @@ export function decodeToken(token: string | null): TokenClaims | null {
     return {
       email: str(json.email),
       role: str(json["custom:role"]),
+      userId: str(json.sub),
       impersonatedBy: str(json.impersonated_by),
     };
   } catch {
