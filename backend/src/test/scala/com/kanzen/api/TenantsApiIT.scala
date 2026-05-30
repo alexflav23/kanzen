@@ -45,10 +45,15 @@ object TenantsApiIT extends IOSuite {
       // duplicate slug is rejected
       dup <- Tenants.create(xa, CreateTenantReq("Dup", slug, PrincipalReq("X", s"x-${UUID.randomUUID()}@acme.test")))
       badSlug <- Tenants.create(xa, CreateTenantReq("Bad", "No Spaces!", PrincipalReq("Y", "y@acme.test")))
+      // F46 §4 — the onboarding state behind the Dashboard banner
+      newSetup <- Tenants.setup(xa, resp.tenantId)
+      defaultSetup <- Tenants.setup(xa, com.kanzen.tenant.Tenant.DefaultId)
     } yield expect(resp.currentStep == "verify_email") and
       expect(assets.isEmpty) and // a fresh tenant is a clean household
       expect(tobyAssets.nonEmpty) and // the default tenant is unaffected
       expect(dup.left.exists(_._1.code == 409)) and // slug uniqueness
-      expect(badSlug.left.exists(_._1.code == 400)) // slug format
+      expect(badSlug.left.exists(_._1.code == 400)) and // slug format
+      expect(newSetup.currentStep.contains("verify_email") && !newSetup.completed) and // new tenant must finish setup
+      expect(defaultSetup.completed) // the seeded default tenant is pre-completed (no banner)
   }
 }

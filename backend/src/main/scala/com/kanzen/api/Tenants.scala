@@ -2,6 +2,7 @@ package com.kanzen.api
 
 import cats.effect.IO
 import cats.syntax.all._
+import com.kanzen.auth.Auth
 import com.kanzen.identity.UserRepo
 import com.kanzen.tenant.TenantRepo
 import doobie.implicits._
@@ -73,6 +74,9 @@ object Tenants {
     }
   }
 
+  // F46 §4 — the onboarding state the Dashboard banner reads. `completed` true → no banner.
+  final case class SetupState(currentStep: Option[String], completed: Boolean)
+
   private val err = statusCode.and(jsonBody[ApiError])
 
   val createEndpoint: PublicEndpoint[CreateTenantReq, (StatusCode, ApiError), CreateTenantResp, Any] =
@@ -83,8 +87,32 @@ object Tenants {
       .out(jsonBody[CreateTenantResp])
       .summary("Public: create a new tenant + its principal (onboarding step 1)")
 
-  def serverEndpoints(xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
+  val setupEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), SetupState, Any] =
+    sttp.tapir.endpoint.get
+      .in("api" / "tenant" / "setup")
+      .securityIn(auth.bearer[String]())
+      .errorOut(err)
+      .out(jsonBody[SetupState])
+      .summary("The caller's tenant onboarding state (drives the Dashboard setup banner)")
+
+  def setup(xa: Transactor[IO], tenantId: UUID): IO[SetupState] =
+    TenantRepo
+      .setupState(tenantId)
+      .transact(xa)
+      .map {
+        case Some((step, completed)) => SetupState(step, completed)
+        case None => SetupState(None, completed = true) // no row (e.g. legacy) → treat as done, no banner
+      }
+
+  def publicServerEndpoints(xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
     List(createEndpoint.serverLogic(req => create(xa, req)))
 
-  val endpoints: List[AnyEndpoint] = List(createEndpoint)
+  def securedServerEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
+    List(
+      setupEndpoint
+        .serverSecurityLogic(a.securityLogic)
+        .serverLogic(p => (_: Unit) => setup(xa, p.tenantId).map(Right(_): Out[SetupState]))
+    )
+
+  val endpoints: List[AnyEndpoint] = List(createEndpoint, setupEndpoint)
 }

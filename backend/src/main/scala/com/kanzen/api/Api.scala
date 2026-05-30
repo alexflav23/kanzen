@@ -26,7 +26,7 @@ object Api {
   ): HttpRoutes[IO] = {
     val interp = Http4sServerInterpreter[IO]()
     val devEps = dev.map(Dev.serverEndpoint).toList
-    val public = interp.toRoutes(Blobs.serverEndpoints(store, blobSecret) ++ Tenants.serverEndpoints(xa))
+    val public = interp.toRoutes(Blobs.serverEndpoints(store, blobSecret) ++ Tenants.publicServerEndpoints(xa))
     val secured = interp.toRoutes(
       List(Me.serverEndpoint(auth, xa), Me.colourServerEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
@@ -53,7 +53,8 @@ object Api {
         ++ Insights.serverEndpoints(auth, xa) ++ Impersonate.serverEndpoints(auth, xa, dev)
         ++ Roles.serverEndpoints(auth, xa) ++ RbacAdmin.serverEndpoints(auth, xa) ++ Audit.serverEndpoints(auth, xa)
         ++ Collections.serverEndpoints(auth, xa)
-        ++ Groups.serverEndpoints(auth, xa) ++ Brands.serverEndpoints(auth, xa) ++ devEps
+        ++ Groups.serverEndpoints(auth, xa) ++ Brands.serverEndpoints(auth, xa)
+        ++ Tenants.securedServerEndpoints(auth, xa) ++ devEps
     )
     val swagger = List(
       Health.endpoint,

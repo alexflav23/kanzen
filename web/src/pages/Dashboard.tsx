@@ -12,6 +12,7 @@ import { fmtMoney } from "../data/money";
 import { colors, radius } from "../styles/tokens.stylex";
 import { Card, CardHeader, CardTitle, CardRow } from "../components/Card";
 import { AgentRibbon } from "../components/AgentRibbon";
+import { SetupBanner } from "../components/SetupBanner";
 import { Pill } from "../components/Pill";
 import { Plus, ChevronRight, ArrowRight, Box } from "../components/icons";
 
@@ -131,6 +132,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <SetupBanner />
       <header {...stylex.props(styles.header)}>
         <div>
           <div {...stylex.props(styles.eyebrow)}>{today.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
