@@ -52,6 +52,18 @@ object DefectsIT extends IOSuite {
     }
   }
 
+  test("F34 — defect mutations emit defect.{raised,transitioned,resolved}") { xa =>
+    for {
+      raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "Boiler fault", None, "high")).map(_.toOption.get)
+      _ <- Defects.transition(xa, manager, raised.id, "in_progress").map(_.toOption.get)
+      _ <- Defects.transition(xa, manager, raised.id, "resolved").map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${raised.id}".query[String].to[List].transact(xa)
+    } yield expect(events.contains("defect.raised")) and
+      expect(events.contains("defect.transitioned")) and
+      expect(events.contains("defect.resolved"))
+  }
+
   test("an invalid status is rejected (400)") { xa =>
     for {
       raised <- Defects.raise(xa, manager, RaiseReq(wardian, None, "X", None, "low"))

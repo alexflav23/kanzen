@@ -10,7 +10,10 @@ import com.kanzen.vendor.VendorRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
+import com.kanzen.events.{Actor, Envelope, EventRepo, Events, Subject}
+import io.circe.Json
 import io.circe.generic.auto._
+import io.circe.syntax._
 import sttp.model.StatusCode
 import sttp.tapir._
 import sttp.tapir.generic.auto._
@@ -92,6 +95,18 @@ object Defects {
       case Some(_) => Right(())
     }
 
+  /** F34 — emit a defect event (subject: defect; the property carries it for the Bible's realtime updates). */
+  private def emitDefect(
+      p: Principal,
+      id: UUID,
+      propertyId: UUID,
+      eventType: String,
+      payload: Json
+  ): ConnectionIO[Unit] =
+    EventRepo
+      .emit(Envelope(eventType, Actor.user(p.userId), Subject("defect", id), p.userId, Some(propertyId), payload))
+      .void
+
   def list(xa: Transactor[IO], p: Principal, propertyId: UUID, status: Option[String]): IO[Out[List[DefectView]]] = {
     val tx = authorize(p, propertyId, Level.Read, None).flatMap {
       case Left(e) => (Left(e): Out[List[DefectView]]).pure[ConnectionIO]
@@ -110,7 +125,15 @@ object Defects {
         case Right(_) =>
           DefectRepo
             .raise(p.userId, req.propertyId, req.locationId, req.title, req.description, req.severity, p.userId)
-            .map(d => Right(view(d)): Out[DefectView])
+            .flatMap(d =>
+              emitDefect(
+                p,
+                d.id,
+                req.propertyId,
+                Events.Defect.Raised,
+                Json.obj("title" -> req.title.asJson, "severity" -> req.severity.asJson)
+              ).as(Right(view(d)): Out[DefectView])
+            )
       }
       tx.transact(xa)
     }
@@ -125,7 +148,15 @@ object Defects {
           authorize(p, d.propertyId, Level.Write, Some("status")).flatMap {
             case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
             case Right(_) =>
-              DefectRepo.setStatus(id, status) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
+              DefectRepo.setStatus(id, status) *>
+                emitDefect(
+                  p,
+                  id,
+                  d.propertyId,
+                  if (status == "resolved") Events.Defect.Resolved else Events.Defect.Transitioned,
+                  Json.obj("status" -> status.asJson)
+                ) *>
+                DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
           }
       }
       tx.transact(xa)
@@ -160,7 +191,9 @@ object Defects {
           case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
           case Right(_) =>
             def doAssign(v: Option[UUID]) =
-              DefectRepo.assignVendor(id, v) *> DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
+              DefectRepo.assignVendor(id, v) *>
+                emitDefect(p, id, d.propertyId, Events.Defect.Assigned, Json.obj("vendorId" -> v.asJson)) *>
+                DefectRepo.findWithVendor(id).map(_.map(viewT).toRight(notFound))
             req.vendorId match {
               case None => doAssign(None) // clear the assignment
               case Some(vid) =>
