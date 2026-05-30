@@ -48,7 +48,7 @@ object Valuations {
     else {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
-        exists <- AssetRepo.exists(assetId)
+        exists <- AssetRepo.exists(assetId, p.tenantId)
         res <-
           if (!authz.can(Level.Write, "asset", Some("valuation_snapshots")))
             (Left(forbidden): Out[ValuationView]).pure[ConnectionIO]

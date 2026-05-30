@@ -73,7 +73,7 @@ object Provenance {
   def addWarranty(xa: Transactor[IO], p: Principal, assetId: UUID, req: AddWarrantyReq): IO[Out[OkResult]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- AssetRepo.exists(assetId)
+      exists <- AssetRepo.exists(assetId, p.tenantId)
       res <-
         if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
@@ -105,7 +105,7 @@ object Provenance {
   def setInsurance(xa: Transactor[IO], p: Principal, assetId: UUID, req: SetInsuranceReq): IO[Out[OkResult]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- AssetRepo.exists(assetId)
+      exists <- AssetRepo.exists(assetId, p.tenantId)
       res <-
         if (!authz.can(Level.Write, "asset", Some("insured_value"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[OkResult]).pure[ConnectionIO]
@@ -132,7 +132,7 @@ object Provenance {
     else {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
-        exists <- AssetRepo.exists(assetId)
+        exists <- AssetRepo.exists(assetId, p.tenantId)
         res <-
           if (!authz.can(Actions.byKey("asset:edit"))) (Left(forbidden): Out[PartyView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[PartyView]).pure[ConnectionIO]

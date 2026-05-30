@@ -28,7 +28,8 @@ object Principals {
           claims.subject,
           u.email,
           u.role,
-          claims.impersonatedBy.flatMap(s => scala.util.Try(java.util.UUID.fromString(s)).toOption)
+          claims.impersonatedBy.flatMap(s => scala.util.Try(java.util.UUID.fromString(s)).toOption),
+          u.tenantId // F45 — the principal carries their tenant; every read/write is constrained to it
         )
       )
 

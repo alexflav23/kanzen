@@ -1,6 +1,7 @@
 package com.kanzen.asset
 
 import cats.effect.IO
+import com.kanzen.tenant.Tenant
 import com.kanzen.db.TestDb
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -21,7 +22,7 @@ object AssetIT extends IOSuite {
     val prog = for {
       watches <- AssetRepo.createCategory("Watches", None)
       ro <- AssetRepo.create("Royal Oak", Some("Audemars Piguet"), watches, "unique", 1, attrs)
-      fetched <- AssetRepo.get(ro.id)
+      fetched <- AssetRepo.get(ro.id, Tenant.DefaultId)
       inCat <- AssetRepo.byCategory(watches)
     } yield (fetched, inCat)
 
@@ -38,7 +39,7 @@ object AssetIT extends IOSuite {
     val prog = for {
       glass <- AssetRepo.createCategory("Glassware", None)
       tumblers <- AssetRepo.create("Tumblers", Some("Riedel"), glass, "grouped_quantity", 6, Json.obj())
-      fetched <- AssetRepo.get(tumblers.id)
+      fetched <- AssetRepo.get(tumblers.id, Tenant.DefaultId)
     } yield fetched
     prog.transact(xa).map(f => expect(f.exists(a => a.trackingMode == "grouped_quantity" && a.quantity == 6)))
   }

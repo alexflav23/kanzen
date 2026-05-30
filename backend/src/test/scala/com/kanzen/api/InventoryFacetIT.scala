@@ -1,5 +1,6 @@
 package com.kanzen.api
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
@@ -30,7 +31,22 @@ object InventoryFacetIT extends IOSuite {
       store <- ObjectStore.inMemory
       cat <- sql"select id from categories limit 1".query[UUID].unique.transact(xa)
       asset <- AssetRepo
-        .insert(owner, s"Tagged $s", None, cat, None, "unique", 1, None, None, None, None, None, Json.obj())
+        .insert(
+          owner,
+          Tenant.DefaultId,
+          s"Tagged $s",
+          None,
+          cat,
+          None,
+          "unique",
+          1,
+          None,
+          None,
+          None,
+          None,
+          None,
+          Json.obj()
+        )
         .transact(xa)
       _ <- DocumentRepo
         .insert(

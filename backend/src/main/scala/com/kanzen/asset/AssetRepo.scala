@@ -96,6 +96,7 @@ object AssetRepo {
   /** Full create with owner (house rule) + tracking/parent/acquisition/location — the API path. */
   def insert(
       ownerId: UUID,
+      tenantId: UUID,
       title: String,
       maker: Option[String],
       categoryId: UUID,
@@ -109,17 +110,21 @@ object AssetRepo {
       locationId: Option[UUID],
       attributes: Json
   ): ConnectionIO[Asset] =
-    (fr"""insert into assets (owner_id, title, maker, category_id, vertical, tracking_mode, quantity,
+    (fr"""insert into assets (owner_id, tenant_id, title, maker, category_id, vertical, tracking_mode, quantity,
             parent_asset_id, acquisition_cost_minor, acquisition_currency, acquisition_date, location_id, attributes)
-          values ($ownerId, $title, $maker, $categoryId, $vertical, $trackingMode, $quantity,
+          values ($ownerId, $tenantId, $title, $maker, $categoryId, $vertical, $trackingMode, $quantity,
             $parentAssetId, $acquisitionCostMinor, $acquisitionCurrency, $acquisitionDate, $locationId, $attributes)
           returning""" ++ cols).query[Asset].unique
 
-  def get(id: UUID): ConnectionIO[Option[Asset]] =
-    (fr"select" ++ cols ++ fr"from assets where id = $id and deleted_at is null").query[Asset].option
+  def get(id: UUID, tenantId: UUID): ConnectionIO[Option[Asset]] =
+    (fr"select" ++ cols ++ fr"from assets where id = $id and tenant_id = $tenantId and deleted_at is null")
+      .query[Asset]
+      .option
 
-  def exists(id: UUID): ConnectionIO[Boolean] =
-    sql"select exists(select 1 from assets where id = $id and deleted_at is null)".query[Boolean].unique
+  def exists(id: UUID, tenantId: UUID): ConnectionIO[Boolean] =
+    sql"select exists(select 1 from assets where id = $id and tenant_id = $tenantId and deleted_at is null)"
+      .query[Boolean]
+      .unique
 
   /** Edit the base entity's key facts (title/maker/category/status). Attributes + lineage are edited via their own
     * paths; this is the generic record edit every asset/refined-concept needs.
@@ -150,6 +155,7 @@ object AssetRepo {
     * `property_id`.
     */
   def list(
+      tenantId: UUID, // F45: every listing is constrained to the caller's tenant
       categoryIds: Option[NonEmptyList[UUID]],
       q: Option[String],
       vertical: Option[String] = None,
@@ -170,6 +176,7 @@ object AssetRepo {
     val heroJoin = fr"left join documents hd on hd.id = a.hero_document_id and hd.deleted_at is null"
     val conds: List[Fragment] = List(
       Some(fr"a.deleted_at is null"),
+      Some(fr"a.tenant_id = $tenantId"),
       categoryIds.map(ids => Fragments.in(fr"a.category_id", ids)),
       vertical.map(v => fr"a.vertical = $v"),
       propertyId.map(pid => fr"loc.property_id = $pid"),

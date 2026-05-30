@@ -1,5 +1,6 @@
 package com.kanzen.api
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.auth.Principal
 import com.kanzen.authz.PermissionRepo
@@ -89,7 +90,22 @@ object AssetsActionScopeIT extends IOSuite {
       cf <- fixtures(u).transact(xa)
       (cat, otherAsset) = cf
       mine <- AssetRepo
-        .insert(u, s"RBAC own asset $s", None, cat, None, "unique", 1, None, None, None, None, None, Json.obj())
+        .insert(
+          u,
+          Tenant.DefaultId,
+          s"RBAC own asset $s",
+          None,
+          cat,
+          None,
+          "unique",
+          1,
+          None,
+          None,
+          None,
+          None,
+          None,
+          Json.obj()
+        )
         .transact(xa)
       _ <- PermissionRepo.createRole(role, None).transact(xa)
       setId <-

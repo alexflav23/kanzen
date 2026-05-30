@@ -1,5 +1,6 @@
 package com.kanzen.api
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.api.AssetEvents.LogReq
 import com.kanzen.asset.AssetRepo
@@ -72,7 +73,7 @@ object AssetEventsApiIT extends IOSuite {
         id,
         LogReq("sold", Some(4_000_000L), Some("GBP"), Some("Auction"), party = Some("Christie's"))
       )
-      a <- AssetRepo.get(id).transact(xa)
+      a <- AssetRepo.get(id, Tenant.DefaultId).transact(xa)
     } yield expect(a.exists(_.ownershipStatus == "sold"))
   }
 

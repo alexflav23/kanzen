@@ -1,5 +1,6 @@
 package com.kanzen.api
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.api.Restructure._
@@ -43,7 +44,7 @@ object RestructureApiIT extends IOSuite {
       )
       id = c.toOption.get.id
       note <- sql"select uncertainty_note from assets where id = $id".query[Option[String]].unique.transact(xa)
-      ok <- AssetRepo.exists(id).transact(xa)
+      ok <- AssetRepo.exists(id, Tenant.DefaultId).transact(xa)
     } yield expect(ok) and expect(note.contains("Inherited c. 1990"))
   }
 
@@ -54,7 +55,7 @@ object RestructureApiIT extends IOSuite {
       res <- Restructure.merge(xa, toby, MergeReq(sv, mg)).map(_.toOption.get)
       svCost <- RestructureRepo.assetCost(sv).transact(xa)
       mgGone <- RestructureRepo.isSuperseded(mg).transact(xa)
-      mgStillExists <- AssetRepo.exists(mg).transact(xa) // AC5 — not deleted
+      mgStillExists <- AssetRepo.exists(mg, Tenant.DefaultId).transact(xa) // AC5 — not deleted
       lineage <- sql"select restructured_from from assets where id = $sv".query[Option[Json]].unique.transact(xa)
       // reverse restores both originals
       rev <- Restructure.reverse(xa, toby, res.opId).map(_.toOption.get)
@@ -74,7 +75,7 @@ object RestructureApiIT extends IOSuite {
         .traverse(cid => sql"select parent_asset_id from assets where id = $cid".query[Option[UUID]].unique)
         .transact(xa)
       parentGone <- RestructureRepo.isSuperseded(p).transact(xa)
-      parentExists <- AssetRepo.exists(p).transact(xa)
+      parentExists <- AssetRepo.exists(p, Tenant.DefaultId).transact(xa)
     } yield expect(res.childIds.size == 6) and
       expect(res.allocatedMinor.sum == 60000L) and expect(res.allocatedMinor.forall(_ == 10000L)) and
       expect(parents.forall(_.contains(p))) and

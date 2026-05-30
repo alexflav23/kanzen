@@ -196,7 +196,9 @@ object Assets {
       // Own-scope (F02 v2): a grant scoped to records I created restricts the list to my own assets.
       val owner = if (authz.scopeFor(viewA) == Scope.Own) Some(p.userId) else None
       def run(cats: Option[NonEmptyList[UUID]]) =
-        AssetRepo.list(cats, q, vertical, property, collection, status, owner, tag, location).map(Right(_): Out[Rows])
+        AssetRepo
+          .list(p.tenantId, cats, q, vertical, property, collection, status, owner, tag, location)
+          .map(Right(_): Out[Rows])
       if (!authz.can(viewA)) (Left(forbidden): Out[Rows]).pure[ConnectionIO]
       else
         category match {
@@ -240,7 +242,7 @@ object Assets {
     Authz.forUser(p.userId, p.role).flatMap { authz =>
       if (!authz.can(viewA)) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
       else
-        AssetRepo.get(id).flatMap {
+        AssetRepo.get(id, p.tenantId).flatMap {
           case None => (Left(notFound): Out[AssetDetail]).pure[ConnectionIO]
           case Some(a) =>
             // Own-scope (F02 v2): a view grant scoped to records I created hides others (no leak → 404).
@@ -291,7 +293,7 @@ object Assets {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
         catOk <- AssetRepo.categoryExists(req.categoryId)
-        parentOk <- req.parentAssetId.fold(true.pure[ConnectionIO])(AssetRepo.exists)
+        parentOk <- req.parentAssetId.fold(true.pure[ConnectionIO])(pid => AssetRepo.exists(pid, p.tenantId))
         // F22: validate attributes against the vertical's template (if any). Unknown keys
         // are allowed (freehand); required/typed keys are enforced.
         tplErrors <- req.vertical.fold(List.empty[String].pure[ConnectionIO])(v =>
@@ -309,6 +311,7 @@ object Assets {
             AssetRepo
               .insert(
                 p.userId,
+                p.tenantId,
                 req.title,
                 req.maker,
                 req.categoryId,
@@ -347,7 +350,7 @@ object Assets {
     else {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
-        exists <- AssetRepo.exists(id)
+        exists <- AssetRepo.exists(id, p.tenantId)
         catOk <- AssetRepo.categoryExists(req.categoryId)
         res <-
           if (!authz.can(editA)) (Left(forbidden): Out[AssetDetail]).pure[ConnectionIO]
@@ -365,7 +368,7 @@ object Assets {
                   "categoryId" -> req.categoryId.asJson
                 )
               ) *>
-              AssetRepo.get(id).map(_.map(detailOf).toRight(notFound): Out[AssetDetail])
+              AssetRepo.get(id, p.tenantId).map(_.map(detailOf).toRight(notFound): Out[AssetDetail])
       } yield res
       tx.transact(xa)
     }
@@ -378,7 +381,7 @@ object Assets {
   def move(xa: Transactor[IO], p: Principal, id: UUID, req: MoveReq): IO[Out[AssetDetail]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- AssetRepo.exists(id)
+      exists <- AssetRepo.exists(id, p.tenantId)
       scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
       targetProp <- req.locationId.fold(Option.empty[UUID].pure[ConnectionIO])(AssetRepo.propertyOfLocation)
       res <-
@@ -423,7 +426,7 @@ object Assets {
     else {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
-        exists <- AssetRepo.exists(id)
+        exists <- AssetRepo.exists(id, p.tenantId)
         res <-
           if (!authz.can(custodyA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]
@@ -459,7 +462,7 @@ object Assets {
   def setHero(xa: Transactor[IO], p: Principal, id: UUID, req: HeroReq): IO[Out[AssetDetail]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      exists <- AssetRepo.exists(id)
+      exists <- AssetRepo.exists(id, p.tenantId)
       doc <- DocumentRepo.find(req.documentId)
       res <-
         if (!authz.can(heroA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]

@@ -31,7 +31,8 @@ object Dashboard {
       authz <- Authz.forUser(p.userId, p.role)
       props <- PropertyRepo.listForPrincipal(p.userId)
       assets <-
-        if (authz.can(Actions.byKey("asset:view"))) AssetRepo.list(None, None) else List.empty.pure[ConnectionIO]
+        if (authz.can(Actions.byKey("asset:view"))) AssetRepo.list(p.tenantId, None, None)
+        else List.empty.pure[ConnectionIO]
       pending <-
         if (authz.can(Actions.byKey("expense:view"))) ExpenseRepo.list(Some("pending_approval"))
         else List.empty.pure[ConnectionIO]

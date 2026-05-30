@@ -91,7 +91,7 @@ object AssetEvents {
     else {
       val tx = for {
         authz <- Authz.forUser(p.userId, p.role)
-        exists <- AssetRepo.exists(assetId)
+        exists <- AssetRepo.exists(assetId, p.tenantId)
         res <-
           if (!authz.can(Actions.byKey("asset_event:create"))) (Left(forbidden): Out[EventView]).pure[ConnectionIO]
           else if (!exists) (Left(notFound): Out[EventView]).pure[ConnectionIO]

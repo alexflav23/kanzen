@@ -82,8 +82,8 @@ object Restructure {
         w <- canWrite(p)
         sv <- RestructureRepo.assetCost(r.survivorId).map(_.getOrElse(0L))
         mc <- RestructureRepo.assetCost(r.mergedId).map(_.getOrElse(0L))
-        sExists <- AssetRepo.exists(r.survivorId)
-        mExists <- AssetRepo.exists(r.mergedId)
+        sExists <- AssetRepo.exists(r.survivorId, p.tenantId)
+        mExists <- AssetRepo.exists(r.mergedId, p.tenantId)
         already <- RestructureRepo.isSuperseded(r.mergedId)
         res <-
           if (!w) (Left(forbidden): Out[MergeResult]).pure[ConnectionIO]

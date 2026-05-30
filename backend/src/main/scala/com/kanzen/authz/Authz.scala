@@ -1,6 +1,9 @@
 package com.kanzen.authz
 
-import doobie.ConnectionIO
+import com.kanzen.auth.Principal
+import doobie.implicits._
+import doobie.postgres.implicits._
+import doobie.{ConnectionIO, Fragment}
 
 import java.util.UUID
 
@@ -8,6 +11,13 @@ import java.util.UUID
   * filtering (`Authorizer.filterReadable`) apply uniformly.
   */
 object Authz {
+
+  /** F45 — the tenant predicate composed into every domain read/write. `alias` is the table alias used in the query
+    * (e.g. `a` for `assets a`); pass `""` for an unaliased single-table query. Always emitted as `and <alias>.tenant_id
+    * \= <id>` so it appends to an existing `where`. Inserts set `tenant_id = p.tenantId` directly (not via this).
+    */
+  def tenantFilter(p: Principal, alias: String = ""): Fragment =
+    Fragment.const(s"and ${if (alias.isEmpty) "" else alias + "."}tenant_id =") ++ fr"${p.tenantId}"
 
   /** Single-role authorizer (legacy path; still used by endpoints until S3 migrates them to [[forUser]]). */
   def authorizer(role: String): ConnectionIO[Authorizer] =
