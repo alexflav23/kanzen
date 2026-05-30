@@ -28,6 +28,7 @@ object VendorRepo {
 
   def insert(
       ownerId: UUID,
+      tenantId: UUID,
       name: String,
       vtype: String,
       trade: Option[String],
@@ -35,15 +36,19 @@ object VendorRepo {
       insuranceUntil: Option[LocalDate],
       rating: Option[BigDecimal]
   ): ConnectionIO[Vendor] =
-    (fr"""insert into vendors (owner_id, name, type, trade, nda_until, insurance_until, rating)
-          values ($ownerId, $name, $vtype, $trade, $ndaUntil, $insuranceUntil, $rating)
+    (fr"""insert into vendors (owner_id, tenant_id, name, type, trade, nda_until, insurance_until, rating)
+          values ($ownerId, $tenantId, $name, $vtype, $trade, $ndaUntil, $insuranceUntil, $rating)
           returning""" ++ cols).query[Vendor].unique
 
-  def find(id: UUID): ConnectionIO[Option[Vendor]] =
-    (fr"select" ++ cols ++ fr"from vendors where id = $id and deleted_at is null").query[Vendor].option
+  def find(id: UUID, tenantId: UUID): ConnectionIO[Option[Vendor]] =
+    (fr"select" ++ cols ++ fr"from vendors where id = $id and tenant_id = $tenantId and deleted_at is null")
+      .query[Vendor]
+      .option
 
-  def listAll: ConnectionIO[List[Vendor]] =
-    (fr"select" ++ cols ++ fr"from vendors where deleted_at is null order by name").query[Vendor].to[List]
+  def listAll(tenantId: UUID): ConnectionIO[List[Vendor]] =
+    (fr"select" ++ cols ++ fr"from vendors where deleted_at is null and tenant_id = $tenantId order by name")
+      .query[Vendor]
+      .to[List]
 
   /** Vendors approved for any of the given properties (Staff scope). */
   def listForProperties(propertyIds: NonEmptyList[UUID]): ConnectionIO[List[Vendor]] =

@@ -66,7 +66,7 @@ object Vendors {
         if (!authz.can(Actions.byKey("vendor:view"))) List.empty[Vendor].pure[ConnectionIO]
         else if (p.role == "staff")
           NonEmptyList.fromList(scoped.toList).fold(List.empty[Vendor].pure[ConnectionIO])(VendorRepo.listForProperties)
-        else VendorRepo.listAll
+        else VendorRepo.listAll(p.tenantId)
     } yield if (!authz.can(Actions.byKey("vendor:view"))) Left(forbidden) else Right(rows.map(view))
     tx.transact(xa)
   }
@@ -75,7 +75,7 @@ object Vendors {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
-      vendor <- VendorRepo.find(id)
+      vendor <- VendorRepo.find(id, p.tenantId)
       props <- vendor.fold(List.empty[UUID].pure[ConnectionIO])(v => VendorRepo.propertiesOf(v.id))
     } yield
       if (!authz.can(Actions.byKey("vendor:view"))) Left(forbidden)
@@ -97,6 +97,7 @@ object Vendors {
         VendorRepo
           .insert(
             p.userId,
+            p.tenantId,
             req.name,
             req.`type`.getOrElse("business"),
             req.trade,
@@ -113,7 +114,7 @@ object Vendors {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedIds(p)
-      vendor <- VendorRepo.find(vendorId)
+      vendor <- VendorRepo.find(vendorId, p.tenantId)
       res <-
         if (!authz.can(Actions.byKey("vendor:edit"))) (Left(forbidden): Out[OkResult]).pure[ConnectionIO]
         else if (vendor.isEmpty) (Left(notFound): Out[OkResult]).pure[ConnectionIO]

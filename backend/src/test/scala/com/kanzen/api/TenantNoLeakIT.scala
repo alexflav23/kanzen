@@ -8,8 +8,10 @@ import com.kanzen.calendar.CalendarRepo
 import com.kanzen.docs.DocumentRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.inbox.CollabInboxRepo
+import com.kanzen.people.PeopleRepo
 import com.kanzen.property.PropertyRepo
 import com.kanzen.tasks.TaskRepo
+import com.kanzen.vendor.VendorRepo
 import com.kanzen.wealth.WealthRepo
 
 import java.time.LocalDate
@@ -240,5 +242,24 @@ object TenantNoLeakIT extends IOSuite {
       expect(!aEntities.exists(_.id == bEntity)) and // B's entity never surfaces for A
       expect(bEntities.exists(_.id == bEntity)) and
       expect(bEntities.sizeIs == 1) // B sees only its own
+  }
+
+  test("people + vendors: rosters and vendor lists are tenant-isolated (no leak across tenants)") { xa =>
+    for {
+      tenantB <- newTenant(xa)
+      ownerB = UUID.randomUUID()
+      bPerson <- PeopleRepo
+        .insert(ownerB, tenantB, None, "B Housekeeper", Some("Housekeeper"), Some("sg"), None, None, None)
+        .transact(xa)
+      bVendor <- VendorRepo.insert(ownerB, tenantB, "B Plumbing", "business", None, None, None, None).transact(xa)
+      aRoster <- PeopleRepo.list(Tenant.DefaultId).transact(xa)
+      bRoster <- PeopleRepo.list(tenantB).transact(xa)
+      aVendors <- VendorRepo.listAll(Tenant.DefaultId).transact(xa)
+      aSeesBVendor <- VendorRepo.find(bVendor.id, Tenant.DefaultId).transact(xa)
+      aSeesBPerson <- PeopleRepo.find(bPerson.id, Tenant.DefaultId).transact(xa)
+    } yield expect(aRoster.nonEmpty) and expect(!aRoster.exists(_.id == bPerson.id)) and
+      expect(bRoster.exists(_.id == bPerson.id)) and
+      expect(!aVendors.exists(_.id == bVendor.id)) and
+      expect(aSeesBVendor.isEmpty) and expect(aSeesBPerson.isEmpty) // no leak by direct id
   }
 }

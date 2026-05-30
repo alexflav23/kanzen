@@ -1,5 +1,6 @@
 package com.kanzen.people
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.db.TestDb
 import doobie.implicits._
@@ -20,6 +21,7 @@ object PeopleIT extends IOSuite {
     val prog = for {
       soon <- PeopleRepo.insert(
         owner,
+        Tenant.DefaultId,
         None,
         "Test Soon",
         Some("Housekeeper"),
@@ -30,6 +32,7 @@ object PeopleIT extends IOSuite {
       )
       far <- PeopleRepo.insert(
         owner,
+        Tenant.DefaultId,
         None,
         "Test Far",
         Some("Housekeeper"),
@@ -38,7 +41,7 @@ object PeopleIT extends IOSuite {
         Some(LocalDate.now.plusDays(300)),
         None
       )
-      expiring <- PeopleRepo.expiringPermits(60)
+      expiring <- PeopleRepo.expiringPermits(Tenant.DefaultId, 60)
     } yield (soon, far, expiring)
     prog.transact(xa).map { case (soon, far, expiring) =>
       expect(expiring.exists(_.id == soon.id)) and expect(!expiring.exists(_.id == far.id))

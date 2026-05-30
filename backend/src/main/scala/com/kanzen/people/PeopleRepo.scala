@@ -48,6 +48,7 @@ object PeopleRepo {
 
   def insert(
       ownerId: UUID,
+      tenantId: UUID,
       userId: Option[UUID],
       name: String,
       role: Option[String],
@@ -56,25 +57,29 @@ object PeopleRepo {
       permitExpiry: Option[LocalDate],
       reviewDue: Option[LocalDate]
   ): ConnectionIO[Person] =
-    (fr"""insert into employment_records (owner_id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due)
-          values ($ownerId, $userId, $name, $role, $jurisdiction, $propertyId, $permitExpiry, $reviewDue)
+    (fr"""insert into employment_records (owner_id, tenant_id, user_id, name, role, jurisdiction, property_id, permit_expiry, review_due)
+          values ($ownerId, $tenantId, $userId, $name, $role, $jurisdiction, $propertyId, $permitExpiry, $reviewDue)
           returning""" ++ cols).query[Person].unique
 
-  def list: ConnectionIO[List[Person]] =
-    (fr"select" ++ cols ++ fr"from employment_records where deleted_at is null order by name").query[Person].to[List]
+  def list(tenantId: UUID): ConnectionIO[List[Person]] =
+    (fr"select" ++ cols ++ fr"from employment_records where deleted_at is null and tenant_id = $tenantId order by name")
+      .query[Person]
+      .to[List]
 
   def listForUser(userId: UUID): ConnectionIO[List[Person]] =
     (fr"select" ++ cols ++ fr"from employment_records where user_id = $userId and deleted_at is null")
       .query[Person]
       .to[List]
 
-  def find(id: UUID): ConnectionIO[Option[Person]] =
-    (fr"select" ++ cols ++ fr"from employment_records where id = $id and deleted_at is null").query[Person].option
+  def find(id: UUID, tenantId: UUID): ConnectionIO[Option[Person]] =
+    (fr"select" ++ cols ++ fr"from employment_records where id = $id and tenant_id = $tenantId and deleted_at is null")
+      .query[Person]
+      .option
 
   /** Records whose permit expires within the next `withinDays` days. */
-  def expiringPermits(withinDays: Int): ConnectionIO[List[Person]] =
+  def expiringPermits(tenantId: UUID, withinDays: Int): ConnectionIO[List[Person]] =
     (fr"select" ++ cols ++ fr"""from employment_records
-          where deleted_at is null and permit_expiry is not null
+          where deleted_at is null and tenant_id = $tenantId and permit_expiry is not null
             and permit_expiry between current_date and current_date + make_interval(days => $withinDays)
           order by permit_expiry""").query[Person].to[List]
 }

@@ -37,7 +37,7 @@ object Dashboard {
         if (authz.can(Actions.byKey("expense:view"))) ExpenseRepo.list(p.tenantId, Some("pending_approval"))
         else List.empty.pure[ConnectionIO]
       permits <-
-        if (p.role != "staff" && authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(60)
+        if (p.role != "staff" && authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(p.tenantId, 60)
         else List.empty.pure[ConnectionIO]
     } yield Right(Summary(pending.size, props.size, assets.size, permits.size)): Out[Summary]
     tx.transact(xa)

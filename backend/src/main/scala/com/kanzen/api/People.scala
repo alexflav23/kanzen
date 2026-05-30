@@ -107,7 +107,7 @@ object People {
       rows <-
         if (!authz.can(Actions.byKey("person:view"))) List.empty[Person].pure[ConnectionIO]
         else if (p.role == "staff") PeopleRepo.listForUser(p.userId)
-        else PeopleRepo.list.map(_.filter(_.propertyId.forall(scoped.contains)))
+        else PeopleRepo.list(p.tenantId).map(_.filter(_.propertyId.forall(scoped.contains)))
       colours <- colourMap(rows.flatMap(_.userId).toSet)
     } yield if (!authz.can(Actions.byKey("person:view"))) Left(forbidden) else Right(rows.map(view(_, colours)))
     tx.transact(xa)
@@ -117,7 +117,7 @@ object People {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
-      person <- PeopleRepo.find(id)
+      person <- PeopleRepo.find(id, p.tenantId)
       colours <- colourMap(person.flatMap(_.userId).toSet)
     } yield
       if (!authz.can(Actions.byKey("person:view"))) Left(forbidden)
@@ -141,6 +141,7 @@ object People {
         PeopleRepo
           .insert(
             p.userId,
+            p.tenantId,
             req.userId,
             req.name,
             req.role,
@@ -159,7 +160,7 @@ object People {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- scopedSet(p)
       rows <-
-        if (authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(days)
+        if (authz.can(Actions.byKey("person:view"))) PeopleRepo.expiringPermits(p.tenantId, days)
         else List.empty[Person].pure[ConnectionIO]
       colours <- colourMap(rows.flatMap(_.userId).toSet)
     } yield
