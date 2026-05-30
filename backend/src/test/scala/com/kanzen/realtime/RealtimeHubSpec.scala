@@ -39,6 +39,27 @@ object RealtimeHubSpec extends SimpleIOSuite {
       expect(got._1.head.subjectId.contains(tid))
   }
 
+  test("presence: enter/leave broadcast a presence.snapshot with the live viewer set") {
+    val entity = UUID.randomUUID()
+    val ada = UUID.randomUUID()
+    val ben = UUID.randomUUID()
+    for {
+      hub <- RealtimeHub.create
+      snaps <- hub.subscribeAwait().use { s =>
+        val collect = s.filter(_.eventType == "presence.snapshot").take(3).compile.toList
+        for {
+          fib <- collect.start
+          _ <- hub.enter("email_thread", entity.toString, ada) // [ada]
+          _ <- hub.enter("email_thread", entity.toString, ben) // [ada, ben]
+          _ <- hub.leave("email_thread", entity.toString, ada) // [ben]
+          got <- fib.joinWithNever
+        } yield got
+      }
+      users = snaps.map(s => s.payload.hcursor.get[List[String]]("userIds").getOrElse(Nil).toSet)
+    } yield expect(snaps.forall(_.subjectId.contains(entity))) and
+      expect(users == List(Set(ada.toString), Set(ada.toString, ben.toString), Set(ben.toString)))
+  }
+
   pureTest("the wire shape is uniform {eventType, subject, payload}; envelope owner/property are lifted") {
     val owner = UUID.randomUUID()
     val asset = UUID.randomUUID()

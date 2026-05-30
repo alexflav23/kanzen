@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { API_URL } from "../services/http";
 import { useAuth } from "../state/AuthContext";
 
@@ -11,10 +11,10 @@ export type RtEvent = {
 };
 
 type Handler = (ev: RtEvent) => void;
-type RealtimeCtx = { subscribe: (h: Handler) => () => void };
+type RealtimeCtx = { subscribe: (h: Handler) => () => void; send: (obj: unknown) => void };
 
 // Default = no-op so components using `useRealtime` render fine without a provider (e.g. in unit tests).
-const Ctx = createContext<RealtimeCtx>({ subscribe: () => () => {} });
+const Ctx = createContext<RealtimeCtx>({ subscribe: () => () => {}, send: () => {} });
 
 /** ws(s):// origin for the API, derived from API_URL (http→ws, https→wss). */
 const wsUrl = (token: string) =>
@@ -26,11 +26,23 @@ const wsUrl = (token: string) =>
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   const handlers = useRef(new Set<Handler>());
+  const wsRef = useRef<WebSocket | null>(null);
+  // the last presence frame we sent — re-announced on (re)connect so presence survives a network hiccup (RT.3)
+  const lastPresence = useRef<unknown>(null);
 
   const subscribe = useMemo<RealtimeCtx["subscribe"]>(
     () => (h: Handler) => {
       handlers.current.add(h);
       return () => handlers.current.delete(h);
+    },
+    [],
+  );
+
+  const send = useMemo<RealtimeCtx["send"]>(
+    () => (obj: unknown) => {
+      if (obj && typeof obj === "object" && (obj as { kind?: string }).kind === "presence") lastPresence.current = obj;
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
     },
     [],
   );
@@ -45,7 +57,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     const connect = () => {
       if (closed) return;
       ws = new WebSocket(wsUrl(token));
-      ws.onopen = () => { backoff = 500; };
+      wsRef.current = ws;
+      ws.onopen = () => {
+        backoff = 500;
+        // re-announce what this tab is viewing, so presence is restored after a reconnect
+        if (lastPresence.current && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(lastPresence.current));
+      };
       ws.onmessage = (e) => {
         try {
           const ev = JSON.parse(e.data as string) as RtEvent;
@@ -65,10 +82,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       closed = true;
       if (retry) clearTimeout(retry);
       ws?.close();
+      wsRef.current = null;
     };
   }, [token]);
 
-  return <Ctx.Provider value={{ subscribe }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ subscribe, send }}>{children}</Ctx.Provider>;
 }
 
 /** Register a handler for the lifetime of the calling component. The latest closure is always used (no stale handler)
@@ -78,4 +96,27 @@ export function useRealtime(handler: Handler) {
   const ref = useRef(handler);
   ref.current = handler;
   useEffect(() => subscribe((ev) => ref.current(ev)), [subscribe]);
+}
+
+/** F48 RT.3 — announce that this tab is viewing `(entityType, entityId)` and return the live set of *other* users also
+ *  viewing it (excluding yourself). Drives the "N people here" indicator. Clears on unmount / entity change. */
+export function usePresence(entityType: string, entityId: string | null | undefined): string[] {
+  const { send } = useContext(Ctx);
+  const { userId } = useAuth();
+  const [viewers, setViewers] = useState<string[]>([]);
+
+  useRealtime((ev) => {
+    if (ev.eventType === "presence.snapshot" && ev.subject.type === entityType && ev.subject.id === entityId) {
+      const ids = (ev.payload as { userIds?: string[] } | null)?.userIds ?? [];
+      setViewers(ids.filter((id) => id !== userId));
+    }
+  });
+
+  useEffect(() => {
+    if (!entityId) return;
+    send({ kind: "presence", entityType, entityId });
+    return () => { send({ kind: "presence", entityType, entityId: "" }); setViewers([]); };
+  }, [entityType, entityId, send]);
+
+  return viewers;
 }

@@ -43,16 +43,48 @@ object Realtime {
                 } yield (authz, scope)
 
               setup.transact(xa).flatMap { case (authz, scope) =>
-                val events: Stream[IO, WebSocketFrame] =
-                  hub
-                    .subscribe()
-                    .evalFilter(ev => RealtimeFilter.visible(ev, p, authz, scope, xa))
-                    .map(ev => WebSocketFrame.Text(ev.wire.noSpaces))
-                val keepAlive: Stream[IO, WebSocketFrame] =
-                  Stream.awakeEvery[IO](25.seconds).as(WebSocketFrame.Ping())
-                val send = events.merge(keepAlive)
-                val receive: Pipe[IO, WebSocketFrame, Unit] = _.drain
-                wsb.build(send, receive)
+                cats.effect.Ref[IO].of(Option.empty[(String, String)]).flatMap { viewing =>
+                  val events: Stream[IO, WebSocketFrame] =
+                    hub
+                      .subscribe()
+                      .evalFilter(ev => RealtimeFilter.visible(ev, p, authz, scope, xa))
+                      .map(ev => WebSocketFrame.Text(ev.wire.noSpaces))
+                  val keepAlive: Stream[IO, WebSocketFrame] =
+                    Stream.awakeEvery[IO](25.seconds).as(WebSocketFrame.Ping())
+                  val send = events.merge(keepAlive)
+
+                  // F48 RT.3 — the client publishes which entity it's viewing: `{kind:"presence",entityType,entityId}`
+                  // (empty entityId clears it). We leave the previous entity, enter the new, and clean up on close.
+                  def onPresence(et: String, eid: String): IO[Unit] =
+                    viewing.getAndSet(if (eid.isEmpty) None else Some((et, eid))).flatMap { prev =>
+                      prev.traverse_ { case (pet, peid) =>
+                        hub.leave(pet, peid, p.userId)
+                      } *>
+                        (if (eid.nonEmpty) hub.enter(et, eid, p.userId) else IO.unit)
+                    }
+                  def handle(f: WebSocketFrame): IO[Unit] = f match {
+                    case WebSocketFrame.Text(txt, _) =>
+                      io.circe.parser
+                        .parse(txt)
+                        .toOption
+                        .flatMap { j =>
+                          val c = j.hcursor
+                          if (c.get[String]("kind").toOption.contains("presence"))
+                            for {
+                              et <- c.get[String]("entityType").toOption
+                              eid <- c.get[String]("entityId").toOption
+                            } yield onPresence(et, eid)
+                          else None
+                        }
+                        .getOrElse(IO.unit)
+                    case _ => IO.unit
+                  }
+                  val receive: Pipe[IO, WebSocketFrame, Unit] =
+                    _.evalMap(handle).onFinalize(
+                      viewing.get.flatMap(_.traverse_ { case (et, eid) => hub.leave(et, eid, p.userId) })
+                    )
+                  wsb.build(send, receive)
+                }
               }
           }
       }

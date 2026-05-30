@@ -5,7 +5,7 @@ import { colors, radius } from "../styles/tokens.stylex";
 import { Avatar } from "./Avatar";
 import { Check, X } from "./icons";
 import { useAuth } from "../state/AuthContext";
-import { useRealtime } from "../realtime/RealtimeProvider";
+import { useRealtime, usePresence } from "../realtime/RealtimeProvider";
 import { addComment, editComment, getComments, type CCollabComment } from "../services/collabInbox";
 import { listPeople } from "../services/people";
 
@@ -60,6 +60,9 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
       invalidate();
     }
   });
+
+  // F48 RT.3 — who else is looking at this entity right now (live presence dots in the header).
+  const presentUsers = usePresence(entityType, entityId);
 
   const addM = useMutation({
     mutationFn: () => addComment(entityType, entityId, body.trim(), mentions, token),
@@ -153,7 +156,17 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
 
   return (
     <section {...stylex.props(styles.surface)} aria-label={title} data-testid="collab-panel">
-      <div {...stylex.props(styles.head)}>{title}</div>
+      <div {...stylex.props(styles.head)}>
+        <span>{title}</span>
+        {presentUsers.length > 0 && (
+          <span {...stylex.props(styles.presence)} data-testid="presence" title={`${presentUsers.length} also viewing`}>
+            {presentUsers.slice(0, 3).map((uid) => (
+              <Avatar key={uid} name={usersById.get(uid) ?? "Someone"} size={18} colour={coloursByUser.get(uid) ?? null} />
+            ))}
+            <span {...stylex.props(styles.presenceLabel)}>{presentUsers.length === 1 ? "1 here" : `${presentUsers.length} here`}</span>
+          </span>
+        )}
+      </div>
       {commentsQ.data?.map((c) => {
         const isMine = c.authorId === userId;
         return (
@@ -219,7 +232,9 @@ export function CollabPanel({ entityType, entityId, title = "Internal notes", he
 
 const styles = stylex.create({
   surface: { backgroundColor: colors.note, border: `1px solid ${colors.noteLine}`, borderRadius: radius.md, padding: "14px 16px", marginTop: "4px", display: "flex", flexDirection: "column", gap: "6px" },
-  head: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 700, marginBottom: "4px" },
+  head: { fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: colors.ink3, fontWeight: 700, marginBottom: "4px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
+  presence: { display: "flex", alignItems: "center", gap: "4px" },
+  presenceLabel: { fontSize: "10px", letterSpacing: "0.02em", textTransform: "none", color: colors.accent, fontWeight: 600 },
   row: { display: "flex", gap: "10px", alignItems: "flex-start", padding: "6px 0" },
   rowMain: { flex: 1, minWidth: 0 },
   meta: { display: "flex", alignItems: "baseline", gap: "6px", flexWrap: "wrap" },
