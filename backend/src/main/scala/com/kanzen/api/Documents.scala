@@ -118,7 +118,7 @@ object Documents {
         val pre: ConnectionIO[Out[Either[Document, Unit]]] = for {
           authz <- Authz.forUser(p.userId, p.role)
           scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
-          dup <- DocumentRepo.findBySha256(sha)
+          dup <- DocumentRepo.findBySha256(sha, p.tenantId)
         } yield {
           if (!authz.can(uploadA)) Left(forbidden)
           else if (visibility == "principal_private" && p.role != "principal") Left(forbidden)
@@ -139,6 +139,7 @@ object Documents {
                 .insert(
                   id,
                   p.userId,
+                  p.tenantId,
                   req.name,
                   req.category,
                   Some(req.contentType),
@@ -164,7 +165,8 @@ object Documents {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
-      docs <- if (authz.can(viewA)) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
+      docs <-
+        if (authz.can(viewA)) DocumentRepo.list(p.tenantId, category, q) else List.empty[Document].pure[ConnectionIO]
     } yield
       if (!authz.can(viewA)) Left(forbidden)
       else Right(docs.filter(d => visibleTo(p, d, scoped)).map(view))
@@ -183,7 +185,7 @@ object Documents {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
-      doc <- DocumentRepo.find(id)
+      doc <- DocumentRepo.find(id, p.tenantId)
     } yield
       if (!authz.can(action)) Left(forbidden)
       else doc.filter(d => visibleTo(p, d, scoped)).toRight(notFound)
@@ -208,7 +210,7 @@ object Documents {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
-      doc <- DocumentRepo.find(id)
+      doc <- DocumentRepo.find(id, p.tenantId)
     } yield doc.filter(d => visibleTo(p, d, scoped)) match {
       case None => Left(notFound)
       case Some(d) => if (authz.can(editA)) Right(d) else Left(forbidden)
@@ -241,7 +243,7 @@ object Documents {
       authz <- Authz.forUser(p.userId, p.role)
       scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       docs <-
-        if (authz.can(viewA)) DocumentRepo.documentsFor(targetType, targetId)
+        if (authz.can(viewA)) DocumentRepo.documentsFor(targetType, targetId, p.tenantId)
         else List.empty[Document].pure[ConnectionIO]
     } yield
       if (!authz.can(viewA)) Left(forbidden)
@@ -274,14 +276,14 @@ object Documents {
         (for {
           _ <- DocumentRepo.unlink(id, targetType, targetId)
           remaining <- DocumentRepo.targetsOf(id)
-          _ <- if (remaining.isEmpty) DocumentRepo.softDelete(id).void else ().pure[ConnectionIO]
+          _ <- if (remaining.isEmpty) DocumentRepo.softDelete(id, p.tenantId).void else ().pure[ConnectionIO]
         } yield Right(OkResult(true)): Out[OkResult]).transact(xa)
     }
 
   def softDelete(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[OkResult]] =
     writable(xa, p, id).flatMap {
       case Left(e) => IO.pure(Left(e))
-      case Right(_) => DocumentRepo.softDelete(id).transact(xa).as(Right(OkResult(true)))
+      case Right(_) => DocumentRepo.softDelete(id, p.tenantId).transact(xa).as(Right(OkResult(true)))
     }
 
   // ---- endpoints ----

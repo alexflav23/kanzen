@@ -463,7 +463,7 @@ object Assets {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(id, p.tenantId)
-      doc <- DocumentRepo.find(req.documentId)
+      doc <- DocumentRepo.find(req.documentId, p.tenantId)
       res <-
         if (!authz.can(heroA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]
         else if (!exists) (Left(notFound): Out[Unit]).pure[ConnectionIO]

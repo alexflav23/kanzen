@@ -1,5 +1,6 @@
 package com.kanzen.docs
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import com.kanzen.db.TestDb
 import doobie.implicits._
@@ -20,6 +21,7 @@ object DocumentIT extends IOSuite {
       doc <- DocumentRepo.insert(
         UUID.randomUUID(),
         owner,
+        Tenant.DefaultId,
         "receipt_001.pdf",
         "receipt",
         Some("application/pdf"),

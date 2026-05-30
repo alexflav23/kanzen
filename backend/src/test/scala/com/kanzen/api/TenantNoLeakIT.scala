@@ -5,6 +5,7 @@ import com.kanzen.api.Assets.CreateReq
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.calendar.CalendarRepo
+import com.kanzen.docs.DocumentRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
 import com.kanzen.inbox.CollabInboxRepo
 import com.kanzen.property.PropertyRepo
@@ -178,5 +179,50 @@ object TenantNoLeakIT extends IOSuite {
     } yield expect(aComments.exists(_.id == aCid)) and expect(!aComments.exists(_.id == bCid)) and
       expect(bComments.exists(_.id == bCid)) and expect(!bComments.exists(_.id == aCid)) and
       expect(aInboxes.nonEmpty) and expect(!aInboxes.exists(_.id == bInbox)) // B's mailbox never in A's list
+  }
+
+  test("documents: a tenant's document never appears in another's list/find, and sha dedup is per-tenant") { xa =>
+    val sha = s"sha-${UUID.randomUUID()}"
+    for {
+      tenantB <- newTenant(xa)
+      aDoc <- DocumentRepo
+        .insert(
+          UUID.randomUUID(),
+          UUID.randomUUID(),
+          Tenant.DefaultId,
+          "A.pdf",
+          "receipt",
+          Some("application/pdf"),
+          Some(1L),
+          s"k/a-${UUID.randomUUID()}",
+          sha,
+          "household",
+          "manual",
+          None
+        )
+        .transact(xa)
+      // the SAME sha under tenant B is a *distinct* document (dedup is tenant-scoped)
+      bDoc <- DocumentRepo
+        .insert(
+          UUID.randomUUID(),
+          UUID.randomUUID(),
+          tenantB,
+          "B.pdf",
+          "receipt",
+          Some("application/pdf"),
+          Some(1L),
+          s"k/b-${UUID.randomUUID()}",
+          sha,
+          "household",
+          "manual",
+          None
+        )
+        .transact(xa)
+      aList <- DocumentRepo.list(Tenant.DefaultId, None, None).transact(xa)
+      aSeesBById <- DocumentRepo.find(bDoc.id, Tenant.DefaultId).transact(xa)
+      aDedup <- DocumentRepo.findBySha256(sha, Tenant.DefaultId).transact(xa)
+    } yield expect(aList.exists(_.id == aDoc.id)) and expect(!aList.exists(_.id == bDoc.id)) and
+      expect(aSeesBById.isEmpty) and // no leak by id
+      expect(aDedup.exists(_.id == aDoc.id)) // dedup resolves to A's own doc, never B's
   }
 }

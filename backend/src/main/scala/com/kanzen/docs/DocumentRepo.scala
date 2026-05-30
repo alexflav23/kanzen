@@ -32,6 +32,7 @@ object DocumentRepo {
   def insert(
       id: UUID,
       ownerId: UUID,
+      tenantId: UUID,
       name: String,
       category: String,
       contentType: Option[String],
@@ -42,19 +43,24 @@ object DocumentRepo {
       source: String,
       propertyId: Option[UUID]
   ): ConnectionIO[Document] =
-    (fr"""insert into documents (id, owner_id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id)
-          values ($id, $ownerId, $name, $category, $contentType, $sizeBytes, $s3Key, $sha256, $visibility, $source, $propertyId)
+    (fr"""insert into documents (id, owner_id, tenant_id, name, category, content_type, size_bytes, s3_key, sha256, visibility, source, property_id)
+          values ($id, $ownerId, $tenantId, $name, $category, $contentType, $sizeBytes, $s3Key, $sha256, $visibility, $source, $propertyId)
           returning""" ++ cols).query[Document].unique
 
-  def find(id: UUID): ConnectionIO[Option[Document]] =
-    (fr"select" ++ cols ++ fr"from documents where id = $id and deleted_at is null").query[Document].option
+  def find(id: UUID, tenantId: UUID): ConnectionIO[Option[Document]] =
+    (fr"select" ++ cols ++ fr"from documents where id = $id and tenant_id = $tenantId and deleted_at is null")
+      .query[Document]
+      .option
 
-  def findBySha256(sha: String): ConnectionIO[Option[Document]] =
-    (fr"select" ++ cols ++ fr"from documents where sha256 = $sha and deleted_at is null limit 1").query[Document].option
+  def findBySha256(sha: String, tenantId: UUID): ConnectionIO[Option[Document]] =
+    (fr"select" ++ cols ++ fr"from documents where sha256 = $sha and tenant_id = $tenantId and deleted_at is null limit 1")
+      .query[Document]
+      .option
 
-  def list(category: Option[String], q: Option[String]): ConnectionIO[List[Document]] = {
+  def list(tenantId: UUID, category: Option[String], q: Option[String]): ConnectionIO[List[Document]] = {
     val conds = List(
       Some(fr"deleted_at is null"),
+      Some(fr"tenant_id = $tenantId"),
       category.map(c => fr"category = $c"),
       q.map(s => fr"name ilike ${"%" + s + "%"}")
     ).flatten
@@ -62,8 +68,8 @@ object DocumentRepo {
     (fr"select" ++ cols ++ fr"from documents where" ++ where ++ fr"order by created_at desc").query[Document].to[List]
   }
 
-  def softDelete(id: UUID): ConnectionIO[Int] =
-    sql"update documents set deleted_at = now() where id = $id and deleted_at is null".update.run
+  def softDelete(id: UUID, tenantId: UUID): ConnectionIO[Int] =
+    sql"update documents set deleted_at = now() where id = $id and tenant_id = $tenantId and deleted_at is null".update.run
 
   def link(documentId: UUID, targetType: String, targetId: UUID, role: Option[String]): ConnectionIO[Int] =
     sql"""insert into document_links (document_id, target_type, target_id, role)
@@ -78,10 +84,10 @@ object DocumentRepo {
       .to[List]
 
   /** The live documents attached to a target, newest first. */
-  def documentsFor(targetType: String, targetId: UUID): ConnectionIO[List[Document]] =
+  def documentsFor(targetType: String, targetId: UUID, tenantId: UUID): ConnectionIO[List[Document]] =
     (fr"select" ++ cols ++ fr"""from documents
           where id in (select document_id from document_links where target_type = $targetType and target_id = $targetId)
-            and deleted_at is null
+            and tenant_id = $tenantId and deleted_at is null
           order by created_at desc""").query[Document].to[List]
 
   def targetsOf(documentId: UUID): ConnectionIO[List[(String, UUID)]] =

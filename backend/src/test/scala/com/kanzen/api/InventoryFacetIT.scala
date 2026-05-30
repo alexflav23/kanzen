@@ -52,6 +52,7 @@ object InventoryFacetIT extends IOSuite {
         .insert(
           docId,
           owner,
+          Tenant.DefaultId,
           s"hero-$s.jpg",
           "photo",
           Some("image/jpeg"),

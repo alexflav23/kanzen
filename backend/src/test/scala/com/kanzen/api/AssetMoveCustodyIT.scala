@@ -5,6 +5,7 @@ import com.kanzen.api.Assets.{CreateReq, CustodyReq, EditReq, HeroReq, MoveReq}
 import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import com.kanzen.tenant.Tenant
 import com.kanzen.docs.DocumentRepo
 import doobie.implicits._
 import doobie.postgres.implicits._
@@ -77,6 +78,7 @@ object AssetMoveCustodyIT extends IOSuite {
         .insert(
           UUID.randomUUID(),
           toby.userId,
+          Tenant.DefaultId,
           "hero.png",
           "photo",
           Some("image/png"),
@@ -106,6 +108,7 @@ object AssetMoveCustodyIT extends IOSuite {
         .insert(
           UUID.randomUUID(),
           toby.userId,
+          Tenant.DefaultId,
           "hero.png",
           "photo",
           Some("image/png"),
