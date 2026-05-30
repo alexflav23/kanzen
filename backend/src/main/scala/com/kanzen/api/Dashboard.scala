@@ -29,7 +29,7 @@ object Dashboard {
   def summary(xa: Transactor[IO], p: Principal): IO[Out[Summary]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      props <- PropertyRepo.listForPrincipal(p.userId)
+      props <- PropertyRepo.listForPrincipal(p.tenantId, p.userId)
       assets <-
         if (authz.can(Actions.byKey("asset:view"))) AssetRepo.list(p.tenantId, None, None)
         else List.empty.pure[ConnectionIO]

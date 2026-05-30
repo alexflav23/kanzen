@@ -1,5 +1,6 @@
 package com.kanzen.property
 
+import com.kanzen.tenant.Tenant
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.db.TestDb
@@ -30,7 +31,7 @@ object PropertyIT extends IOSuite {
   }
 
   test("list returns created properties") { xa =>
-    (PropertyRepo.create("Singapore", None, Some("sg"), "SGD") *> PropertyRepo.list)
+    (PropertyRepo.create("Singapore", None, Some("sg"), "SGD") *> PropertyRepo.list(Tenant.DefaultId))
       .transact(xa)
       .map(ps => expect(ps.exists(_.name == "Singapore") && ps.exists(_.defaultCurrency == "SGD")))
   }

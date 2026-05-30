@@ -84,7 +84,7 @@ object Defects {
   private def authorize(p: Principal, propertyId: UUID, level: Level, field: Option[String]): ConnectionIO[Out[Unit]] =
     for {
       authz <- Authz.forUser(p.userId, p.role)
-      prop <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == propertyId))
+      prop <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.find(_.id == propertyId))
     } yield prop match {
       case None => Left(notFound)
       case Some(pr) if level == Level.Write && pr.status == "archived" => Left(conflict)

@@ -18,8 +18,8 @@ import sttp.tapir.server.ServerEndpoint
 import java.util.UUID
 
 /** Phase 1 walking skeleton — `GET /api/properties`: the first DB-backed, authz-gated read. Bearer → `Principal`
-  * (Cognito JWKS) → the role's rules from `permission_rules` (F02, default-deny) → `PropertyRepo.list` from Postgres,
-  * or 403. Proves config → migrate → auth → authorize → query → JSON end-to-end.
+  * (Cognito JWKS) → the role's rules from `permission_rules` (F02, default-deny) → `PropertyRepo.list(p.tenantId)` from
+  * Postgres, or 403. Proves config → migrate → auth → authorize → query → JSON end-to-end.
   */
 object Properties {
   final case class PropertyView(
@@ -100,7 +100,7 @@ object Properties {
       authz <- Authz.forUser(p.userId, p.role)
       allowed = authz.can(Actions.byKey("property:view"))
       props <-
-        if (allowed) PropertyRepo.listForPrincipalWithCounts(p.userId)
+        if (allowed) PropertyRepo.listForPrincipalWithCounts(p.tenantId, p.userId)
         else List.empty[(Property, PropertyCounts)].pure[ConnectionIO]
     } yield (allowed, props)
 
@@ -116,7 +116,16 @@ object Properties {
       if (!authz.can(Actions.byKey("property:create"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
       else
         PropertyRepo
-          .insert(p.userId, req.name, req.address, req.jurisdiction, req.propType, req.ownership, req.currency)
+          .insert(
+            p.userId,
+            p.tenantId,
+            req.name,
+            req.address,
+            req.jurisdiction,
+            req.propType,
+            req.ownership,
+            req.currency
+          )
           .map(pr => Right(toView(pr)): Out[PropertyView])
     }
     tx.transact(xa)
@@ -125,7 +134,7 @@ object Properties {
   def patch(xa: Transactor[IO], p: Principal, id: UUID, req: PatchReq): IO[Out[PropertyView]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+      visible <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.find(_.id == id))
       res <- visible match {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
         case Some(pr) =>
@@ -133,7 +142,7 @@ object Properties {
           else if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
           else
             PropertyRepo.patchProperty(id, req.name, req.address, req.jurisdiction, req.propType, req.ownership) *>
-              PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
+              PropertyRepo.findProperty(id, p.tenantId).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
@@ -142,12 +151,14 @@ object Properties {
   def archive(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[PropertyView]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      visible <- PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+      visible <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.find(_.id == id))
       res <- visible match {
         case None => (Left(notFound): Out[PropertyView]).pure[ConnectionIO]
         case Some(_) =>
           if (!authz.can(Actions.byKey("property:edit"))) (Left(forbidden): Out[PropertyView]).pure[ConnectionIO]
-          else PropertyRepo.archive(id) *> PropertyRepo.findProperty(id).map(_.map(pr => toView(pr)).toRight(notFound))
+          else
+            PropertyRepo
+              .archive(id) *> PropertyRepo.findProperty(id, p.tenantId).map(_.map(pr => toView(pr)).toRight(notFound))
       }
     } yield res
     tx.transact(xa)
@@ -160,13 +171,14 @@ object Properties {
     val tx: ConnectionIO[Either[(StatusCode, ApiError), PropertyDetail]] = for {
       authz <- Authz.forUser(p.userId, p.role)
       visible <-
-        if (authz.can(Actions.byKey("property:view"))) PropertyRepo.listForPrincipal(p.userId).map(_.find(_.id == id))
+        if (authz.can(Actions.byKey("property:view")))
+          PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.find(_.id == id))
         else Option.empty[Property].pure[ConnectionIO]
       result <- (authz.can(Actions.byKey("property:view")), visible) match {
         case (false, _) => (Left(forbidden): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, None) => (Left(notFound): Either[(StatusCode, ApiError), PropertyDetail]).pure[ConnectionIO]
         case (true, Some(pr)) =>
-          (PropertyRepo.countsFor(id), PropertyRepo.particulars(id)).tupled
+          (PropertyRepo.countsFor(id), PropertyRepo.particulars(id, p.tenantId)).tupled
             .map { case (c, pt) =>
               Right(
                 PropertyDetail(

@@ -51,6 +51,7 @@ object PropertyRepo {
   /** Full create with owner (house rule) + type/ownership — the API path. */
   def insert(
       ownerId: UUID,
+      tenantId: UUID,
       name: String,
       address: Option[String],
       jurisdiction: Option[String],
@@ -58,12 +59,12 @@ object PropertyRepo {
       ownership: Option[String],
       currency: String
   ): ConnectionIO[Property] =
-    sql"""insert into properties (owner_id, name, address, jurisdiction, type, ownership, default_currency)
-          values ($ownerId, $name, $address, $jurisdiction, $propType, $ownership, $currency)
+    sql"""insert into properties (owner_id, tenant_id, name, address, jurisdiction, type, ownership, default_currency)
+          values ($ownerId, $tenantId, $name, $address, $jurisdiction, $propType, $ownership, $currency)
           returning id, name, jurisdiction, default_currency, status""".query[Property].unique
 
-  def findProperty(id: UUID): ConnectionIO[Option[Property]] =
-    sql"select id, name, jurisdiction, default_currency, status from properties where id = $id and deleted_at is null"
+  def findProperty(id: UUID, tenantId: UUID): ConnectionIO[Option[Property]] =
+    sql"select id, name, jurisdiction, default_currency, status from properties where id = $id and tenant_id = $tenantId and deleted_at is null"
       .query[Property]
       .option
 
@@ -82,18 +83,18 @@ object PropertyRepo {
   def archive(id: UUID): ConnectionIO[Int] =
     sql"update properties set status = 'archived', updated_at = now() where id = $id and deleted_at is null".update.run
 
-  def list: ConnectionIO[List[Property]] =
-    sql"select id, name, jurisdiction, default_currency, status from properties where deleted_at is null order by name"
+  def list(tenantId: UUID): ConnectionIO[List[Property]] =
+    sql"select id, name, jurisdiction, default_currency, status from properties where deleted_at is null and tenant_id = $tenantId order by name"
       .query[Property]
       .to[List]
 
   /** Properties visible to a principal under F02 scope: all of them when the user has no scope rows, otherwise only the
     * scoped ones.
     */
-  def listForPrincipal(userId: UUID): ConnectionIO[List[Property]] =
+  def listForPrincipal(tenantId: UUID, userId: UUID): ConnectionIO[List[Property]] =
     sql"""select id, name, jurisdiction, default_currency, status
           from properties p
-          where p.deleted_at is null
+          where p.deleted_at is null and p.tenant_id = $tenantId
             and (not exists (select 1 from user_property_scopes s where s.user_id = $userId)
                  or exists (select 1 from user_property_scopes s
                             where s.user_id = $userId and s.property_id = p.id))
@@ -117,12 +118,12 @@ object PropertyRepo {
     sql"select count(*) from vendor_property_link where property_id = $propertyId".query[Int].unique
 
   /** Full particulars + linked-system references for the Bible Overview — task project resolved to its name. */
-  def particulars(propertyId: UUID): ConnectionIO[PropertyParticulars] =
+  def particulars(propertyId: UUID, tenantId: UUID): ConnectionIO[PropertyParticulars] =
     sql"""select p.address, p.type, p.ownership, p.building_management, tp.name,
                  p.google_calendar_id, p.drive_folder, p.onepassword_vault
           from properties p
           left join task_projects tp on tp.id = p.task_project_id
-          where p.id = $propertyId""".query[PropertyParticulars].unique
+          where p.id = $propertyId and p.tenant_id = $tenantId""".query[PropertyParticulars].unique
 
   /** Full counts for one property — feeds the Bible aggregate. */
   def countsFor(propertyId: UUID): ConnectionIO[PropertyCounts] =
@@ -134,7 +135,7 @@ object PropertyRepo {
     } yield PropertyCounts(rooms, assets, bills, vendors)
 
   /** Scoped list (as [[listForPrincipal]]) but with the per-property tallies for the cards, in one query. */
-  def listForPrincipalWithCounts(userId: UUID): ConnectionIO[List[(Property, PropertyCounts)]] =
+  def listForPrincipalWithCounts(tenantId: UUID, userId: UUID): ConnectionIO[List[(Property, PropertyCounts)]] =
     sql"""select p.id, p.name, p.jurisdiction, p.default_currency, p.status,
             (select count(*) from locations l where l.property_id = p.id and l.deleted_at is null),
             (select count(*) from assets a join locations l on a.location_id = l.id
@@ -142,7 +143,7 @@ object PropertyRepo {
             (select count(*) from bills b where b.property_id = p.id and b.deleted_at is null),
             (select count(*) from vendor_property_link v where v.property_id = p.id)
           from properties p
-          where p.deleted_at is null
+          where p.deleted_at is null and p.tenant_id = $tenantId
             and (not exists (select 1 from user_property_scopes s where s.user_id = $userId)
                  or exists (select 1 from user_property_scopes s where s.user_id = $userId and s.property_id = p.id))
           order by p.name"""

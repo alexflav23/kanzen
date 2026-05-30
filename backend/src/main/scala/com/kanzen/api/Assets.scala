@@ -382,7 +382,7 @@ object Assets {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
       exists <- AssetRepo.exists(id, p.tenantId)
-      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       targetProp <- req.locationId.fold(Option.empty[UUID].pure[ConnectionIO])(AssetRepo.propertyOfLocation)
       res <-
         if (!authz.can(moveA)) (Left(forbidden): Out[Unit]).pure[ConnectionIO]

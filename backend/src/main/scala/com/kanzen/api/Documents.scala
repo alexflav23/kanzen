@@ -117,7 +117,7 @@ object Documents {
 
         val pre: ConnectionIO[Out[Either[Document, Unit]]] = for {
           authz <- Authz.forUser(p.userId, p.role)
-          scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+          scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
           dup <- DocumentRepo.findBySha256(sha)
         } yield {
           if (!authz.can(uploadA)) Left(forbidden)
@@ -163,7 +163,7 @@ object Documents {
   ): IO[Out[List[DocumentView]]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       docs <- if (authz.can(viewA)) DocumentRepo.list(category, q) else List.empty[Document].pure[ConnectionIO]
     } yield
       if (!authz.can(viewA)) Left(forbidden)
@@ -182,7 +182,7 @@ object Documents {
   ): IO[Out[Document]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       doc <- DocumentRepo.find(id)
     } yield
       if (!authz.can(action)) Left(forbidden)
@@ -207,7 +207,7 @@ object Documents {
   private def writable(xa: Transactor[IO], p: Principal, id: UUID): IO[Out[Document]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       doc <- DocumentRepo.find(id)
     } yield doc.filter(d => visibleTo(p, d, scoped)) match {
       case None => Left(notFound)
@@ -239,7 +239,7 @@ object Documents {
   ): IO[Out[List[LinkedDoc]]] = {
     val tx = for {
       authz <- Authz.forUser(p.userId, p.role)
-      scoped <- PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+      scoped <- PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
       docs <-
         if (authz.can(viewA)) DocumentRepo.documentsFor(targetType, targetId)
         else List.empty[Document].pure[ConnectionIO]

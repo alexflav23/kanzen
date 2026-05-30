@@ -56,7 +56,7 @@ object Vendors {
   private val notFound: (StatusCode, ApiError) = (StatusCode.NotFound, ApiError(404, "not_found", "No such vendor."))
 
   private def scopedIds(p: Principal): ConnectionIO[Set[UUID]] =
-    PropertyRepo.listForPrincipal(p.userId).map(_.map(_.id).toSet)
+    PropertyRepo.listForPrincipal(p.tenantId, p.userId).map(_.map(_.id).toSet)
 
   def list(xa: Transactor[IO], p: Principal): IO[Out[List[VendorView]]] = {
     val tx = for {

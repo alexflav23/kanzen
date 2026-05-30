@@ -6,6 +6,7 @@ import com.kanzen.asset.AssetRepo
 import com.kanzen.auth.Principal
 import com.kanzen.calendar.CalendarRepo
 import com.kanzen.finance.{BillRepo, ExpenseRepo}
+import com.kanzen.property.PropertyRepo
 import com.kanzen.tasks.TaskRepo
 
 import java.time.LocalDate
@@ -134,5 +135,23 @@ object TenantNoLeakIT extends IOSuite {
       bMerged <- CalendarRepo.merged(tenantB, day, day).transact(xa)
     } yield expect(aMerged.exists(_.id == aEv)) and expect(!aMerged.exists(_.id == bEv)) and
       expect(bMerged.exists(_.id == bEv)) and expect(!bMerged.exists(_.id == aEv))
+  }
+
+  test("properties: a tenant's principal only sees its own properties (the scoping primitive is tenant-bounded)") {
+    xa =>
+      for {
+        tenantB <- newTenant(xa)
+        ownerB = UUID.randomUUID()
+        bProp <- PropertyRepo
+          .insert(ownerB, tenantB, "B Villa", None, Some("sg"), Some("house"), Some("owned"), "SGD")
+          .transact(xa)
+        // tenant A's principal (no scope rows → "sees all" branch) must still be tenant-bounded
+        aVisible <- PropertyRepo.listForPrincipal(Tenant.DefaultId, tobyA.userId).transact(xa)
+        bVisible <- PropertyRepo.listForPrincipal(tenantB, ownerB).transact(xa)
+        aSeesBById <- PropertyRepo.findProperty(bProp.id, Tenant.DefaultId).transact(xa)
+      } yield expect(!aVisible.exists(_.id == bProp.id)) and // B's property never leaks into A's "see all"
+        expect(bVisible.exists(_.id == bProp.id)) and
+        expect(aVisible.nonEmpty) and // A still sees its own seeded properties
+        expect(aSeesBById.isEmpty) // nor by direct id
   }
 }
