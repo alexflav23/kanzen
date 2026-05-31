@@ -52,4 +52,19 @@ object NotificationRepo {
   /** Self-scoped: only marks a row the caller owns; returns rows affected (0 = not theirs / already read). */
   def markRead(userId: UUID, id: UUID): ConnectionIO[Int] =
     sql"update notifications set read_at = now() where id = $id and user_id = $userId and read_at is null".update.run
+
+  // ── F34/APNs+FCM push delivery ───────────────────────────────────────────────
+  /** One notification awaiting a device push (its channels include 'push' and it hasn't been pushed yet). */
+  final case class PushPending(id: UUID, userId: UUID, title: String, body: Option[String])
+
+  def pendingPush(limit: Int): ConnectionIO[List[PushPending]] =
+    sql"""select id, user_id, title, body from notifications
+          where pushed_at is null and channels_sent @> '["push"]'::jsonb order by created_at limit $limit"""
+      .query[PushPending].to[List]
+
+  def markPushed(id: UUID): ConnectionIO[Int] =
+    sql"update notifications set pushed_at = now(), push_error = null where id = $id".update.run
+
+  def markPushError(id: UUID, err: String): ConnectionIO[Int] =
+    sql"update notifications set push_error = $err where id = $id".update.run
 }

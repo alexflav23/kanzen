@@ -124,7 +124,12 @@ object Main extends IOApp.Simple {
                   val gmailSend =
                     log.info("W9.4 gmail-send worker started") *>
                       com.kanzen.inbox.GmailSendWorker.run(xa, new com.kanzen.inbox.StubGmailSender(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
-                  IO.both(servers, IO.both(relay, IO.both(reconcile, IO.both(calendarSync, IO.both(mailDelivery, gmailSend))))).void
+                  // F34/APNs+FCM: drain notifications awaiting a device push through the PushTransport seam (stub now; APNs/FCM later).
+                  val pushDelivery =
+                    log.info("F34 push-delivery worker started") *>
+                      com.kanzen.notify.PushDeliveryWorker.run(xa, com.kanzen.notify.StubPushTransport)
+                  val workers = IO.both(calendarSync, IO.both(mailDelivery, IO.both(gmailSend, pushDelivery)))
+                  IO.both(servers, IO.both(relay, IO.both(reconcile, workers))).void
                 }
               }
             }
