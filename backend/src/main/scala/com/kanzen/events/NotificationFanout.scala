@@ -79,5 +79,6 @@ object NotificationFanout extends Consumer {
   * LedgerPoster F18, ReminderScheduler F11).
   */
 object Consumers {
-  val sandbox: List[Consumer] = List(NotificationFanout, com.kanzen.index.IndexConsumer)
+  val sandbox: List[Consumer] =
+    List(NotificationFanout, com.kanzen.index.IndexConsumer, com.kanzen.calendar.CalendarSyncConsumer)
 }

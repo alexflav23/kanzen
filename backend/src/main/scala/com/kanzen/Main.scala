@@ -5,6 +5,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 import com.kanzen.api.{Admin, Api}
 import com.kanzen.auth.{Auth, DevAuth, HttpJwks, Jwks}
+import com.kanzen.calendar.CalendarSyncWorker
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import com.kanzen.events.{Consumers, Relay}
@@ -110,7 +111,12 @@ object Main extends IOApp.Simple {
                   // F32/NL-2: the RAG index reconcile loop — first pass backfills, then keeps every asset + update fresh.
                   val reconcile =
                     log.info("NL-2 RAG index reconcile started") *> com.kanzen.index.IndexReconcile.loop(xa)
-                  IO.both(servers, IO.both(relay, reconcile)).void
+                  // F07 Path B: drain the outbound Google-Calendar push queue through the CalendarSync seam (StubCalendarSync
+                  // now — it enforces the F44 "Workspace connected" contract; the real Calendar client drops in behind it).
+                  val calendarSync =
+                    log.info("F07 calendar-sync worker started") *>
+                      CalendarSyncWorker.run(xa, new com.kanzen.calendar.StubCalendarSync(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
+                  IO.both(servers, IO.both(relay, IO.both(reconcile, calendarSync))).void
                 }
               }
             }
