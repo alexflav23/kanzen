@@ -49,16 +49,21 @@ object NlQuery {
   private def snippet(b: String): String =
     if (b.length <= 320) b else b.take(320).reverse.dropWhile(_ != ' ').reverse.trim + "…"
 
-  def query(xa: Transactor[IO], p: Principal, prompt: String): IO[Out[QueryResult]] =
-    Authz
-      .forUser(p.userId, p.role)
-      .flatMap { a =>
-        // NL is Principal-only in v1: the asker can see the whole estate, so unscoped aggregates carry no leak
-        // (Manager/Staff get 403). Scoped, role-aware NL is a follow-up. Registry read is the floor.
-        if (p.role != "principal" || !a.can(Actions.byKey("asset:view")))
-          (Left(forbidden): Out[QueryResult]).pure[ConnectionIO]
-        else
-          NlQueryService.translate(prompt) match {
+  def query(
+      xa: Transactor[IO],
+      p: Principal,
+      prompt: String,
+      parser: NlQueryService.IntentParser = NlQueryService.DeterministicIntentParser
+  ): IO[Out[QueryResult]] =
+    // NL is Principal-only in v1: the asker can see the whole estate, so unscoped aggregates carry no leak
+    // (Manager/Staff get 403). Scoped, role-aware NL is a follow-up. Registry read is the floor.
+    Authz.forUser(p.userId, p.role).transact(xa).flatMap { a =>
+      if (p.role != "principal" || !a.can(Actions.byKey("asset:view"))) IO.pure(Left(forbidden): Out[QueryResult])
+      else
+        // Bedrock/F32: parse the prompt → a typed read-only intent (the security floor) through the seam, then execute
+        // it under the same scope filter. The parser is swappable (deterministic now, Bedrock later); exec is unchanged.
+        parser.parse(prompt).flatMap { intent =>
+          (intent match {
             case NlQueryService.CountIntent(entity, filter) =>
               NlQueryRepo
                 .countAssets(filter)
@@ -174,9 +179,9 @@ object NlQuery {
                   val body = best.body.stripPrefix(best.title).stripPrefix(".").stripPrefix(":").trim
                   okItems(prompt, "rag", best.title, List(NlItem(best.title, Some(snippet(body)))))
               }
-          }
-      }
-      .transact(xa)
+          }).transact(xa)
+        }
+    }
 
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()

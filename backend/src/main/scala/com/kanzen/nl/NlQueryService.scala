@@ -27,6 +27,20 @@ object NlQueryService {
   final case class LastActivityIntent(keyword: String) extends Intent // "when was the housekeeper last in"
   final case class Unknown(prompt: String) extends Intent
 
+  /** F32/Bedrock — the prompt→intent boundary. The intent is a *typed, read-only* command, never raw SQL, so it is the
+    * security floor regardless of who parses it: a Bedrock parser can only ever emit one of these intents, which are
+    * then schema-validated + permission-filtered downstream. [[DeterministicIntentParser]] (keyword rules) runs in the
+    * sandbox; the real `BedrockIntentParser` (Claude on Bedrock → constrained JSON → [[Intent]]) drops in behind this
+    * trait with no change to the exec/security path.
+    */
+  trait IntentParser {
+    def parse(prompt: String): cats.effect.IO[Intent]
+  }
+
+  object DeterministicIntentParser extends IntentParser {
+    def parse(prompt: String): cats.effect.IO[Intent] = cats.effect.IO.pure(translate(prompt))
+  }
+
   private val assetCats = List("guitar", "watch", "shoe", "painting", "art", "vehicle", "car", "wine")
   private val spendCats =
     List("maintenance", "cleaning", "household", "utilities", "insurance", "groceries", "travel", "staff")

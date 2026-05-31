@@ -30,6 +30,21 @@ object SearchNlApiIT extends IOSuite {
       expect(!asStaff.hits.exists(_.entityType == "asset")) // Staff have no asset read → no asset hits
   }
 
+  test("F32/Bedrock — the intent parser is a swappable seam: a custom parser drives the (scope-filtered) exec") { xa =>
+    // a stand-in for BedrockIntentParser: it forces a count intent regardless of the prompt. The exec + security path
+    // are unchanged — proving the LLM parser drops in behind the seam without touching scope-filtering.
+    val forced = new com.kanzen.nl.NlQueryService.IntentParser {
+      def parse(prompt: String): IO[com.kanzen.nl.NlQueryService.Intent] =
+        IO.pure(com.kanzen.nl.NlQueryService.CountIntent("asset", None))
+    }
+    for {
+      res <- NlQuery.query(xa, toby, "literally any prompt at all", forced).map(_.toOption.get)
+      // Staff still 403 through the seam (the parser never reaches the exec for a non-principal)
+      denied <- NlQuery.query(xa, marcia, "how many assets", forced)
+    } yield expect(res.intent == "count:asset") and expect(res.count.exists(_ >= 0L)) and
+      expect(denied.left.exists(_._1.code == 403))
+  }
+
   test("F32 — NL count + last-purchase intents resolve read-only; gibberish is 422") { xa =>
     for {
       count <- NlQuery.query(xa, toby, "how many assets do I have").map(_.toOption.get)
