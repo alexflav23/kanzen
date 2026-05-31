@@ -46,6 +46,20 @@ infra-validate:
     - terraform init -backend=false -input=false
     - terraform validate
 
+# The NixOS deploy module + flake are evaluated in CI (a Linux Nix builder) — catches module/option/syntax errors
+# without the heavy AMI build. `nix build .#amazon-image` (the actual image) is part of the credentialed deploy.
+nixos-validate:
+  stage: test
+  image: nixos/nix:2.24.10
+  variables:
+    NIX_CONFIG: |
+      experimental-features = nix-command flakes
+      accept-flake-config = true
+  script:
+    - nix flake show
+    # force full evaluation of the EC2 host config (instantiates its derivation) → validates the module, no build
+    - nix eval --raw .#nixosConfigurations.kanzen-backend.config.system.build.toplevel.drvPath
+
 # ── package: produce the deploy artifacts (no credentials) ──────────────────────────────────────────────
 # The backend Universal tarball (NixOS pulls it from S3 pkgs) + the web SPA build (synced to S3 behind CloudFront).
 backend-package:
