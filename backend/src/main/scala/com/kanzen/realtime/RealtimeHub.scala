@@ -23,12 +23,14 @@ final case class RtEvent(
     subjectId: Option[UUID],
     ownerId: Option[UUID],
     propertyId: Option[UUID],
-    payload: Json
+    payload: Json,
+    seq: Long = 0L // F48 RT.1b — the resume cursor; 0 for synthetic (e.g. presence) events that aren't replayable.
 ) {
   def wire: Json =
     Json.obj(
       "eventType" -> eventType.asJson,
       "subject" -> Json.obj("type" -> subjectType.asJson, "id" -> subjectId.asJson),
+      "seq" -> seq.asJson,
       "payload" -> payload
     )
 }
@@ -42,7 +44,8 @@ object RtEvent {
       r.aggregateId,
       c.get[UUID]("owner_id").toOption,
       c.get[UUID]("property_id").toOption,
-      r.payload
+      r.payload,
+      r.seq
     )
   }
 }

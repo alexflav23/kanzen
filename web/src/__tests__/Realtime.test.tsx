@@ -47,6 +47,22 @@ describe("F48 realtime client", () => {
     expect(seen[0].subject.id).toBe("t1");
   });
 
+  it("tracks the event seq and replays from it (since cursor) on reconnect", async () => {
+    render(<RealtimeProvider><Probe onEvent={() => {}} /></RealtimeProvider>);
+    await waitFor(() => expect(FakeWS.last).not.toBeNull());
+    const first = FakeWS.last!;
+    expect(first.url).not.toContain("since="); // a fresh connection has no cursor yet
+
+    // process an event carrying seq=42; a synthetic seq-0 frame must NOT advance the cursor
+    first.emit({ eventType: "task.updated", subject: { type: "task", id: "t1" }, seq: 42, payload: {} } as RtEvent);
+    first.emit({ eventType: "presence.snapshot", subject: { type: "task", id: "t1" }, seq: 0, payload: {} } as RtEvent);
+
+    // a drop → the provider reconnects asking the server to replay everything after seq 42
+    first.onclose?.();
+    await waitFor(() => expect(FakeWS.last).not.toBe(first), { timeout: 2000 });
+    expect(FakeWS.last!.url).toContain("since=42");
+  });
+
   it("a malformed frame does not throw or dispatch", async () => {
     const seen: RtEvent[] = [];
     render(<RealtimeProvider><Probe onEvent={(ev) => seen.push(ev)} /></RealtimeProvider>);

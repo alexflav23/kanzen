@@ -13,7 +13,7 @@ import java.util.UUID
 object RealtimeHubSpec extends SimpleIOSuite {
 
   private def row(eventType: String, subjType: String, subjId: UUID, env: Json): EventRepo.OutboxRow =
-    EventRepo.OutboxRow(UUID.randomUUID(), eventType, subjType, Some(subjId), env)
+    EventRepo.OutboxRow(UUID.randomUUID(), eventType, subjType, Some(subjId), env, seq = 1L)
 
   test("push fans out to every subscriber") {
     val tid = UUID.randomUUID()

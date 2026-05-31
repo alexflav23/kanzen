@@ -24,9 +24,13 @@ import scala.concurrent.duration._
   */
 object Realtime {
   private object TokenQ extends OptionalQueryParamDecoderMatcher[String]("token")
+  // F48 RT.1b — the resume cursor: the highest event `seq` the client has already processed. On reconnect it replays
+  // everything after it. Absent/0 → a fresh connection with no backfill.
+  private object SinceQ extends OptionalQueryParamDecoderMatcher[Long]("since")
+  private val ResumeLimit = 500 // a long-disconnected client falls back to its query refetch rather than unbounded replay
 
   def routes(auth: Auth, xa: Transactor[IO], hub: RealtimeHub, wsb: WebSocketBuilder2[IO]): HttpRoutes[IO] =
-    HttpRoutes.of[IO] { case GET -> Root / "api" / "ws" :? TokenQ(tokenOpt) =>
+    HttpRoutes.of[IO] { case GET -> Root / "api" / "ws" :? TokenQ(tokenOpt) +& SinceQ(sinceOpt) =>
       tokenOpt match {
         case None => IO.pure(Response[IO](Status.Unauthorized))
         case Some(token) =>
@@ -49,9 +53,22 @@ object Realtime {
                       .subscribe()
                       .evalFilter(ev => RealtimeFilter.visible(ev, p, authz, scope, xa))
                       .map(ev => WebSocketFrame.Text(ev.wire.noSpaces))
+                  // F48 RT.1b — replay the rows missed while disconnected (everything after `since`), authz-filtered
+                  // exactly like live. Merged (not prepended) so the live subscription registers immediately and no
+                  // event published during replay is lost; any overlap is a duplicate, and invalidation is idempotent.
+                  val replay: Stream[IO, WebSocketFrame] =
+                    sinceOpt.filter(_ > 0L) match {
+                      case None => Stream.empty
+                      case Some(since) =>
+                        Stream
+                          .evalSeq(com.kanzen.events.EventRepo.rowsSince(since, ResumeLimit).transact(xa))
+                          .map(RtEvent.fromRow)
+                          .evalFilter(ev => RealtimeFilter.visible(ev, p, authz, scope, xa))
+                          .map(ev => WebSocketFrame.Text(ev.wire.noSpaces))
+                    }
                   val keepAlive: Stream[IO, WebSocketFrame] =
                     Stream.awakeEvery[IO](25.seconds).as(WebSocketFrame.Ping())
-                  val send = events.merge(keepAlive)
+                  val send = replay.merge(events).merge(keepAlive)
 
                   // F48 RT.3 — the client publishes which entity it's viewing: `{kind:"presence",entityType,entityId}`
                   // (empty entityId clears it). We leave the previous entity, enter the new, and clean up on close.

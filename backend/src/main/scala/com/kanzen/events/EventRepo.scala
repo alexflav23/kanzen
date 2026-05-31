@@ -14,13 +14,16 @@ import java.util.UUID
   */
 object EventRepo {
 
-  /** A raw outbox row; `payload` is the serialised [[Envelope]]. */
+  /** A raw outbox row; `payload` is the serialised [[Envelope]]. `seq` is the monotonic cursor (F48 RT.1b) used for
+    * websocket resume — a reconnecting client replays every row with `seq` greater than the last it saw.
+    */
   final case class OutboxRow(
       id: UUID,
       eventType: String,
       aggregateType: String,
       aggregateId: Option[UUID],
-      payload: Json
+      payload: Json,
+      seq: Long
   )
 
   /** Emit a unified envelope — the producer path used by domain writes. */
@@ -40,8 +43,15 @@ object EventRepo {
       .to[List]
 
   def unpublishedRows: ConnectionIO[List[OutboxRow]] =
-    sql"""select id, event_type, aggregate_type, aggregate_id, payload
-          from event_outbox where published_at is null order by created_at""".query[OutboxRow].to[List]
+    sql"""select id, event_type, aggregate_type, aggregate_id, payload, seq
+          from event_outbox where published_at is null order by seq""".query[OutboxRow].to[List]
+
+  /** F48 RT.1b — the rows a reconnecting websocket missed: everything after the cursor it last saw, oldest-first,
+    * bounded (a long-disconnected client falls back to its next query refetch rather than replaying unbounded history).
+    */
+  def rowsSince(cursor: Long, limit: Int): ConnectionIO[List[OutboxRow]] =
+    sql"""select id, event_type, aggregate_type, aggregate_id, payload, seq
+          from event_outbox where seq > $cursor order by seq limit $limit""".query[OutboxRow].to[List]
 
   def markPublished(id: UUID): ConnectionIO[Int] =
     sql"update event_outbox set published_at = now() where id = $id".update.run

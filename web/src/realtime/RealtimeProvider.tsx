@@ -3,10 +3,12 @@ import { API_URL } from "../services/http";
 import { useAuth } from "../state/AuthContext";
 
 /** F48 — a realtime domain event, the wire shape the backend's RealtimeHub sends:
- *  `{eventType, subject:{type,id}, payload}`. Handlers match on eventType + subject. */
+ *  `{eventType, subject:{type,id}, seq, payload}`. Handlers match on eventType + subject. `seq` is the resume cursor
+ *  (RT.1b) — synthetic events (presence) carry 0 and never advance it. */
 export type RtEvent = {
   eventType: string;
   subject: { type: string; id: string | null };
+  seq?: number;
   payload: unknown;
 };
 
@@ -16,9 +18,12 @@ type RealtimeCtx = { subscribe: (h: Handler) => () => void; send: (obj: unknown)
 // Default = no-op so components using `useRealtime` render fine without a provider (e.g. in unit tests).
 const Ctx = createContext<RealtimeCtx>({ subscribe: () => () => {}, send: () => {} });
 
-/** ws(s):// origin for the API, derived from API_URL (http→ws, https→wss). */
-const wsUrl = (token: string) =>
-  `${API_URL.replace(/^http/, "ws")}/api/ws?token=${encodeURIComponent(token)}`;
+/** ws(s):// origin for the API, derived from API_URL (http→ws, https→wss). `since` (RT.1b) asks the server to replay
+ *  every event after that cursor — the rows missed while disconnected. */
+const wsUrl = (token: string, since: number) => {
+  const base = `${API_URL.replace(/^http/, "ws")}/api/ws?token=${encodeURIComponent(token)}`;
+  return since > 0 ? `${base}&since=${since}` : base;
+};
 
 /** F48 W10-RT.1 — one WebSocket per session. Opens on sign-in, reconnects with capped backoff, and fans every
  *  inbound event to the registered handlers. A single connection carries the whole authz-filtered domain stream; each
@@ -29,6 +34,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   // the last presence frame we sent — re-announced on (re)connect so presence survives a network hiccup (RT.3)
   const lastPresence = useRef<unknown>(null);
+  // RT.1b — the highest event seq processed; sent as `since` on reconnect so the server replays what we missed.
+  const lastSeq = useRef(0);
 
   const subscribe = useMemo<RealtimeCtx["subscribe"]>(
     () => (h: Handler) => {
@@ -56,7 +63,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     const connect = () => {
       if (closed) return;
-      ws = new WebSocket(wsUrl(token));
+      ws = new WebSocket(wsUrl(token, lastSeq.current));
       wsRef.current = ws;
       ws.onopen = () => {
         backoff = 500;
@@ -66,7 +73,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       ws.onmessage = (e) => {
         try {
           const ev = JSON.parse(e.data as string) as RtEvent;
-          if (ev && typeof ev.eventType === "string") handlers.current.forEach((h) => h(ev));
+          if (ev && typeof ev.eventType === "string") {
+            // advance the resume cursor (idempotent handlers mean a replayed duplicate is harmless)
+            if (typeof ev.seq === "number" && ev.seq > lastSeq.current) lastSeq.current = ev.seq;
+            handlers.current.forEach((h) => h(ev));
+          }
         } catch { /* ignore non-JSON frames (pings are handled by the WS layer) */ }
       };
       ws.onclose = () => {
