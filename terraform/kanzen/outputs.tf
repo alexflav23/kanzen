@@ -9,6 +9,11 @@ output "web_cloudfront_domain" {
   value       = aws_cloudfront_distribution.web.domain_name
 }
 
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution id — for the deploy job's cache invalidation."
+  value       = aws_cloudfront_distribution.web.id
+}
+
 output "rds_endpoint" {
   description = "Postgres endpoint (host:port) for the backend DB config."
   value       = aws_db_instance.main.endpoint
