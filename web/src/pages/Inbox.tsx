@@ -41,8 +41,9 @@ const styles = stylex.create({
   eyebrow: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, marginBottom: "8px", fontWeight: 600 },
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px", maxWidth: "560px" },
-  mailboxTabs: { display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" },
-  syncBtn: { display: "inline-flex", alignItems: "center", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink3, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", marginLeft: "auto", ":hover": { color: colors.ink } },
+  mailboxBar: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" },
+  mailboxTabs: { display: "flex", flexWrap: "wrap", gap: "4px", flex: 1, minWidth: 0 },
+  syncBtn: { display: "inline-flex", alignItems: "center", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink3, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", flexShrink: 0, ":hover": { color: colors.ink } },
   mbTab: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
   // selected state must outrank :hover (which has higher specificity than a plain class), so repeat the colour here
   mbTabOn: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent, ":hover": { backgroundColor: colors.accent } },
@@ -180,13 +181,16 @@ export function Inbox() {
       </header>
 
       {inboxesQ.isPending ? <Loading /> : inboxesQ.isError ? <ErrorState error={inboxesQ.error} /> : (<>
-        <div {...stylex.props(styles.mailboxTabs)} role="tablist" aria-label="Mailboxes">
-          <button type="button" role="tab" aria-selected={mailbox === "all"} {...stylex.props(styles.mbTab, mailbox === "all" && styles.mbTabOn)} data-testid="mailbox-all" onClick={() => { setSelected(null); setMailbox("all"); }}>All</button>
-          {(inboxesQ.data ?? []).map((i: CInbox) => (
-            <button key={i.id} type="button" role="tab" aria-selected={mailbox === i.id} {...stylex.props(styles.mbTab, mailbox === i.id && styles.mbTabOn)} data-testid="mailbox-tab" onClick={() => { setSelected(null); setMailbox(i.id); }}>
-              {i.label}{i.openCount > 0 && <span {...stylex.props(styles.mbCount)}>{i.openCount}</span>}
-            </button>
-          ))}
+        <div {...stylex.props(styles.mailboxBar)}>
+          {/* the tablist contains ONLY tabs (ARIA); the Sync action sits beside it, not inside it */}
+          <div {...stylex.props(styles.mailboxTabs)} role="tablist" aria-label="Mailboxes">
+            <button type="button" role="tab" aria-selected={mailbox === "all"} {...stylex.props(styles.mbTab, mailbox === "all" && styles.mbTabOn)} data-testid="mailbox-all" onClick={() => { setSelected(null); setMailbox("all"); }}>All</button>
+            {(inboxesQ.data ?? []).map((i: CInbox) => (
+              <button key={i.id} type="button" role="tab" aria-selected={mailbox === i.id} {...stylex.props(styles.mbTab, mailbox === i.id && styles.mbTabOn)} data-testid="mailbox-tab" onClick={() => { setSelected(null); setMailbox(i.id); }}>
+                {i.label}{i.openCount > 0 && <span {...stylex.props(styles.mbCount)}>{i.openCount}</span>}
+              </button>
+            ))}
+          </div>
           {mailbox !== "all" && (
             <button type="button" {...stylex.props(styles.syncBtn)} data-testid="inbox-sync" disabled={sync.isPending} onClick={() => sync.mutate(mailbox)}>
               {sync.isPending ? "Syncing…" : "Sync"}
