@@ -435,7 +435,9 @@ object Inbox {
           (from, to) = env.getOrElse(("", Option.empty[String]))
           subject = t.flatMap(_.subject).map(s => if (s.startsWith("Re:")) s else s"Re: $s")
           html = sanitizeHtml(r.bodyHtml)
-          _ <- CollabInboxRepo.sendMessage(p.userId, id, from, to, subject, html, htmlToText(html), p.userId)
+          msgId <- CollabInboxRepo.sendMessage(p.userId, id, from, to, subject, html, htmlToText(html), p.userId)
+          // W9.4/F44 — record IS the artifact; enqueue the durable dispatch to Google (drained through the GmailSender seam).
+          _ <- com.kanzen.inbox.GmailSendQueueRepo.enqueue(id, msgId)
           _ <- emitThread(p, id, Events.Thread.Replied, Json.obj("to" -> to.asJson, "subject" -> subject.asJson))
         } yield ()
       }.transact(xa)

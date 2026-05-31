@@ -120,7 +120,11 @@ object Main extends IOApp.Simple {
                   val mailDelivery =
                     log.info("F46 mail-delivery worker started") *>
                       com.kanzen.mail.MailDeliveryWorker.run(xa, com.kanzen.mail.StubEmailTransport)
-                  IO.both(servers, IO.both(relay, IO.both(reconcile, IO.both(calendarSync, mailDelivery)))).void
+                  // W9.4/F44: drain the outbound-Gmail send queue through the GmailSender seam (StubGmailSender now; Gmail later).
+                  val gmailSend =
+                    log.info("W9.4 gmail-send worker started") *>
+                      com.kanzen.inbox.GmailSendWorker.run(xa, new com.kanzen.inbox.StubGmailSender(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
+                  IO.both(servers, IO.both(relay, IO.both(reconcile, IO.both(calendarSync, IO.both(mailDelivery, gmailSend))))).void
                 }
               }
             }
