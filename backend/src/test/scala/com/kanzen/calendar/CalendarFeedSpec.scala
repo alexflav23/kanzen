@@ -35,11 +35,19 @@ class CalendarFeedSpec extends AnyFreeSpec with Matchers {
   "the ICS document" - {
     val timed = CalendarFeed.Entry(
       UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001"),
-      "Plumber visit", LocalDate.of(2026, 6, 1), Some(LocalTime.of(9, 30)), Some(LocalTime.of(11, 0)), "maintenance"
+      "Plumber visit",
+      LocalDate.of(2026, 6, 1),
+      Some(LocalTime.of(9, 30)),
+      Some(LocalTime.of(11, 0)),
+      "maintenance"
     )
     val allDay = CalendarFeed.Entry(
       UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002"),
-      "Waitrose delivery; groceries", LocalDate.of(2026, 6, 2), None, None, "delivery"
+      "Waitrose delivery; groceries",
+      LocalDate.of(2026, 6, 2),
+      None,
+      None,
+      "delivery"
     )
     val ics = CalendarFeed.ics("Kanzen — Household", List(timed, allDay), now)
 
@@ -64,7 +72,14 @@ class CalendarFeedSpec extends AnyFreeSpec with Matchers {
       ics should include("SUMMARY:Waitrose delivery\\; groceries")
     }
     "defaults a timed event with no end to +1h" in {
-      val noEnd = CalendarFeed.Entry(UUID.randomUUID(), "Call", LocalDate.of(2026, 6, 1), Some(LocalTime.of(14, 0)), None, "manual")
+      val noEnd = CalendarFeed.Entry(
+        UUID.randomUUID(),
+        "Call",
+        LocalDate.of(2026, 6, 1),
+        Some(LocalTime.of(14, 0)),
+        None,
+        "manual"
+      )
       CalendarFeed.ics("c", List(noEnd), now) should include("DTEND:20260601T150000")
     }
   }

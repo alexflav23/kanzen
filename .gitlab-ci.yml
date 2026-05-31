@@ -1,5 +1,6 @@
-# Kanzen CI (GitLab, mirroring Hypervolt conventions). Runs the full test pyramid.
-stages: [test]
+# Kanzen CI (GitLab, mirroring Hypervolt conventions). Test pyramid → package the release artifacts →
+# (manual, operator-credentialed) deploy onto the Terraform/NixOS estate.
+stages: [test, package, deploy]
 
 backend-test:
   stage: test
@@ -34,3 +35,56 @@ mobile-test:
   image: ghcr.io/cirruslabs/flutter:3.27.4
   script:
     - cd mobile && flutter pub get && flutter analyze && flutter test
+
+# Terraform is authored + checked in CI (fmt + validate need no AWS credentials); `apply` is the manual deploy job.
+infra-validate:
+  stage: test
+  image: hashicorp/terraform:1.13
+  script:
+    - cd terraform/kanzen
+    - terraform fmt -check -recursive
+    - terraform init -backend=false -input=false
+    - terraform validate
+
+# ── package: produce the deploy artifacts (no credentials) ──────────────────────────────────────────────
+# The backend Universal tarball (NixOS pulls it from S3 pkgs) + the web SPA build (synced to S3 behind CloudFront).
+backend-package:
+  stage: package
+  image: sbtscala/scala-sbt:eclipse-temurin-jammy-19.0.2_7_1.11.1_2.13.16
+  script:
+    - cd backend && sbt -batch Universal/packageXzTarball
+  artifacts:
+    paths: [backend/target/universal/*.txz]
+    expire_in: 1 week
+  cache:
+    key: sbt
+    paths: [".ivy2/", ".sbt/"]
+
+web-package:
+  stage: package
+  image: node:23
+  script:
+    - cd web && npm ci --no-audit --no-fund && VITE_API_URL="$VITE_API_URL" npm run build
+  artifacts:
+    paths: [web/dist]
+    expire_in: 1 week
+
+# ── deploy: manual + operator-credentialed (AWS creds via protected CI vars; never in git) ───────────────
+# Publishes the backend tarball to S3 `pkgs` (NixOS pulls on the next ASG refresh) + the web build to the web bucket
+# (then a CloudFront invalidation), and plans/applies the infrastructure. Gated `when: manual` so a human approves.
+deploy:
+  stage: deploy
+  image: hashicorp/terraform:1.13
+  needs: [backend-package, web-package, infra-validate]
+  when: manual
+  variables:
+    AWS_DEFAULT_REGION: eu-west-1
+  script:
+    - apk add --no-cache aws-cli
+    - aws s3 cp backend/target/universal/*.txz "s3://kanzen-${ENV}-pkgs/"
+    - aws s3 sync web/dist "s3://$(terraform -chdir=terraform/kanzen output -raw web_bucket)" --delete
+    - aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths '/*'
+    - cd terraform/kanzen && terraform init && terraform workspace select "$ENV"
+    - terraform apply -input=false -auto-approve -var-file="${ENV}.tfvars"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'  # deploy only from main, and only when a human clicks run

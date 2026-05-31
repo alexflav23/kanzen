@@ -138,8 +138,12 @@ object CalendarApiIT extends IOSuite {
   test("iCal — a tampered/garbage token is 404 (no existence probe)") { xa =>
     for {
       bad <- Calendar.feed(xa, feedSecret, "not-a-real-token")
-      forged <- Calendar.feed(xa, feedSecret, com.kanzen.calendar.CalendarFeed.tokenFor(
-        java.util.UUID.randomUUID(), lorna.userId, "WRONG-secret", System.currentTimeMillis() / 1000))
+      forged <- Calendar.feed(
+        xa,
+        feedSecret,
+        com.kanzen.calendar.CalendarFeed
+          .tokenFor(java.util.UUID.randomUUID(), lorna.userId, "WRONG-secret", System.currentTimeMillis() / 1000)
+      )
     } yield expect(bad == Left(sttp.model.StatusCode.NotFound)) and
       expect(forged == Left(sttp.model.StatusCode.NotFound))
   }
@@ -147,7 +151,11 @@ object CalendarApiIT extends IOSuite {
   test("iCal — a token whose tenant doesn't match the user's tenant is 404 (no cross-tenant leak)") { xa =>
     // mint a token claiming a different tenant for a real user — parse succeeds but the tenant check rejects it.
     val crossTenantToken = com.kanzen.calendar.CalendarFeed.tokenFor(
-      java.util.UUID.randomUUID(), lorna.userId, feedSecret, System.currentTimeMillis() / 1000)
+      java.util.UUID.randomUUID(),
+      lorna.userId,
+      feedSecret,
+      System.currentTimeMillis() / 1000
+    )
     Calendar.feed(xa, feedSecret, crossTenantToken).map(out => expect(out == Left(sttp.model.StatusCode.NotFound)))
   }
 

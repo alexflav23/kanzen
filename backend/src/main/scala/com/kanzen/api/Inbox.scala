@@ -221,7 +221,12 @@ object Inbox {
   // W9.1/F25 — pull new mail into a mailbox through the EmailSource seam (StubEmailSource now; GmailWatcher later).
   // Gated on the mailbox being visible to the caller (no syncing a hidden mailbox) + inbox:view.
   final case class SyncInboxResult(fetched: Int, created: Int)
-  def syncInbox(xa: Transactor[IO], p: Principal, inboxId: UUID, source: com.kanzen.inbox.EmailSource): IO[Out[SyncInboxResult]] = {
+  def syncInbox(
+      xa: Transactor[IO],
+      p: Principal,
+      inboxId: UUID,
+      source: com.kanzen.inbox.EmailSource
+  ): IO[Out[SyncInboxResult]] = {
     val precheck: ConnectionIO[Boolean] = for {
       authz <- Authz.forUser(p.userId, p.role)
       scope <- staffScope(p)
@@ -232,7 +237,9 @@ object Inbox {
       case true =>
         for {
           emails <- source.fetch(inboxId, "")
-          created <- emails.traverse(e => com.kanzen.inbox.InboxIngestRepo.ingestThread(inboxId, e).transact(xa)).map(_.flatten.size)
+          created <- emails
+            .traverse(e => com.kanzen.inbox.InboxIngestRepo.ingestThread(inboxId, e).transact(xa))
+            .map(_.flatten.size)
         } yield Right(SyncInboxResult(emails.size, created))
     }
   }

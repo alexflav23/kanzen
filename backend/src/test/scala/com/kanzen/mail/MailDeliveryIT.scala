@@ -21,7 +21,9 @@ object MailDeliveryIT extends IOSuite {
 
   private def deliveredAt(xa: Transactor[IO], to: String): IO[Option[Instant]] =
     sql"select delivered_at from outbound_emails where to_email = $to order by created_at desc limit 1"
-      .query[Option[Instant]].unique.transact(xa)
+      .query[Option[Instant]]
+      .unique
+      .transact(xa)
 
   test("the worker delivers through the seam (terminal/idempotent); a transport failure is recorded for retry") { xa =>
     val ok = s"deliver-${UUID.randomUUID()}@x.test"
@@ -43,7 +45,9 @@ object MailDeliveryIT extends IOSuite {
         case Right(_) => IO.pure(0)
       }
       failRow <- sql"select delivered_at, delivery_error from outbound_emails where id = $failId"
-        .query[(Option[Instant], Option[String])].unique.transact(xa)
+        .query[(Option[Instant], Option[String])]
+        .unique
+        .transact(xa)
     } yield expect(before.isEmpty) and expect(after.isDefined) and expect(after == again) and
       expect(failRow._1.isEmpty) and expect(failRow._2.exists(_.contains("throttled")))
   }

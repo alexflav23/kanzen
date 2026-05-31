@@ -34,15 +34,22 @@ object RelayIT extends IOSuite {
     val sink = new ConcurrentLinkedQueue[UUID]()
     for {
       // 1) a domain write + its two outbox rows commit together and are unpublished until drained
-      ids <- (EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj())),
-        EventRepo.emit(Envelope("product.low", Actor.system, Subject("product", UUID.randomUUID()), owner, None, Json.obj())))
-        .tupled.transact(xa)
+      ids <- (
+        EventRepo.emit(
+          Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj())
+        ),
+        EventRepo.emit(
+          Envelope("product.low", Actor.system, Subject("product", UUID.randomUUID()), owner, None, Json.obj())
+        )
+      ).tupled.transact(xa)
       (id1, id2) = ids
       before <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
       drained <- Relay.drainOnce(xa, Nil) // no consumers: still marks published
       after <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
       // 2) resume: emit AFTER the first drain (so only our second drain touches it), the consumer runs once, at-least-once
-      eid <- EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj())).transact(xa)
+      eid <- EventRepo
+        .emit(Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj()))
+        .transact(xa)
       open0 <- EventRepo.unpublishedRows.map(_.exists(_.id == eid)).transact(xa)
       _ <- Relay.drainOnce(xa, List(recording(sink))) // restart: consumer runs, row marked published
       _ <- Relay.drainOnce(xa, List(recording(sink))) // a second pass finds it already published

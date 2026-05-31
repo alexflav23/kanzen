@@ -45,12 +45,15 @@ object FxRefresher {
     val base = FxService.Base
     FxRepo.currencies.transact(xa).flatMap { ccys =>
       val today = LocalDate.now()
-      ccys.filter(_.code != base).traverse { c =>
-        src.rate(base, c.code).flatMap {
-          case Some(r) => FxRepo.addRate(base, c.code, r, today, "ecb").transact(xa).as(1)
-          case None => IO.pure(0)
+      ccys
+        .filter(_.code != base)
+        .traverse { c =>
+          src.rate(base, c.code).flatMap {
+            case Some(r) => FxRepo.addRate(base, c.code, r, today, "ecb").transact(xa).as(1)
+            case None => IO.pure(0)
+          }
         }
-      }.map(_.sum)
+        .map(_.sum)
     }
   }
 }

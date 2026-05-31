@@ -29,6 +29,7 @@ object WorkspaceCalendarMapRepo {
 final case class SyncTask(id: UUID, tenantId: UUID, eventId: UUID, op: String)
 
 object CalendarSyncQueueRepo {
+
   /** Enqueue a push; re-emitting the same (event, op) coalesces (re-arms to pending) rather than duplicating. */
   def enqueue(tenantId: UUID, eventId: UUID, op: String): ConnectionIO[Int] =
     sql"""insert into calendar_sync_queue (tenant_id, event_id, op) values ($tenantId, $eventId, $op)
@@ -60,7 +61,8 @@ trait CalendarSync {
 final class StubCalendarSync(wsAuth: WorkspaceAuth) extends CalendarSync {
   def push(tenantId: UUID, googleCalendarId: String, eventId: UUID, op: String): IO[String] =
     // honour the F44 contract: no connected Workspace ⇒ no token ⇒ the push fails (like the real client).
-    wsAuth.tokenFor(tenantId, "calendar-sync@kanzen", List("https://www.googleapis.com/auth/calendar"))
+    wsAuth
+      .tokenFor(tenantId, "calendar-sync@kanzen", List("https://www.googleapis.com/auth/calendar"))
       .as(s"stub-gcal:$googleCalendarId:$eventId:$op")
 }
 
@@ -72,16 +74,18 @@ object CalendarSyncWorker {
 
   def drainOnce(xa: Transactor[IO], sync: CalendarSync): IO[Int] =
     CalendarSyncQueueRepo.pending(100).transact(xa).flatMap { tasks =>
-      tasks.traverse_ { t =>
-        WorkspaceCalendarMapRepo.find(t.tenantId).transact(xa).flatMap {
-          case None => CalendarSyncQueueRepo.markFailed(t.id, "no calendar mapping").transact(xa).void
-          case Some(m) =>
-            sync.push(t.tenantId, m.googleCalendarId, t.eventId, t.op).attempt.flatMap {
-              case Right(gid) => CalendarSyncQueueRepo.markSynced(t.id, gid).transact(xa).void
-              case Left(e) => CalendarSyncQueueRepo.markFailed(t.id, e.getMessage).transact(xa).void
-            }
+      tasks
+        .traverse_ { t =>
+          WorkspaceCalendarMapRepo.find(t.tenantId).transact(xa).flatMap {
+            case None => CalendarSyncQueueRepo.markFailed(t.id, "no calendar mapping").transact(xa).void
+            case Some(m) =>
+              sync.push(t.tenantId, m.googleCalendarId, t.eventId, t.op).attempt.flatMap {
+                case Right(gid) => CalendarSyncQueueRepo.markSynced(t.id, gid).transact(xa).void
+                case Left(e) => CalendarSyncQueueRepo.markFailed(t.id, e.getMessage).transact(xa).void
+              }
+          }
         }
-      }.as(tasks.size)
+        .as(tasks.size)
     }
 
   def run(xa: Transactor[IO], sync: CalendarSync, every: FiniteDuration = 2.seconds): IO[Unit] =

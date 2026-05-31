@@ -60,8 +60,8 @@ object OutboundEmailRepo {
 /** F46/SES — the platform mail seam: verification magic-links, notifications, digests all send through this one
   * interface. [[StubMailer]] records every message in `outbound_emails` (the dev environment reads it back to complete
   * flows without a live SES); the real `SesMailer` swaps in behind this trait once the operator verifies the SES domain
-  * — every producer is already wired correctly, so that's a drop-in. (Mirrors the [[com.kanzen.workspace.WorkspaceAuth]]
-  * stub-seam pattern.)
+  * — every producer is already wired correctly, so that's a drop-in. (Mirrors the
+  * [[com.kanzen.workspace.WorkspaceAuth]] stub-seam pattern.)
   */
 trait Mailer {
   def send(tenantId: Option[UUID], to: String, subject: String, body: String, kind: String): IO[Unit]
@@ -73,8 +73,9 @@ final class StubMailer(xa: Transactor[IO]) extends Mailer {
 }
 
 /** F46/SES — the actual *delivery* seam (distinct from recording): hands a recorded email to the transport. The
-  * [[StubEmailTransport]] is a no-op success (the sandbox treats "recorded" as "delivered"); the real `SesEmailTransport`
-  * calls SES once the operator verifies the domain. A [[MailDeliveryWorker]] drains the undelivered queue through it.
+  * [[StubEmailTransport]] is a no-op success (the sandbox treats "recorded" as "delivered"); the real
+  * `SesEmailTransport` calls SES once the operator verifies the domain. A [[MailDeliveryWorker]] drains the undelivered
+  * queue through it.
   */
 trait EmailTransport {
   def deliver(email: OutboundEmail): IO[Unit]
@@ -92,20 +93,23 @@ object MailDeliveryWorker {
 
   def drainOnce(xa: Transactor[IO], transport: EmailTransport): IO[Int] =
     OutboundEmailRepo.undelivered(100).transact(xa).flatMap { pending =>
-      pending.traverse_ { e =>
-        transport.deliver(e).attempt.flatMap {
-          case Right(_) => OutboundEmailRepo.markDelivered(e.id).transact(xa).void
-          case Left(err) => OutboundEmailRepo.markDeliveryError(e.id, err.getMessage).transact(xa).void
+      pending
+        .traverse_ { e =>
+          transport.deliver(e).attempt.flatMap {
+            case Right(_) => OutboundEmailRepo.markDelivered(e.id).transact(xa).void
+            case Left(err) => OutboundEmailRepo.markDeliveryError(e.id, err.getMessage).transact(xa).void
+          }
         }
-      }.as(pending.size)
+        .as(pending.size)
     }
 
   def run(xa: Transactor[IO], transport: EmailTransport, every: FiniteDuration = 5.seconds): IO[Unit] =
     (drainOnce(xa, transport).attempt *> IO.sleep(every)).foreverM
 }
 
-/** F46 — the email-verification magic-link capability token (HMAC-SHA256, the same primitive as the blob/feed capability
-  * URLs). Encodes `tenantId:userId`; verifying it advances the tenant's `verify_email` onboarding step. 7-day TTL.
+/** F46 — the email-verification magic-link capability token (HMAC-SHA256, the same primitive as the blob/feed
+  * capability URLs). Encodes `tenantId:userId`; verifying it advances the tenant's `verify_email` onboarding step.
+  * 7-day TTL.
   */
 object VerifyToken {
   private val prefix = "verify"

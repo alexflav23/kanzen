@@ -30,12 +30,30 @@ object StubEmailSource extends EmailSource {
   def fetch(inboxId: UUID, inboxAddress: String): IO[List[InboundEmail]] =
     IO.pure(
       List(
-        InboundEmail(s"gmt-$inboxId-1", "Ocado", "orders@ocado.com", "Your delivery is on its way",
-          "Arriving tomorrow 08:00–09:00 — 32 items", "Hi, your Ocado order is out for delivery…"),
-        InboundEmail(s"gmt-$inboxId-2", "Stratstone Land Rover", "service@stratstone.com", "Range Rover — service due",
-          "Your vehicle is due its annual service", "Dear customer, our records show your Range Rover is due…"),
-        InboundEmail(s"gmt-$inboxId-3", "Thames Water", "billing@thameswater.co.uk", "Your latest bill",
-          "£120.00 due 15 June by Direct Debit", "Your latest statement is ready to view…")
+        InboundEmail(
+          s"gmt-$inboxId-1",
+          "Ocado",
+          "orders@ocado.com",
+          "Your delivery is on its way",
+          "Arriving tomorrow 08:00–09:00 — 32 items",
+          "Hi, your Ocado order is out for delivery…"
+        ),
+        InboundEmail(
+          s"gmt-$inboxId-2",
+          "Stratstone Land Rover",
+          "service@stratstone.com",
+          "Range Rover — service due",
+          "Your vehicle is due its annual service",
+          "Dear customer, our records show your Range Rover is due…"
+        ),
+        InboundEmail(
+          s"gmt-$inboxId-3",
+          "Thames Water",
+          "billing@thameswater.co.uk",
+          "Your latest bill",
+          "£120.00 due 15 June by Direct Debit",
+          "Your latest statement is ready to view…"
+        )
       )
     )
 }

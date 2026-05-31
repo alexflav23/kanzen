@@ -26,7 +26,13 @@ object FxService {
 object FxRepo {
   import FxService.Base
 
-  def addRate(base: String, quote: String, rate: Double, asOf: LocalDate, source: String = "manual"): ConnectionIO[Int] =
+  def addRate(
+      base: String,
+      quote: String,
+      rate: Double,
+      asOf: LocalDate,
+      source: String = "manual"
+  ): ConnectionIO[Int] =
     sql"""insert into fx_rates (base, quote, rate, as_of, source) values ($base, $quote, $rate, $asOf, $source)
           on conflict (base, quote, as_of) do update set rate = excluded.rate, source = excluded.source""".update.run
 

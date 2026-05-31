@@ -21,6 +21,7 @@ lazy val V = new {
 }
 
 lazy val root = (project in file("."))
+  .enablePlugins(JavaAppPackaging) // Universal/packageXzTarball release artifact (NixOS pulls it from S3 pkgs)
   .settings(
     name := "kanzen-backend",
     libraryDependencies ++= Seq(

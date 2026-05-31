@@ -31,7 +31,9 @@ object FxRefreshIT extends IOSuite {
       // USD is a seeded currency; its refreshed rate must equal the stub's deterministic value for today, source 'ecb'
       usd <- FxRepo.rateOn(FxService.Base, "USD", LocalDate.now()).transact(xa)
       src <- sql"select source from fx_rates where base = ${FxService.Base} and quote = 'USD' and as_of = ${LocalDate.now()}"
-        .query[String].option.transact(xa)
+        .query[String]
+        .option
+        .transact(xa)
       expected = StubFxRates.rateFor(FxService.Base, "USD", LocalDate.now())
     } yield expect(ccys.nonEmpty) and expect(n == ccys.count(_.code != FxService.Base)) and
       expect(usd.exists(r => math.abs(r - expected) < 1e-9)) and expect(src.contains("ecb"))

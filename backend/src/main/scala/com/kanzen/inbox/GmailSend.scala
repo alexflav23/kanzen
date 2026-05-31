@@ -14,6 +14,7 @@ import java.util.UUID
 final case class GmailSendTask(id: UUID, tenantId: UUID, threadId: UUID, messageId: UUID)
 
 object GmailSendQueueRepo {
+
   /** Enqueue a dispatch for a recorded outbound message (idempotent on message_id; tenant from the thread). */
   def enqueue(threadId: UUID, messageId: UUID): ConnectionIO[Int] =
     sql"""insert into gmail_send_queue (tenant_id, thread_id, message_id)
@@ -46,7 +47,8 @@ trait GmailSender {
 
 final class StubGmailSender(wsAuth: WorkspaceAuth) extends GmailSender {
   def send(tenantId: UUID, threadId: UUID, messageId: UUID): IO[String] =
-    wsAuth.tokenFor(tenantId, "gmail-sender@kanzen", List("https://www.googleapis.com/auth/gmail.send"))
+    wsAuth
+      .tokenFor(tenantId, "gmail-sender@kanzen", List("https://www.googleapis.com/auth/gmail.send"))
       .as(s"stub-gmail:$messageId")
 }
 
@@ -58,12 +60,14 @@ object GmailSendWorker {
 
   def drainOnce(xa: Transactor[IO], sender: GmailSender): IO[Int] =
     GmailSendQueueRepo.pending(100).transact(xa).flatMap { tasks =>
-      tasks.traverse_ { t =>
-        sender.send(t.tenantId, t.threadId, t.messageId).attempt.flatMap {
-          case Right(pid) => GmailSendQueueRepo.markSent(t.id, pid).transact(xa).void
-          case Left(e) => GmailSendQueueRepo.markFailed(t.id, e.getMessage).transact(xa).void
+      tasks
+        .traverse_ { t =>
+          sender.send(t.tenantId, t.threadId, t.messageId).attempt.flatMap {
+            case Right(pid) => GmailSendQueueRepo.markSent(t.id, pid).transact(xa).void
+            case Left(e) => GmailSendQueueRepo.markFailed(t.id, e.getMessage).transact(xa).void
+          }
         }
-      }.as(tasks.size)
+        .as(tasks.size)
     }
 
   def run(xa: Transactor[IO], sender: GmailSender, every: FiniteDuration = 3.seconds): IO[Unit] =

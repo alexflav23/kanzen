@@ -27,7 +27,8 @@ object Realtime {
   // F48 RT.1b — the resume cursor: the highest event `seq` the client has already processed. On reconnect it replays
   // everything after it. Absent/0 → a fresh connection with no backfill.
   private object SinceQ extends OptionalQueryParamDecoderMatcher[Long]("since")
-  private val ResumeLimit = 500 // a long-disconnected client falls back to its query refetch rather than unbounded replay
+  private val ResumeLimit =
+    500 // a long-disconnected client falls back to its query refetch rather than unbounded replay
 
   def routes(auth: Auth, xa: Transactor[IO], hub: RealtimeHub, wsb: WebSocketBuilder2[IO]): HttpRoutes[IO] =
     HttpRoutes.of[IO] { case GET -> Root / "api" / "ws" :? TokenQ(tokenOpt) +& SinceQ(sinceOpt) =>

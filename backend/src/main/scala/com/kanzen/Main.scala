@@ -115,7 +115,10 @@ object Main extends IOApp.Simple {
                   // now — it enforces the F44 "Workspace connected" contract; the real Calendar client drops in behind it).
                   val calendarSync =
                     log.info("F07 calendar-sync worker started") *>
-                      CalendarSyncWorker.run(xa, new com.kanzen.calendar.StubCalendarSync(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
+                      CalendarSyncWorker.run(
+                        xa,
+                        new com.kanzen.calendar.StubCalendarSync(new com.kanzen.workspace.StubWorkspaceAuth(xa))
+                      )
                   // F46/SES: drain the outbound-email queue through the EmailTransport seam (StubEmailTransport now; SES later).
                   val mailDelivery =
                     log.info("F46 mail-delivery worker started") *>
@@ -123,7 +126,8 @@ object Main extends IOApp.Simple {
                   // W9.4/F44: drain the outbound-Gmail send queue through the GmailSender seam (StubGmailSender now; Gmail later).
                   val gmailSend =
                     log.info("W9.4 gmail-send worker started") *>
-                      com.kanzen.inbox.GmailSendWorker.run(xa, new com.kanzen.inbox.StubGmailSender(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
+                      com.kanzen.inbox.GmailSendWorker
+                        .run(xa, new com.kanzen.inbox.StubGmailSender(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
                   // F34/APNs+FCM: drain notifications awaiting a device push through the PushTransport seam (stub now; APNs/FCM later).
                   val pushDelivery =
                     log.info("F34 push-delivery worker started") *>

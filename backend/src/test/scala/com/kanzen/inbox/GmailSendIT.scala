@@ -21,30 +21,38 @@ object GmailSendIT extends IOSuite {
 
   private def freshTenant(xa: Transactor[IO]): IO[UUID] =
     sql"insert into tenants (slug, name) values (${"gs-" + UUID.randomUUID()}, 'GmailSend') returning id"
-      .query[UUID].unique.transact(xa)
+      .query[UUID]
+      .unique
+      .transact(xa)
 
   private def enqueueRaw(xa: Transactor[IO], t: UUID, msg: UUID): IO[Unit] =
-    sql"insert into gmail_send_queue (tenant_id, thread_id, message_id) values ($t, ${UUID.randomUUID()}, $msg)"
-      .update.run.transact(xa).void
+    sql"insert into gmail_send_queue (tenant_id, thread_id, message_id) values ($t, ${UUID.randomUUID()}, $msg)".update.run
+      .transact(xa)
+      .void
 
   private def status(xa: Transactor[IO], msg: UUID): IO[Option[(String, Option[String])]] =
     sql"select status, provider_message_id from gmail_send_queue where message_id = $msg"
-      .query[(String, Option[String])].option.transact(xa)
+      .query[(String, Option[String])]
+      .option
+      .transact(xa)
 
   private def connectWorkspace(xa: Transactor[IO], t: UUID): IO[Unit] =
-    WorkspaceRepo.connect(t, "kanzen.local", "sa@x.iam.gserviceaccount.com", s"dev:$t", List("gmail.send"), admin)
-      .transact(xa).void
+    WorkspaceRepo
+      .connect(t, "kanzen.local", "sa@x.iam.gserviceaccount.com", s"dev:$t", List("gmail.send"), admin)
+      .transact(xa)
+      .void
 
-  test("the worker dispatches a queued message through the seam + records the provider id (Workspace connected)") { xa =>
-    val sender = new StubGmailSender(new StubWorkspaceAuth(xa))
-    val msg = UUID.randomUUID()
-    for {
-      t <- freshTenant(xa)
-      _ <- connectWorkspace(xa, t)
-      _ <- enqueueRaw(xa, t, msg)
-      _ <- GmailSendWorker.drainOnce(xa, sender)
-      st <- status(xa, msg)
-    } yield expect(st.exists(_._1 == "sent")) and expect(st.exists(_._2.contains(s"stub-gmail:$msg")))
+  test("the worker dispatches a queued message through the seam + records the provider id (Workspace connected)") {
+    xa =>
+      val sender = new StubGmailSender(new StubWorkspaceAuth(xa))
+      val msg = UUID.randomUUID()
+      for {
+        t <- freshTenant(xa)
+        _ <- connectWorkspace(xa, t)
+        _ <- enqueueRaw(xa, t, msg)
+        _ <- GmailSendWorker.drainOnce(xa, sender)
+        st <- status(xa, msg)
+      } yield expect(st.exists(_._1 == "sent")) and expect(st.exists(_._2.contains(s"stub-gmail:$msg")))
   }
 
   test("the worker fails the dispatch when the tenant hasn't connected Workspace (the F44 contract holds)") { xa =>

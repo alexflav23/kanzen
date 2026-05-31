@@ -223,5 +223,13 @@ object Investments {
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(securitiesEndpoint, createSecEndpoint, priceEndpoint, buyEndpoint, sellEndpoint, holdingsEndpoint, refreshEndpoint)
+    List(
+      securitiesEndpoint,
+      createSecEndpoint,
+      priceEndpoint,
+      buyEndpoint,
+      sellEndpoint,
+      holdingsEndpoint,
+      refreshEndpoint
+    )
 }

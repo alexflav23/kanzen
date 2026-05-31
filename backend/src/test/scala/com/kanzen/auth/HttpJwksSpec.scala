@@ -36,8 +36,9 @@ object HttpJwksSpec extends SimpleIOSuite {
        |"n":"${b64url(pub.getModulus)}","e":"${b64url(pub.getPublicExponent)}"}]}""".stripMargin
 
   private def signToken(email: String, role: String): String = {
-    val content = io.circe.Json.obj("email" -> io.circe.Json.fromString(email),
-      "custom:role" -> io.circe.Json.fromString(role)).noSpaces
+    val content = io.circe.Json
+      .obj("email" -> io.circe.Json.fromString(email), "custom:role" -> io.circe.Json.fromString(role))
+      .noSpaces
     val claim = JwtClaim(content).about(email).issuedNow.expiresIn(3600).by(issuer).to(audience)
     JwtCirce.encode(JwtHeader(Some(JwtAlgorithm.RS256), Some("JWT"), None, Some(kid)), claim, kp.getPrivate)
   }

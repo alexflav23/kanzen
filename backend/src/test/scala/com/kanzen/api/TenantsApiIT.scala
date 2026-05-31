@@ -49,8 +49,18 @@ object TenantsApiIT extends IOSuite {
       )
       tobyAssets <- Assets.list(xa, tobyDefault, store, None, None).map(_.toOption.get)
       // duplicate slug is rejected
-      dup <- Tenants.create(xa, mailer(xa), secret, CreateTenantReq("Dup", slug, PrincipalReq("X", s"x-${UUID.randomUUID()}@acme.test")))
-      badSlug <- Tenants.create(xa, mailer(xa), secret, CreateTenantReq("Bad", "No Spaces!", PrincipalReq("Y", "y@acme.test")))
+      dup <- Tenants.create(
+        xa,
+        mailer(xa),
+        secret,
+        CreateTenantReq("Dup", slug, PrincipalReq("X", s"x-${UUID.randomUUID()}@acme.test"))
+      )
+      badSlug <- Tenants.create(
+        xa,
+        mailer(xa),
+        secret,
+        CreateTenantReq("Bad", "No Spaces!", PrincipalReq("Y", "y@acme.test"))
+      )
       // F46 §4 — the onboarding state behind the Dashboard banner
       newSetup <- Tenants.setup(xa, resp.tenantId)
       defaultSetup <- Tenants.setup(xa, com.kanzen.tenant.Tenant.DefaultId)

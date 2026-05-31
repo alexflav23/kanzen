@@ -12,8 +12,8 @@ import scala.util.Try
   * collaboration value at ~10% of the cost.
   *
   * The feed URL carries an unguessable **capability token** (HMAC-SHA256, the same primitive as the blob capability
-  * URLs) encoding `tenantId:userId`. There is no bearer (a calendar app can't send one); possession of a valid token
-  * is the capability. We re-resolve the subscriber's role + tenant at request time and apply the *same* `calendar:view`
+  * URLs) encoding `tenantId:userId`. There is no bearer (a calendar app can't send one); possession of a valid token is
+  * the capability. We re-resolve the subscriber's role + tenant at request time and apply the *same* `calendar:view`
   * gate + tenant filter as the in-app calendar, so the feed can't leak more than the app would — and a revoked role
   * takes effect immediately rather than being baked into the token.
   *

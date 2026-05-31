@@ -15,23 +15,26 @@ trait PushTransport {
 }
 
 object StubPushTransport extends PushTransport {
-  def push(p: NotificationRepo.PushPending): IO[Unit] = IO.unit // sandbox: no registered devices; APNs/FCM swaps in here
+  def push(p: NotificationRepo.PushPending): IO[Unit] =
+    IO.unit // sandbox: no registered devices; APNs/FCM swaps in here
 }
 
-/** Drains notifications awaiting a device push through the [[PushTransport]] seam, marking each pushed (or recording the
-  * error for retry). Idempotent + at-least-once. Runs alongside the relay in `Main`.
+/** Drains notifications awaiting a device push through the [[PushTransport]] seam, marking each pushed (or recording
+  * the error for retry). Idempotent + at-least-once. Runs alongside the relay in `Main`.
   */
 object PushDeliveryWorker {
   import scala.concurrent.duration._
 
   def drainOnce(xa: Transactor[IO], transport: PushTransport): IO[Int] =
     NotificationRepo.pendingPush(100).transact(xa).flatMap { pending =>
-      pending.traverse_ { n =>
-        transport.push(n).attempt.flatMap {
-          case Right(_) => NotificationRepo.markPushed(n.id).transact(xa).void
-          case Left(e) => NotificationRepo.markPushError(n.id, e.getMessage).transact(xa).void
+      pending
+        .traverse_ { n =>
+          transport.push(n).attempt.flatMap {
+            case Right(_) => NotificationRepo.markPushed(n.id).transact(xa).void
+            case Left(e) => NotificationRepo.markPushError(n.id, e.getMessage).transact(xa).void
+          }
         }
-      }.as(pending.size)
+        .as(pending.size)
     }
 
   def run(xa: Transactor[IO], transport: PushTransport, every: FiniteDuration = 5.seconds): IO[Unit] =

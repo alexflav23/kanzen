@@ -53,7 +53,8 @@ object RtEvent {
 /** F48 RT.5 — the realtime transport seam: publish an [[RtEvent]] to all subscribers, and subscribe to a bounded
   * per-connection stream. [[InProcessTransport]] (a single cats-effect [[Topic]] per JVM) runs in the sandbox; the real
   * `PulsarTransport` (a Pulsar topic + per-connection subscription, operator-gated) drops in behind this trait with the
-  * **identical [[RtEvent]] wire shape** end-to-end — so the websocket layer, authz filter and resume cursor are unchanged.
+  * **identical [[RtEvent]] wire shape** end-to-end — so the websocket layer, authz filter and resume cursor are
+  * unchanged.
   */
 trait RtTransport {
   def publish(ev: RtEvent): IO[Unit]
@@ -67,7 +68,8 @@ trait RtTransport {
 final class InProcessTransport(topic: Topic[IO, RtEvent]) extends RtTransport {
   def publish(ev: RtEvent): IO[Unit] = topic.publish1(ev).void
   def subscribe(maxQueued: Int): fs2.Stream[IO, RtEvent] = topic.subscribe(maxQueued)
-  def subscribeAwait(maxQueued: Int): cats.effect.Resource[IO, fs2.Stream[IO, RtEvent]] = topic.subscribeAwait(maxQueued)
+  def subscribeAwait(maxQueued: Int): cats.effect.Resource[IO, fs2.Stream[IO, RtEvent]] =
+    topic.subscribeAwait(maxQueued)
 }
 
 object InProcessTransport {
@@ -138,6 +140,7 @@ final class RealtimeHub(transport: RtTransport, presence: Ref[IO, Map[String, Ma
 }
 
 object RealtimeHub {
+
   /** Build a hub over the in-process transport (sandbox). Prod swaps `InProcessTransport.create` for the Pulsar one. */
   def create: IO[RealtimeHub] =
     for {

@@ -43,7 +43,12 @@ object Tenants {
   private val slugTaken: (StatusCode, ApiError) =
     (StatusCode.Conflict, ApiError(409, "slug_taken", "That workspace address is already taken."))
 
-  def create(xa: Transactor[IO], mailer: Mailer, verifySecret: String, req: CreateTenantReq): IO[Out[CreateTenantResp]] = {
+  def create(
+      xa: Transactor[IO],
+      mailer: Mailer,
+      verifySecret: String,
+      req: CreateTenantReq
+  ): IO[Out[CreateTenantResp]] = {
     val slug = req.slug.trim.toLowerCase
     val email = req.principal.email.trim.toLowerCase
     if (req.name.trim.isEmpty) IO.pure(Left(bad("a workspace name is required")))
@@ -83,7 +88,9 @@ object Tenants {
                  |Verify: /verify?token=$token
                  |
                  |This link expires in 7 days.""".stripMargin
-            mailer.send(Some(resp.tenantId), email, "Verify your Kanzen workspace", body, "verify_email").as(Right(resp))
+            mailer
+              .send(Some(resp.tenantId), email, "Verify your Kanzen workspace", body, "verify_email")
+              .as(Right(resp))
           }
         case left => IO.pure(left)
       }

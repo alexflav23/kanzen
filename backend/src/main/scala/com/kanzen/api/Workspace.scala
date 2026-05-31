@@ -40,7 +40,15 @@ object Workspace {
     (WorkspaceRepo.find(p.tenantId), WorkspaceCalendarMapRepo.find(p.tenantId)).tupled.transact(xa).map {
       case (None, _) => Right(StatusView(connected = false, None, validated = false, None))
       case (Some(w), cal) =>
-        Right(StatusView(connected = true, Some(w.domain), w.validatedAt.isDefined, w.validationError, cal.map(_.googleCalendarId)))
+        Right(
+          StatusView(
+            connected = true,
+            Some(w.domain),
+            w.validatedAt.isDefined,
+            w.validationError,
+            cal.map(_.googleCalendarId)
+          )
+        )
     }
 
   // F07 Path B — map a Google calendar for this tenant (principal-only; requires Workspace to be connected first).

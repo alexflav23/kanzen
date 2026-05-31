@@ -32,7 +32,9 @@ object QuoteRefreshIT extends IOSuite {
       head = secs.head
       latest <- InvestmentRepo.latestPrice(head.id).transact(xa)
       src <- sql"select source from security_prices where security_id = ${head.id} order by as_of desc limit 1"
-        .query[String].unique.transact(xa)
+        .query[String]
+        .unique
+        .transact(xa)
       expected = StubQuoteSource.priceFor(head.symbol, LocalDate.now())
     } yield expect(secs.nonEmpty) and expect(n == secs.size) and
       expect(latest.contains(expected)) and expect(src == "market")

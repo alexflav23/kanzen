@@ -19,6 +19,11 @@
 | Household **credentials** (bank logins, vault contents) | **1Password** | referenced by name only; Kanzen never stores them |
 | **Local dev** | `.env` via **direnv** + `docker-compose` | `.env.example` generated in F00 |
 
+> **The Terraform module (`terraform/kanzen`) now provisions the wiring for you** — so the operator fills *values*, not plumbing:
+> - **`config.tf`** writes the SSM parameters under `/kanzen/${env}/…` **auto-derived from the created resources** — `cognito/issuer` + `cognito/jwks-uri` (from the pool), `cognito/audience` (the web client id), `db/url` (the RDS endpoint), `s3/bucket`, `public-base-url`. This closes the F01 chain end-to-end: the pool's JWKS URL flows to the app config → the built-in `HttpJwks` validator fetches the live JWKS — **no application change**.
+> - **`secrets.tf`** creates the Secrets-Manager entries: a generated `blob-secret`, the `db-password` (from a sensitive var), and **empty containers** for the operator-supplied integration creds (`ses-config`, `gocardless-token`) to fill out-of-band.
+> - The IAM role already grants the app read access to exactly these prefixes; `terraform fmt`/`validate` run in CI (`infra-validate`); the backend `Universal/packageXzTarball` + the web build are produced by the `package` stage; `deploy` is `when: manual` (operator AWS creds via protected CI vars). So the remaining operator work is **credential values + `terraform apply`**, not engineering.
+
 ---
 
 ## A. Minimum to get the app running (M0–M1)

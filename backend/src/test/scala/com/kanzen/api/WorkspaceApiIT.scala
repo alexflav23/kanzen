@@ -54,7 +54,9 @@ object WorkspaceApiIT extends IOSuite {
     for {
       // a fresh tenant (toby's real userId for the created_by FK) so this doesn't race the shared-tenant connect test
       t <- sql"insert into tenants (slug, name) values (${"wcal-" + UUID.randomUUID()}, 'Cal') returning id"
-        .query[UUID].unique.transact(xa)
+        .query[UUID]
+        .unique
+        .transact(xa)
       p = Principal(toby.userId, "t", "flavian@kanzen.local", "principal", None, t)
       mgr0 = Principal(toby.userId, "l", "lorna@kanzen.local", "manager", None, t)
       _ <- Workspace.connect(xa, ws, p, ConnectReq("kanzen.local", "kanzen@proj.iam.gserviceaccount.com", keyJson))
@@ -70,7 +72,9 @@ object WorkspaceApiIT extends IOSuite {
     for {
       otherTenant <-
         sql"insert into tenants (slug, name) values (${"wc-" + UUID.randomUUID()}, 'NoWs') returning id"
-          .query[UUID].unique.transact(xa)
+          .query[UUID]
+          .unique
+          .transact(xa)
       principal = Principal(UUID.randomUUID(), "o", "o@x", "principal", None, otherTenant)
       res <- Workspace.setCalendar(xa, principal, Workspace.CalendarReq("cal@g"))
     } yield expect(res.left.exists(_._1.code == 400)) // must connect Workspace first

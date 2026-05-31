@@ -30,15 +30,17 @@ object StubBankFeed extends BankFeed {
   def fetch(accountId: java.util.UUID, since: LocalDate): IO[List[TxIn]] =
     IO.realTimeInstant.map { now =>
       val today = now.atZone(java.time.ZoneOffset.UTC).toLocalDate
-      seeds.zipWithIndex.map { case (s, i) =>
-        TxIn(
-          providerTxId = s"stub:$accountId:$i", // stable ⇒ idempotent on re-sync
-          bookedOn = today.minusDays(s.daysAgo.toLong),
-          amountMinor = s.amountMinor,
-          currency = "GBP",
-          direction = s.direction,
-          description = s.description
-        )
-      }.filter(!_.bookedOn.isBefore(since))
+      seeds.zipWithIndex
+        .map { case (s, i) =>
+          TxIn(
+            providerTxId = s"stub:$accountId:$i", // stable ⇒ idempotent on re-sync
+            bookedOn = today.minusDays(s.daysAgo.toLong),
+            amountMinor = s.amountMinor,
+            currency = "GBP",
+            direction = s.direction,
+            description = s.description
+          )
+        }
+        .filter(!_.bookedOn.isBefore(since))
     }
 }

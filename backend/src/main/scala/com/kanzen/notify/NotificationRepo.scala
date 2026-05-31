@@ -60,7 +60,8 @@ object NotificationRepo {
   def pendingPush(limit: Int): ConnectionIO[List[PushPending]] =
     sql"""select id, user_id, title, body from notifications
           where pushed_at is null and channels_sent @> '["push"]'::jsonb order by created_at limit $limit"""
-      .query[PushPending].to[List]
+      .query[PushPending]
+      .to[List]
 
   def markPushed(id: UUID): ConnectionIO[Int] =
     sql"update notifications set pushed_at = now(), push_error = null where id = $id".update.run

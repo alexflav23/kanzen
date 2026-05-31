@@ -33,7 +33,9 @@ object JwksParser {
               kid <- c.get[String]("kid").toOption
               n <- c.get[String]("n").toOption
               e <- c.get[String]("e").toOption
-              key <- Try(kf.generatePublic(new RSAPublicKeySpec(bigIntOf(n), bigIntOf(e))).asInstanceOf[RSAPublicKey]).toOption
+              key <- Try(
+                kf.generatePublic(new RSAPublicKeySpec(bigIntOf(n), bigIntOf(e))).asInstanceOf[RSAPublicKey]
+              ).toOption
             } yield kid -> key
           }
           if (parsed.isEmpty) Left("jwks: no usable RSA keys") else Right(parsed.toMap)

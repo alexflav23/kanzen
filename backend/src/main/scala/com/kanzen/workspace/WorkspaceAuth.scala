@@ -58,9 +58,10 @@ final case class WorkspaceNotConnected(tenantId: UUID)
 /** F44 §3 — the auth substrate the four downstream integrations (GmailSender, GmailWatcher, CalendarSyncConsumer,
   * DriveReader) all share: a short-lived, impersonated, scope-minimal access token for `userEmail` in the tenant's
   * Workspace. The live impl signs a service-account JWT (sub = userEmail) and exchanges it at Google's token endpoint,
-  * caching per (tenant, user, scopes) until exp-60s. In the sandbox we have no service account, so [[StubWorkspaceAuth]]
-  * stands in: it enforces the *contract* (WorkspaceNotConnected when the tenant hasn't connected) so every producer is
-  * already wired correctly, and the operator's only remaining step is dropping in the real token exchange.
+  * caching per (tenant, user, scopes) until exp-60s. In the sandbox we have no service account, so
+  * [[StubWorkspaceAuth]] stands in: it enforces the *contract* (WorkspaceNotConnected when the tenant hasn't connected)
+  * so every producer is already wired correctly, and the operator's only remaining step is dropping in the real token
+  * exchange.
   */
 trait WorkspaceAuth {
   def tokenFor(tenantId: UUID, userEmail: String, scopes: List[String]): IO[String]
