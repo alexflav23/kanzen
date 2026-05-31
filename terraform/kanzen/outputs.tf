@@ -1,6 +1,16 @@
-# Wire-up values the operator feeds into SSM/Secrets + the web build at the launch wave.
+# The live URLs (DNS + certs are auto-created in the Route 53 zone — nothing manual to point).
+output "web_url" {
+  description = "The web app URL."
+  value       = "https://${var.domain_name}"
+}
+
+output "api_url" {
+  description = "The API URL — set the web build's VITE_API_URL to this."
+  value       = "https://api.${var.domain_name}"
+}
+
 output "api_alb_dns" {
-  description = "ALB DNS — point the API subdomain here (CNAME)."
+  description = "ALB DNS (the api record already aliases to this)."
   value       = aws_lb.main.dns_name
 }
 

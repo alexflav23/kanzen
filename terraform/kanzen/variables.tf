@@ -14,18 +14,15 @@ variable "vpc_cidr" {
 }
 
 variable "domain_name" {
-  description = "Apex domain for the env (e.g. staging.kanzen.family)."
+  description = "The web host for this env — the apex `kanzen.family` for prod, or e.g. `staging.kanzen.family`. The API is served at `api.<this>`, and both certs + records are auto-created in route53_zone_name."
   type        = string
 }
 
-variable "acm_certificate_arn" {
-  description = "ALB cert ARN (regional, eu-west-1) for HTTPS termination."
+# TLS certs are now requested + DNS-validated by Terraform in the Route 53 zone (see dns.tf) — no manual ARNs.
+variable "route53_zone_name" {
+  description = "The Route 53 hosted zone the domain lives in (delegated from GoDaddy). Always the apex."
   type        = string
-}
-
-variable "cloudfront_certificate_arn" {
-  description = "CloudFront cert ARN (must be in us-east-1) for the web SPA."
-  type        = string
+  default     = "kanzen.family"
 }
 
 variable "nixos_ami_id" {

@@ -22,17 +22,11 @@ aws s3api put-bucket-versioning --bucket kanzen-tfstate \
   --versioning-configuration Status=Enabled
 ```
 
-## 2. TLS certificates (ACM) — two of them
-CloudFront requires its cert in **us-east-1**; the ALB uses **eu-west-1**.
-```sh
-# ALB cert (regional)
-aws acm request-certificate --region eu-west-1 \
-  --domain-name "api.kanzen.family" --validation-method DNS
-# CloudFront cert (MUST be us-east-1)
-aws acm request-certificate --region us-east-1 \
-  --domain-name "kanzen.family" --subject-alternative-names "www.kanzen.family" --validation-method DNS
-```
-Add the CNAME validation records ACM gives you to your DNS, wait for **Issued**, and note the two **certificate ARNs**.
+## 2. DNS + TLS certificates — automatic ✅
+Nothing to do here. The Route 53 zone `kanzen.family` is already created (delegated from GoDaddy), and Terraform now
+**requests + DNS-validates both ACM certs and creates all the app records** (web → CloudFront, `api.` → ALB, plus the
+cert-validation CNAMEs) inside that zone on `apply`. Just make sure GoDaddy's nameservers point at the Route 53 ones
+(so validation can resolve) — see step 0.
 
 ## 3. Build the NixOS EC2 AMI
 On a Nix builder (Linux, flakes enabled):
@@ -50,7 +44,8 @@ aws ec2 import-snapshot --description kanzen --disk-container \
 ```sh
 cd terraform/kanzen
 cp staging.tfvars.example staging.tfvars
-# edit: domain_name, acm_certificate_arn (eu-west-1), cloudfront_certificate_arn (us-east-1), nixos_ami_id
+# edit just: domain_name (e.g. staging.kanzen.family) + nixos_ami_id. Certs/DNS are auto; no ARNs needed.
+export AWS_PROFILE=outworkers
 export TF_VAR_db_password="$(openssl rand -base64 24)"   # strong; lands in Secrets Manager, not git
 ```
 
@@ -64,9 +59,9 @@ terraform output                                 # grab api_alb_dns, web_cloudfr
 ```
 Terraform auto-writes the SSM config (cognito issuer/jwks-uri from the new pool, db/url, s3/bucket, public-base-url) + the Secrets Manager entries (generated blob-secret, your db-password). **No app config to touch.**
 
-## 6. DNS records (from the outputs)
-- `api.kanzen.family` → **CNAME** → `api_alb_dns`
-- `kanzen.family` (+ `www`) → **ALIAS/CNAME** → `web_cloudfront_domain`
+## 6. DNS records — automatic ✅
+Terraform already created the `web`/`www`/`api` A-ALIAS records in the zone during `apply`. Run `terraform output web_url`
++ `api_url` to see the live hostnames.
 
 ## 7. Ship the app (the CI `deploy` job, or manually)
 The web build must point at the API subdomain:
