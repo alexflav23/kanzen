@@ -50,15 +50,38 @@ object RtEvent {
   }
 }
 
-/** F48 — the in-process realtime fan-out. A single cats-effect [[Topic]] per JVM; the Relay publishes every drained
-  * outbox row here (best-effort, after the durable commit), and each websocket connection subscribes to a bounded
-  * per-connection stream. In production the in-process Topic is swapped for a Pulsar subscription (W10-RT.5,
-  * operator-gated) — the [[RtEvent]] wire shape is identical end-to-end.
+/** F48 RT.5 — the realtime transport seam: publish an [[RtEvent]] to all subscribers, and subscribe to a bounded
+  * per-connection stream. [[InProcessTransport]] (a single cats-effect [[Topic]] per JVM) runs in the sandbox; the real
+  * `PulsarTransport` (a Pulsar topic + per-connection subscription, operator-gated) drops in behind this trait with the
+  * **identical [[RtEvent]] wire shape** end-to-end — so the websocket layer, authz filter and resume cursor are unchanged.
   */
-final class RealtimeHub(topic: Topic[IO, RtEvent], presence: Ref[IO, Map[String, Map[UUID, Int]]]) {
+trait RtTransport {
+  def publish(ev: RtEvent): IO[Unit]
+  def subscribe(maxQueued: Int): fs2.Stream[IO, RtEvent]
+  def subscribeAwait(maxQueued: Int): cats.effect.Resource[IO, fs2.Stream[IO, RtEvent]]
+}
+
+/** Sandbox transport: a single in-process fs2 [[Topic]]. A slow subscriber that overflows its buffer drops the oldest
+  * events (the client reconnects with `since` and replays from the durable outbox — RT.1b).
+  */
+final class InProcessTransport(topic: Topic[IO, RtEvent]) extends RtTransport {
+  def publish(ev: RtEvent): IO[Unit] = topic.publish1(ev).void
+  def subscribe(maxQueued: Int): fs2.Stream[IO, RtEvent] = topic.subscribe(maxQueued)
+  def subscribeAwait(maxQueued: Int): cats.effect.Resource[IO, fs2.Stream[IO, RtEvent]] = topic.subscribeAwait(maxQueued)
+}
+
+object InProcessTransport {
+  def create: IO[InProcessTransport] = Topic[IO, RtEvent].map(new InProcessTransport(_))
+}
+
+/** F48 — the realtime fan-out. The Relay publishes every drained outbox row here (best-effort, after the durable
+  * commit) and each websocket connection subscribes to a bounded per-connection stream, all over a swappable
+  * [[RtTransport]] (in-process now, Pulsar in prod — W10-RT.5).
+  */
+final class RealtimeHub(transport: RtTransport, presence: Ref[IO, Map[String, Map[UUID, Int]]]) {
 
   /** Producer side — called from the Relay sink with each freshly-published outbox row. */
-  def publish(row: EventRepo.OutboxRow): IO[Unit] = topic.publish1(RtEvent.fromRow(row)).void
+  def publish(row: EventRepo.OutboxRow): IO[Unit] = transport.publish(RtEvent.fromRow(row))
 
   // ── F48 RT.3 presence ──────────────────────────────────────────────────────
   // entityKey → (userId → how many of that user's connections are viewing). A refcount handles multiple tabs and
@@ -66,18 +89,16 @@ final class RealtimeHub(topic: Topic[IO, RtEvent], presence: Ref[IO, Map[String,
   private def key(entityType: String, entityId: String) = s"$entityType:$entityId"
 
   private def publishPresence(entityType: String, entityId: String, viewers: Set[UUID]): IO[Unit] =
-    topic
-      .publish1(
-        RtEvent(
-          "presence.snapshot",
-          entityType,
-          Try(UUID.fromString(entityId)).toOption,
-          None,
-          None,
-          Json.obj("userIds" -> viewers.toList.map(_.toString).asJson)
-        )
+    transport.publish(
+      RtEvent(
+        "presence.snapshot",
+        entityType,
+        Try(UUID.fromString(entityId)).toOption,
+        None,
+        None,
+        Json.obj("userIds" -> viewers.toList.map(_.toString).asJson)
       )
-      .void
+    )
 
   /** A connection starts viewing an entity → bump the refcount + broadcast the new viewer set (authz-filtered
     * downstream like any event, so presence never leaks to someone who can't read the entity).
@@ -107,19 +128,20 @@ final class RealtimeHub(topic: Topic[IO, RtEvent], presence: Ref[IO, Map[String,
   /** Consumer side — a bounded subscription. If a slow client overflows the buffer the oldest events are dropped (the
     * client reconnects with `since` and replays from the durable outbox).
     */
-  def subscribe(maxQueued: Int = 256): fs2.Stream[IO, RtEvent] = topic.subscribe(maxQueued)
+  def subscribe(maxQueued: Int = 256): fs2.Stream[IO, RtEvent] = transport.subscribe(maxQueued)
 
   /** Like [[subscribe]] but the `Resource` guarantees the subscription is registered before it's handed back — so a
     * publish that races a subscribe can't be missed (used in tests + any synchronous wait-for-event flow).
     */
   def subscribeAwait(maxQueued: Int = 256): cats.effect.Resource[IO, fs2.Stream[IO, RtEvent]] =
-    topic.subscribeAwait(maxQueued)
+    transport.subscribeAwait(maxQueued)
 }
 
 object RealtimeHub {
+  /** Build a hub over the in-process transport (sandbox). Prod swaps `InProcessTransport.create` for the Pulsar one. */
   def create: IO[RealtimeHub] =
     for {
-      topic <- Topic[IO, RtEvent]
+      transport <- InProcessTransport.create
       presence <- Ref[IO].of(Map.empty[String, Map[UUID, Int]])
-    } yield new RealtimeHub(topic, presence)
+    } yield new RealtimeHub(transport, presence)
 }

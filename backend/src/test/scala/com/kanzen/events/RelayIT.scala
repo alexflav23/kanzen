@@ -28,35 +28,28 @@ object RelayIT extends IOSuite {
     def handle(evt: EventRepo.OutboxRow): ConnectionIO[Unit] = conn.delay { sink.add(evt.id); () }
   }
 
-  test("a domain write and its outbox row commit atomically; relay drains then leaves none unpublished") { xa =>
-    val subj = UUID.randomUUID()
+  // ONE sequential test: `Relay.drainOnce` is GLOBAL (marks every unpublished row published), so two tests draining
+  // concurrently within the suite would publish each other's events before the other asserts they're unpublished.
+  test("transactional outbox: atomic commit + drain marks published; the relay resumes from unpublished, once") { xa =>
+    val sink = new ConcurrentLinkedQueue[UUID]()
     for {
-      ids <- (EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", subj), owner, None, Json.obj())),
-        EventRepo.emit(
-          Envelope("product.low", Actor.system, Subject("product", UUID.randomUUID()), owner, None, Json.obj())
-        )).tupled
-        .transact(xa)
+      // 1) a domain write + its two outbox rows commit together and are unpublished until drained
+      ids <- (EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj())),
+        EventRepo.emit(Envelope("product.low", Actor.system, Subject("product", UUID.randomUUID()), owner, None, Json.obj())))
+        .tupled.transact(xa)
       (id1, id2) = ids
       before <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
       drained <- Relay.drainOnce(xa, Nil) // no consumers: still marks published
       after <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
-      // assert against OUR ids, not a global empty set — the suite shares the DB with other suites running in parallel.
-    } yield expect(before(id1)) and expect(before(id2)) and expect(drained >= 2) and
-      expect(!after(id1)) and expect(!after(id2))
-  }
-
-  test("relay resumes from unpublished and publishes once it succeeds (at-least-once)") { xa =>
-    val sink = new ConcurrentLinkedQueue[UUID]()
-    val subj = UUID.randomUUID()
-    for {
-      eid <- EventRepo
-        .emit(Envelope("task.completed", Actor.system, Subject("task", subj), owner, None, Json.obj()))
-        .transact(xa)
-      // before the relay runs, the event is unpublished — a "crash" simply means it was never drained
+      // 2) resume: emit AFTER the first drain (so only our second drain touches it), the consumer runs once, at-least-once
+      eid <- EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", UUID.randomUUID()), owner, None, Json.obj())).transact(xa)
       open0 <- EventRepo.unpublishedRows.map(_.exists(_.id == eid)).transact(xa)
       _ <- Relay.drainOnce(xa, List(recording(sink))) // restart: consumer runs, row marked published
       _ <- Relay.drainOnce(xa, List(recording(sink))) // a second pass finds it already published
       open1 <- EventRepo.unpublishedRows.map(_.exists(_.id == eid)).transact(xa)
-    } yield expect(open0) and expect(sink.contains(eid)) and expect(!open1)
+      // assert against OUR ids, never a global empty set — the test DB is shared across suites running in parallel.
+    } yield expect(before(id1)) and expect(before(id2)) and expect(drained >= 2) and
+      expect(!after(id1)) and expect(!after(id2)) and
+      expect(open0) and expect(sink.contains(eid)) and expect(!open1)
   }
 }

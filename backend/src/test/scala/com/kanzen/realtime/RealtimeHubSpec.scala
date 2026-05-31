@@ -39,6 +39,18 @@ object RealtimeHubSpec extends SimpleIOSuite {
       expect(got._1.head.subjectId.contains(tid))
   }
 
+  // F48 RT.5 — the transport seam Pulsar must satisfy: publish reaches a live subscriber with the wire shape intact.
+  test("InProcessTransport: a published event reaches a subscriber (the RtTransport contract)") {
+    val ev = RtEvent("task.completed", "task", Some(UUID.randomUUID()), None, None, Json.obj(), 7L)
+    for {
+      transport <- InProcessTransport.create
+      got <- transport.subscribeAwait(16).use { s =>
+        val collect = s.take(1).compile.toList
+        collect.start.flatMap(fib => transport.publish(ev) *> fib.joinWithNever)
+      }
+    } yield expect(got.map(_.eventType) == List("task.completed")) and expect(got.head.seq == 7L)
+  }
+
   test("presence: enter/leave broadcast a presence.snapshot with the live viewer set") {
     val entity = UUID.randomUUID()
     val ada = UUID.randomUUID()
