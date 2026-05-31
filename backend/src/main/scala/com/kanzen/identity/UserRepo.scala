@@ -40,4 +40,10 @@ object UserRepo {
 
   def findByEmail(email: String): ConnectionIO[Option[User]] =
     sql"select id, display_name, email, role, status, tenant_id from users where email = $email".query[User].option
+
+  /** Resolve a user by id — used by capability-URL surfaces (e.g. the F07 iCal feed) that re-resolve the subscriber's
+    * role + tenant at request time, so a revoked role takes effect immediately rather than being baked into the token.
+    */
+  def findById(id: UUID): ConnectionIO[Option[User]] =
+    sql"select id, display_name, email, role, status, tenant_id from users where id = $id".query[User].option
 }

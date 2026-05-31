@@ -77,3 +77,15 @@ test("New event creates an event that appears (today → today's cell)", async (
   await page.getByRole("tab", { name: "Agenda" }).click();
   await expect(page.getByTestId("cal-event").filter({ hasText: title })).toBeVisible();
 });
+
+// F07 iCal — a subscriber mints a private, read-only feed URL to add to their phone's calendar.
+test("Subscribe opens a feed URL + webcal link", async ({ page }) => {
+  await page.goto("/calendar");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  const modal = page.getByTestId("subscribe-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByTestId("feed-url")).toContainText("/api/calendar/feed/");
+  await expect(modal.getByTestId("feed-url")).toContainText(".ics");
+  // the Apple Calendar affordance uses the webcal:// scheme so the OS opens "Add subscription"
+  await expect(modal.getByTestId("feed-webcal")).toHaveAttribute("href", /^webcal:\/\//);
+});

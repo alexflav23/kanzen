@@ -8,7 +8,7 @@ import { Pill } from "../components/Pill";
 import { Plus } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
-import { createEvent, deleteEvent, listEvents, updateEvent, type CalEvent } from "../services/calendar";
+import { createEvent, deleteEvent, getCalendarFeed, listEvents, updateEvent, type CalEvent } from "../services/calendar";
 import { useRealtime } from "../realtime/RealtimeProvider";
 
 const styles = stylex.create({
@@ -27,9 +27,11 @@ const styles = stylex.create({
   evTitle: { fontSize: "14px", fontWeight: 500, color: colors.ink },
   ro: { fontSize: "11px", color: colors.ink3, marginTop: "2px" },
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", flexShrink: 0 },
+  ghostBtn: { display: "inline-flex", alignItems: "center", padding: "8px 14px", borderRadius: radius.sm, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "13px", flexShrink: 0, fontFamily: "inherit" },
   overlay: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 50, animationName: stylex.keyframes({ from: { opacity: 0 }, to: { opacity: 1 } }), animationDuration: "120ms" },
   modal: { width: "420px", backgroundColor: colors.bgElev, borderRadius: radius.lg, border: `1px solid ${colors.line}`, padding: "26px", animationName: stylex.keyframes({ from: { opacity: 0, transform: "translateY(6px) scale(0.97)" }, to: { opacity: 1, transform: "translateY(0) scale(1)" } }), animationDuration: "160ms", animationTimingFunction: "ease-out" },
   modalTitle: { fontSize: "18px", fontWeight: 600, marginBottom: "18px", color: colors.ink },
+  feedUrl: { fontFamily: "monospace", fontSize: "12px", color: colors.ink2, backgroundColor: colors.bgSunken, border: `1px solid ${colors.line}`, borderRadius: radius.sm, padding: "10px 12px", margin: "14px 0", wordBreak: "break-all", userSelect: "all" },
   field: { display: "block", marginBottom: "12px" },
   twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" },
   label: { display: "block", fontSize: "12px", color: colors.ink3, marginBottom: "5px" },
@@ -163,6 +165,41 @@ function NewEventModal({ token, date, time, onClose }: { token: string | null; d
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** F07 iCal — subscribe to the household calendar from iOS/Android/Google. Fetches the user's signed feed URL
+ *  (read-only capability) and offers a one-tap webcal link + copy-able https URL. */
+function SubscribeModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const feedQ = useQuery({ queryKey: ["calendar-feed", token], queryFn: () => getCalendarFeed(token) });
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!feedQ.data) return;
+    await navigator.clipboard?.writeText(feedQ.data.httpUrl).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <div {...stylex.props(styles.overlay)} role="dialog" aria-modal="true" aria-label="Subscribe to calendar" onClick={onClose}>
+      <div {...stylex.props(styles.modal)} data-testid="subscribe-modal" onClick={(e) => e.stopPropagation()}>
+        <div {...stylex.props(styles.modalTitle)}>Subscribe to this calendar</div>
+        <p {...stylex.props(styles.desc)}>
+          A live, read-only feed of the household calendar. Add it once and deliveries, maintenance and bookings appear
+          in your phone's calendar — updating automatically. The link is private to you; treat it like a password.
+        </p>
+        {feedQ.isPending ? <Loading /> : feedQ.isError ? <ErrorState error={feedQ.error} /> : (
+          <>
+            <div {...stylex.props(styles.feedUrl)} data-testid="feed-url">{feedQ.data.httpUrl}</div>
+            <div {...stylex.props(styles.actions)}>
+              <a {...stylex.props(styles.ghost)} href={feedQ.data.webcalUrl} data-testid="feed-webcal">Add to Apple Calendar</a>
+              <button type="button" {...stylex.props(styles.primary)} onClick={copy} data-testid="feed-copy">
+                {copied ? "Copied ✓" : "Copy link"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -372,6 +409,7 @@ export function Calendar() {
   const [presetTime, setPresetTime] = useState<string | undefined>(undefined);
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState(new Date());
+  const [subscribing, setSubscribing] = useState(false);
   const today = new Date();
 
   const gridDays = useMemo(() => {
@@ -429,11 +467,13 @@ export function Calendar() {
               <button key={v} type="button" role="tab" aria-selected={view === v} {...stylex.props(styles.segBtn, view === v && styles.segBtnOn)} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>
             ))}
           </div>
+          <button type="button" onClick={() => setSubscribing(true)} {...stylex.props(styles.ghostBtn)}>Subscribe</button>
           <button type="button" onClick={() => openNew()} {...stylex.props(styles.btn)}><Plus size={14} /> New event</button>
         </div>
       </header>
 
       {adding && <NewEventModal token={token} date={presetDate} time={presetTime} onClose={() => { setAdding(false); setPresetDate(undefined); setPresetTime(undefined); }} />}
+      {subscribing && <SubscribeModal token={token} onClose={() => setSubscribing(false)} />}
       {detail && <EventDetailModal event={detail} onClose={() => setDetail(null)} />}
 
       <div {...stylex.props(styles.filters)}>

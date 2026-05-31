@@ -26,7 +26,10 @@ object Api {
   ): HttpRoutes[IO] = {
     val interp = Http4sServerInterpreter[IO]()
     val devEps = dev.map(Dev.serverEndpoint).toList
-    val public = interp.toRoutes(Blobs.serverEndpoints(store, blobSecret) ++ Tenants.publicServerEndpoints(xa))
+    val public = interp.toRoutes(
+      Blobs.serverEndpoints(store, blobSecret) ++ Tenants.publicServerEndpoints(xa)
+        ++ Calendar.publicServerEndpoints(xa, blobSecret)
+    )
     val secured = interp.toRoutes(
       List(Me.serverEndpoint(auth, xa), Me.colourServerEndpoint(auth, xa)) ++ Properties.serverEndpoints(auth, xa)
         ++ Locations.serverEndpoints(auth, xa) ++ Defects.serverEndpoints(auth, xa)
@@ -42,7 +45,7 @@ object Api {
         ++ Maintenance.serverEndpoints(auth, xa) ++ Products.serverEndpoints(auth, xa)
         ++ Notifications.serverEndpoints(auth, xa) ++ Extensibility.serverEndpoints(auth, xa)
         ++ DataQuality.serverEndpoints(auth, xa) ++ Fx.serverEndpoints(auth, xa)
-        ++ Restructure.serverEndpoints(auth, xa) ++ Calendar.serverEndpoints(auth, xa)
+        ++ Restructure.serverEndpoints(auth, xa) ++ Calendar.serverEndpoints(auth, xa, blobSecret)
         ++ Agent.serverEndpoints(auth, xa) ++ Inbox.serverEndpoints(auth, xa)
         ++ Collab.serverEndpoints(auth, xa) ++ Search.serverEndpoints(
           auth,

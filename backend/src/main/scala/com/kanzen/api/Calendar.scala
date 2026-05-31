@@ -4,8 +4,9 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
-import com.kanzen.calendar.{CalEvent, CalendarRepo}
+import com.kanzen.calendar.{CalEvent, CalendarFeed, CalendarRepo}
 import com.kanzen.events.{Actor, DomainWriter, Events, Subject}
+import com.kanzen.identity.UserRepo
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -55,6 +56,8 @@ object Calendar {
       endTime: Option[LocalTime]
   )
   final case class Ok(ok: Boolean)
+  // F07 iCal — the relative feed path the web turns into an absolute (webcal) subscribe URL.
+  final case class FeedUrl(path: String)
 
   // task/maintenance overlays are derived (read-only); native calendar rows are editable
   private def ev(c: CalEvent): EventView = EventView(
@@ -189,6 +192,57 @@ object Calendar {
       )
     ).transact(xa)
 
+  // F07 iCal — mint this subscriber's signed feed path. Requires calendar:view (they must be able to read the calendar).
+  def feedUrl(xa: Transactor[IO], secret: String, p: Principal): IO[Out[FeedUrl]] =
+    Authz
+      .forUser(p.userId, p.role)
+      .transact(xa)
+      .flatMap { authz =>
+        if (!authz.can(viewA)) IO.pure(Left(forbidden))
+        else
+          IO.realTimeInstant.map { now =>
+            val token = CalendarFeed.tokenFor(p.tenantId, p.userId, secret, now.getEpochSecond)
+            Right(FeedUrl(s"/api/calendar/feed/$token.ics"))
+          }
+      }
+
+  // F07 iCal — the public, token-authed feed. No bearer (a calendar client can't send one): the token IS the capability.
+  // We re-resolve the subscriber's role + tenant and apply the same calendar:view gate + tenant filter as the app, so
+  // the feed never leaks more than the in-app calendar would. A bad/expired/tampered token → 404 (no existence probe).
+  def feed(xa: Transactor[IO], secret: String, token: String): IO[Either[StatusCode, (String, String)]] =
+    IO.realTimeInstant.flatMap { now =>
+      // the .ics suffix is cosmetic (so clients treat it as a calendar) — strip it before verifying.
+      val raw = if (token.endsWith(".ics")) token.dropRight(4) else token
+      CalendarFeed.parse(raw, secret, now.getEpochSecond) match {
+        case None => IO.pure(Left(StatusCode.NotFound))
+        case Some((tenantId, userId)) =>
+          val today = LocalDate.now()
+          val from = today.minusDays(30)
+          val to = today.plusDays(180)
+          val tx: ConnectionIO[Either[StatusCode, List[com.kanzen.calendar.CalEvent]]] =
+            UserRepo.findById(userId).flatMap {
+              case Some(u) if u.tenantId == tenantId =>
+                Authz.forUser(u.id, u.role).flatMap { authz =>
+                  if (!authz.can(viewA))
+                    (Left(StatusCode.NotFound): Either[StatusCode, List[com.kanzen.calendar.CalEvent]])
+                      .pure[ConnectionIO]
+                  else CalendarRepo.merged(tenantId, from, to).map(Right(_))
+                }
+              case _ =>
+                (Left(StatusCode.NotFound): Either[StatusCode, List[com.kanzen.calendar.CalEvent]]).pure[ConnectionIO]
+            }
+          tx.transact(xa).map {
+            case Left(sc) => Left(sc)
+            case Right(events) =>
+              val entries = events.collect {
+                case c if c.startOn.isDefined =>
+                  CalendarFeed.Entry(c.id, c.title, c.startOn.get, c.startTime, c.endTime, c.category)
+              }
+              Right(("text/calendar; charset=utf-8", CalendarFeed.ics("Kanzen — Household Calendar", entries, now)))
+          }
+      }
+    }
+
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
@@ -222,14 +276,34 @@ object Calendar {
     .out(jsonBody[Ok])
     .summary("Delete a calendar event")
 
-  def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
+  val feedUrlEndpoint = sttp.tapir.endpoint.get
+    .securityIn(bearer)
+    .in("api" / "calendar" / "feed-url")
+    .errorOut(err)
+    .out(jsonBody[FeedUrl])
+    .summary("Mint this subscriber's signed iCal feed path (subscribe from iOS/Android/Google)")
+
+  val feedEndpoint = sttp.tapir.endpoint.get
+    .in("api" / "calendar" / "feed" / path[String]("token"))
+    .out(header[String](sttp.model.HeaderNames.ContentType))
+    .out(stringBody)
+    .errorOut(statusCode)
+    .summary("Public read-only iCal subscription feed (the token is the capability — no bearer)")
+
+  def serverEndpoints(a: Auth, xa: Transactor[IO], feedSecret: String): List[ServerEndpoint[Any, IO]] = List(
     eventsEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (from, to, cat) => events(xa, p, from, to, cat) }),
     createEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CreateReq) => create(xa, p, r)),
     updateEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => update(xa, p, id, r) }),
-    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => delete(xa, p, id))
+    deleteEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => delete(xa, p, id)),
+    feedUrlEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => feedUrl(xa, feedSecret, p))
   )
 
-  val endpoints: List[AnyEndpoint] = List(eventsEndpoint, createEndpoint, updateEndpoint, deleteEndpoint)
+  /** The public (token-authed) feed — wired into the unsecured route group. */
+  def publicServerEndpoints(xa: Transactor[IO], feedSecret: String): List[ServerEndpoint[Any, IO]] =
+    List(feedEndpoint.serverLogic(token => feed(xa, feedSecret, token)))
+
+  val endpoints: List[AnyEndpoint] =
+    List(eventsEndpoint, createEndpoint, updateEndpoint, deleteEndpoint, feedUrlEndpoint, feedEndpoint)
 }

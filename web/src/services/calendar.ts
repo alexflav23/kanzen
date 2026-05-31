@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { api } from "./http";
+import { api, API_URL } from "./http";
 
 /** F07 — a merged calendar event (native/Google) or a read-only overlay (task / maintenance). */
 export const CalEventSchema = z.object({
@@ -51,4 +51,13 @@ export function updateEvent(token: string | null, id: string, req: UpdateEventRe
 /** Soft-delete a native calendar event. Read-only overlays (task / maintenance) can't be deleted from here. */
 export function deleteEvent(token: string | null, id: string): Promise<unknown> {
   return api(`/api/calendar/events/${id}`, z.unknown(), { method: "DELETE", token });
+}
+
+/** F07 iCal — mint this user's signed subscription feed. Returns the absolute https URL plus a `webcal://` variant
+  * (which iOS/macOS Calendar open directly into "Add subscription"). The token is the capability — read-only. */
+export const FeedUrlSchema = z.object({ path: z.string() });
+export async function getCalendarFeed(token: string | null): Promise<{ httpUrl: string; webcalUrl: string }> {
+  const { path } = await api("/api/calendar/feed-url", FeedUrlSchema, { token });
+  const httpUrl = `${API_URL}${path}`;
+  return { httpUrl, webcalUrl: httpUrl.replace(/^https?:\/\//, "webcal://") };
 }

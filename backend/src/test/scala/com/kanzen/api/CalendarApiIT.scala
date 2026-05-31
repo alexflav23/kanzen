@@ -112,4 +112,49 @@ object CalendarApiIT extends IOSuite {
         .transact(xa)
     } yield expect(types == List("calendar_event.created", "calendar_event.updated", "calendar_event.deleted"))
   }
+
+  // F07 iCal — the signed read-only subscription feed.
+  private val feedSecret = "test-feed-secret"
+  private def tokenFromPath(path: String): String =
+    path.stripPrefix("/api/calendar/feed/").stripSuffix(".ics")
+
+  test("iCal — a subscriber mints a feed URL; the public feed renders their calendar as VCALENDAR") { xa =>
+    for {
+      created <- Calendar
+        .create(xa, lorna, CreateReq("Boiler service", today.plusDays(3), Some("maintenance"), None, None, None))
+        .map(_.toOption.get)
+      urlRes <- Calendar.feedUrl(xa, feedSecret, lorna)
+      path = urlRes.toOption.get.path
+      out <- Calendar.feed(xa, feedSecret, tokenFromPath(path))
+      (ct, body) = out.toOption.get
+    } yield expect(path.startsWith("/api/calendar/feed/")) and
+      expect(path.endsWith(".ics")) and
+      expect(ct.startsWith("text/calendar")) and
+      expect(body.startsWith("BEGIN:VCALENDAR")) and
+      expect(body.contains("SUMMARY:Boiler service")) and
+      expect(body.contains(s"UID:${created.id}@kanzen"))
+  }
+
+  test("iCal — a tampered/garbage token is 404 (no existence probe)") { xa =>
+    for {
+      bad <- Calendar.feed(xa, feedSecret, "not-a-real-token")
+      forged <- Calendar.feed(xa, feedSecret, com.kanzen.calendar.CalendarFeed.tokenFor(
+        java.util.UUID.randomUUID(), lorna.userId, "WRONG-secret", System.currentTimeMillis() / 1000))
+    } yield expect(bad == Left(sttp.model.StatusCode.NotFound)) and
+      expect(forged == Left(sttp.model.StatusCode.NotFound))
+  }
+
+  test("iCal — a token whose tenant doesn't match the user's tenant is 404 (no cross-tenant leak)") { xa =>
+    // mint a token claiming a different tenant for a real user — parse succeeds but the tenant check rejects it.
+    val crossTenantToken = com.kanzen.calendar.CalendarFeed.tokenFor(
+      java.util.UUID.randomUUID(), lorna.userId, feedSecret, System.currentTimeMillis() / 1000)
+    Calendar.feed(xa, feedSecret, crossTenantToken).map(out => expect(out == Left(sttp.model.StatusCode.NotFound)))
+  }
+
+  test("iCal — Staff (calendar:view) can subscribe; the feed honours the same read gate") { xa =>
+    for {
+      urlRes <- Calendar.feedUrl(xa, feedSecret, marcia) // staff has calendar read
+      out <- Calendar.feed(xa, feedSecret, tokenFromPath(urlRes.toOption.get.path))
+    } yield expect(urlRes.isRight) and expect(out.isRight)
+  }
 }
