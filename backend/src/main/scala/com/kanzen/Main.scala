@@ -116,7 +116,11 @@ object Main extends IOApp.Simple {
                   val calendarSync =
                     log.info("F07 calendar-sync worker started") *>
                       CalendarSyncWorker.run(xa, new com.kanzen.calendar.StubCalendarSync(new com.kanzen.workspace.StubWorkspaceAuth(xa)))
-                  IO.both(servers, IO.both(relay, IO.both(reconcile, calendarSync))).void
+                  // F46/SES: drain the outbound-email queue through the EmailTransport seam (StubEmailTransport now; SES later).
+                  val mailDelivery =
+                    log.info("F46 mail-delivery worker started") *>
+                      com.kanzen.mail.MailDeliveryWorker.run(xa, com.kanzen.mail.StubEmailTransport)
+                  IO.both(servers, IO.both(relay, IO.both(reconcile, IO.both(calendarSync, mailDelivery)))).void
                 }
               }
             }

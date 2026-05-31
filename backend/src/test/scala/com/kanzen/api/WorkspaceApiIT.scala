@@ -52,10 +52,15 @@ object WorkspaceApiIT extends IOSuite {
   test("F07 Path B — a connected tenant can map a Google calendar; it shows in status (principal-only)") { xa =>
     val ws = new StubWorkspaceAuth(xa)
     for {
-      _ <- Workspace.connect(xa, ws, toby, ConnectReq("kanzen.local", "kanzen@proj.iam.gserviceaccount.com", keyJson))
-      mapped <- Workspace.setCalendar(xa, toby, Workspace.CalendarReq("household@group.calendar.google.com"))
-      st <- Workspace.status(xa, toby).map(_.toOption.get)
-      mgr <- Workspace.setCalendar(xa, lorna, Workspace.CalendarReq("x@g"))
+      // a fresh tenant (toby's real userId for the created_by FK) so this doesn't race the shared-tenant connect test
+      t <- sql"insert into tenants (slug, name) values (${"wcal-" + UUID.randomUUID()}, 'Cal') returning id"
+        .query[UUID].unique.transact(xa)
+      p = Principal(toby.userId, "t", "flavian@kanzen.local", "principal", None, t)
+      mgr0 = Principal(toby.userId, "l", "lorna@kanzen.local", "manager", None, t)
+      _ <- Workspace.connect(xa, ws, p, ConnectReq("kanzen.local", "kanzen@proj.iam.gserviceaccount.com", keyJson))
+      mapped <- Workspace.setCalendar(xa, p, Workspace.CalendarReq("household@group.calendar.google.com"))
+      st <- Workspace.status(xa, p).map(_.toOption.get)
+      mgr <- Workspace.setCalendar(xa, mgr0, Workspace.CalendarReq("x@g"))
     } yield expect(mapped.toOption.exists(_.calendarId.contains("household@group.calendar.google.com"))) and
       expect(st.calendarId.contains("household@group.calendar.google.com")) and
       expect(mgr.left.exists(_._1.code == 403)) // only the principal maps the calendar

@@ -1,6 +1,7 @@
 package com.kanzen.mail
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.kanzen.s3.BlobToken
 import doobie._
 import doobie.implicits._
@@ -42,6 +43,18 @@ object OutboundEmailRepo {
       .query[OutboundEmail]
       .to[List]
   }
+
+  // ── F46/SES delivery queue ───────────────────────────────────────────────────
+  def undelivered(limit: Int): ConnectionIO[List[OutboundEmail]] =
+    (fr"select" ++ cols ++ fr"from outbound_emails where delivered_at is null order by created_at limit $limit")
+      .query[OutboundEmail]
+      .to[List]
+
+  def markDelivered(id: UUID): ConnectionIO[Int] =
+    sql"update outbound_emails set delivered_at = now(), attempts = attempts + 1, delivery_error = null where id = $id".update.run
+
+  def markDeliveryError(id: UUID, err: String): ConnectionIO[Int] =
+    sql"update outbound_emails set attempts = attempts + 1, delivery_error = $err where id = $id".update.run
 }
 
 /** F46/SES — the platform mail seam: verification magic-links, notifications, digests all send through this one
@@ -57,6 +70,38 @@ trait Mailer {
 final class StubMailer(xa: Transactor[IO]) extends Mailer {
   def send(tenantId: Option[UUID], to: String, subject: String, body: String, kind: String): IO[Unit] =
     OutboundEmailRepo.record(tenantId, to, subject, body, kind).transact(xa).void
+}
+
+/** F46/SES — the actual *delivery* seam (distinct from recording): hands a recorded email to the transport. The
+  * [[StubEmailTransport]] is a no-op success (the sandbox treats "recorded" as "delivered"); the real `SesEmailTransport`
+  * calls SES once the operator verifies the domain. A [[MailDeliveryWorker]] drains the undelivered queue through it.
+  */
+trait EmailTransport {
+  def deliver(email: OutboundEmail): IO[Unit]
+}
+
+object StubEmailTransport extends EmailTransport {
+  def deliver(email: OutboundEmail): IO[Unit] = IO.unit // sandbox: recording IS delivery; SES swaps in here
+}
+
+/** Drains the undelivered `outbound_emails` queue through the [[EmailTransport]] seam, marking each delivered (or
+  * recording the delivery error for retry). Idempotent + at-least-once. Runs alongside the relay in `Main`.
+  */
+object MailDeliveryWorker {
+  import scala.concurrent.duration._
+
+  def drainOnce(xa: Transactor[IO], transport: EmailTransport): IO[Int] =
+    OutboundEmailRepo.undelivered(100).transact(xa).flatMap { pending =>
+      pending.traverse_ { e =>
+        transport.deliver(e).attempt.flatMap {
+          case Right(_) => OutboundEmailRepo.markDelivered(e.id).transact(xa).void
+          case Left(err) => OutboundEmailRepo.markDeliveryError(e.id, err.getMessage).transact(xa).void
+        }
+      }.as(pending.size)
+    }
+
+  def run(xa: Transactor[IO], transport: EmailTransport, every: FiniteDuration = 5.seconds): IO[Unit] =
+    (drainOnce(xa, transport).attempt *> IO.sleep(every)).foreverM
 }
 
 /** F46 — the email-verification magic-link capability token (HMAC-SHA256, the same primitive as the blob/feed capability
