@@ -4,7 +4,7 @@ import cats.effect.{IO, IOApp}
 import cats.syntax.all._
 import com.comcast.ip4s._
 import com.kanzen.api.{Admin, Api}
-import com.kanzen.auth.{Auth, DevAuth, Jwks}
+import com.kanzen.auth.{Auth, DevAuth, HttpJwks, Jwks}
 import com.kanzen.config.AppConfig
 import com.kanzen.db.Database
 import com.kanzen.events.{Consumers, Relay}
@@ -68,7 +68,13 @@ object Main extends IOApp.Simple {
           _ <- dev.traverse_(_ =>
             log.warn("DEV AUTH ENABLED — POST /api/dev/token mints local JWTs (env=local, no Cognito pool)")
           )
-          jwks = dev.map(_.jwks).getOrElse(Jwks.empty)
+          // Dev → in-memory keyset; a configured Cognito pool → the HTTP-fetching, caching JWKS; otherwise empty.
+          jwks <- dev match {
+            case Some(d) => IO.pure(d.jwks: Jwks)
+            case None if cfg.cognito.jwksUri.nonEmpty =>
+              log.info(s"Cognito JWKS: ${cfg.cognito.jwksUri}") *> HttpJwks.http(cfg.cognito.jwksUri).widen[Jwks]
+            case None => IO.pure(Jwks.empty)
+          }
           p <- Port.fromInt(cfg.port).liftTo[IO](new RuntimeException(s"bad port ${cfg.port}"))
           a <- Port.fromInt(cfg.adminPort).liftTo[IO](new RuntimeException(s"bad admin port ${cfg.adminPort}"))
           // stable secret signing short-lived /api/blobs capability URLs (config so restarts don't break URLs).
