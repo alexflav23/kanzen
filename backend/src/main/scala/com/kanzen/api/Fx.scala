@@ -125,6 +125,14 @@ object Fx {
       .transact(xa)
   }
 
+  // F37 — refresh today's FX rates from the rate source (StubFxRates now; the real ECB feed later). Manager+ (mutates
+  // shared market data). Returns how many pairs were updated.
+  final case class RefreshResult(updated: Int)
+  def refreshRates(xa: Transactor[IO], p: Principal): IO[Out[RefreshResult]] =
+    if (p.role != "principal" && p.role != "manager")
+      IO.pure(Left((StatusCode.Forbidden, ApiError(403, "forbidden", "Only a manager can refresh FX rates."))))
+    else com.kanzen.fx.FxRefresher.refreshAll(xa, com.kanzen.fx.StubFxRates).map(n => Right(RefreshResult(n)))
+
   private val err = statusCode.and(jsonBody[ApiError])
   private def bearer = auth.bearer[String]()
 
@@ -149,11 +157,19 @@ object Fx {
     .out(jsonBody[Rollup])
     .summary("Roll multi-currency lines up to a target (with per-currency breakdown)")
 
+  val refreshEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "fx" / "refresh-rates")
+    .errorOut(err)
+    .out(jsonBody[RefreshResult])
+    .summary("Refresh today's FX rates from the rate source (Manager+)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     currenciesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => currencies(xa, p)),
     convertEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: ConvertReq) => convert(xa, p, r)),
-    rollupEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: RollupReq) => rollup(xa, p, r))
+    rollupEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: RollupReq) => rollup(xa, p, r)),
+    refreshEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => refreshRates(xa, p))
   )
 
-  val endpoints: List[AnyEndpoint] = List(currenciesEndpoint, convertEndpoint, rollupEndpoint)
+  val endpoints: List[AnyEndpoint] = List(currenciesEndpoint, convertEndpoint, rollupEndpoint, refreshEndpoint)
 }

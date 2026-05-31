@@ -26,8 +26,9 @@ object FxService {
 object FxRepo {
   import FxService.Base
 
-  def addRate(base: String, quote: String, rate: Double, asOf: LocalDate): ConnectionIO[Int] =
-    sql"insert into fx_rates (base, quote, rate, as_of) values ($base, $quote, $rate, $asOf) on conflict (base, quote, as_of) do update set rate = excluded.rate".update.run
+  def addRate(base: String, quote: String, rate: Double, asOf: LocalDate, source: String = "manual"): ConnectionIO[Int] =
+    sql"""insert into fx_rates (base, quote, rate, as_of, source) values ($base, $quote, $rate, $asOf, $source)
+          on conflict (base, quote, as_of) do update set rate = excluded.rate, source = excluded.source""".update.run
 
   /** The rate effective ON a given date = the latest snapshot on-or-before it (nearest prior). */
   def rateOn(base: String, quote: String, on: LocalDate): ConnectionIO[Option[Double]] =
