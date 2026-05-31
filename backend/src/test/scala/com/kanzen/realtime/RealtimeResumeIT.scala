@@ -68,10 +68,11 @@ object RealtimeResumeIT extends IOSuite {
       expect(tobyReplay.forall(_.seq > 0L)) // replayed events carry their cursor
   }
 
-  test("a client fully caught up (cursor = head) gets nothing to replay") { xa =>
+  test("the cursor boundary is exclusive: a client at a row's own seq never re-receives that row") { xa =>
+    // (asserting the boundary rather than global emptiness — the test DB is shared, so other suites emit concurrently)
     for {
-      head <- sql"select coalesce(max(seq),0) from event_outbox".query[Long].unique.transact(xa)
-      rows <- EventRepo.rowsSince(head, 500).transact(xa)
-    } yield expect(rows.isEmpty)
+      s <- emit("task", UUID.randomUUID()).transact(xa) // s = this event's seq (the client's cursor after seeing it)
+      rows <- EventRepo.rowsSince(s, 500).transact(xa)
+    } yield expect(rows.forall(_.seq > s)) and expect(!rows.exists(_.seq == s))
   }
 }

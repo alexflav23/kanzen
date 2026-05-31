@@ -4,6 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.Auth
 import com.kanzen.identity.UserRepo
+import com.kanzen.mail.{Mailer, VerifyToken}
 import com.kanzen.tenant.TenantRepo
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -42,7 +43,7 @@ object Tenants {
   private val slugTaken: (StatusCode, ApiError) =
     (StatusCode.Conflict, ApiError(409, "slug_taken", "That workspace address is already taken."))
 
-  def create(xa: Transactor[IO], req: CreateTenantReq): IO[Out[CreateTenantResp]] = {
+  def create(xa: Transactor[IO], mailer: Mailer, verifySecret: String, req: CreateTenantReq): IO[Out[CreateTenantResp]] = {
     val slug = req.slug.trim.toLowerCase
     val email = req.principal.email.trim.toLowerCase
     if (req.name.trim.isEmpty) IO.pure(Left(bad("a workspace name is required")))
@@ -66,13 +67,44 @@ object Tenants {
                 slug,
                 user.id,
                 "verify_email",
-                "Tenant created. Verify the principal's email to continue setup."
+                "Workspace created. Check your email to verify and continue setup."
               )
             ): Out[CreateTenantResp]
       } yield res
-      tx.transact(xa)
+      // After the durable commit, send the verification magic-link through the Mailer seam (StubMailer records it in
+      // the sandbox; SesMailer delivers it once the operator verifies the SES domain).
+      tx.transact(xa).flatMap {
+        case Right(resp) =>
+          IO.realTimeInstant.flatMap { now =>
+            val token = VerifyToken.mint(resp.tenantId, resp.principalUserId, verifySecret, now.getEpochSecond)
+            val body =
+              s"""Welcome to Kanzen. Confirm your email to finish setting up "${req.name.trim}".
+                 |
+                 |Verify: /verify?token=$token
+                 |
+                 |This link expires in 7 days.""".stripMargin
+            mailer.send(Some(resp.tenantId), email, "Verify your Kanzen workspace", body, "verify_email").as(Right(resp))
+          }
+        case left => IO.pure(left)
+      }
     }
   }
+
+  // F46 — consume a verification magic-link: the token IS the capability (no bearer), so this is public. Advances the
+  // tenant's `verify_email` step → `workspace`. A bad/expired/tampered token → 400 (the link is dead).
+  final case class VerifyResp(verified: Boolean, nextStep: Option[String])
+
+  def verify(xa: Transactor[IO], verifySecret: String, token: String): IO[Out[VerifyResp]] =
+    IO.realTimeInstant.flatMap { now =>
+      VerifyToken.parse(token, verifySecret, now.getEpochSecond) match {
+        case None => IO.pure(Left(bad("this verification link is invalid or has expired")))
+        case Some((tid, _)) =>
+          (TenantRepo.advance(tid, "verify_email") *> TenantRepo.setupState(tid)).transact(xa).map {
+            case Some((step, _)) => Right(VerifyResp(verified = true, step))
+            case None => Right(VerifyResp(verified = true, None))
+          }
+      }
+    }
 
   // F46 §4 — the onboarding state the Dashboard banner reads. `completed` true → no banner.
   final case class SetupState(currentStep: Option[String], completed: Boolean)
@@ -86,7 +118,16 @@ object Tenants {
       .in(jsonBody[CreateTenantReq])
       .errorOut(err)
       .out(jsonBody[CreateTenantResp])
-      .summary("Public: create a new tenant + its principal (onboarding step 1)")
+      .summary("Public: create a new tenant + its principal (onboarding step 1; emails a verification link)")
+
+  final case class VerifyReq(token: String)
+  val verifyEndpoint: PublicEndpoint[VerifyReq, (StatusCode, ApiError), VerifyResp, Any] =
+    sttp.tapir.endpoint.post
+      .in("api" / "tenant" / "verify")
+      .in(jsonBody[VerifyReq])
+      .errorOut(err)
+      .out(jsonBody[VerifyResp])
+      .summary("Public: consume an email-verification magic-link (the token is the capability)")
 
   val setupEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), SetupState, Any] =
     sttp.tapir.endpoint.get
@@ -122,8 +163,11 @@ object Tenants {
         case None => Right(SetupState(None, completed = true))
       }
 
-  def publicServerEndpoints(xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
-    List(createEndpoint.serverLogic(req => create(xa, req)))
+  def publicServerEndpoints(xa: Transactor[IO], mailer: Mailer, verifySecret: String): List[ServerEndpoint[Any, IO]] =
+    List(
+      createEndpoint.serverLogic(req => create(xa, mailer, verifySecret, req)),
+      verifyEndpoint.serverLogic(r => verify(xa, verifySecret, r.token))
+    )
 
   def securedServerEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] =
     List(
@@ -141,5 +185,5 @@ object Tenants {
         )
     )
 
-  val endpoints: List[AnyEndpoint] = List(createEndpoint, setupEndpoint, advanceEndpoint)
+  val endpoints: List[AnyEndpoint] = List(createEndpoint, verifyEndpoint, setupEndpoint, advanceEndpoint)
 }

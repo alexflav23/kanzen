@@ -29,6 +29,7 @@ import { Settings } from "./pages/Settings";
 import { Customization } from "./pages/Customization";
 import { Directory } from "./pages/Directory";
 import { Onboard } from "./pages/Onboard";
+import { Verify } from "./pages/Verify";
 import { Chat } from "./pages/Chat";
 import { CommandPalette } from "./components/CommandPalette";
 import { NotificationsBell } from "./components/NotificationsBell";
@@ -128,9 +129,14 @@ const initials = (name?: string) => (name ?? "?").split(" ").map((w) => w[0]).sl
 
 export function App() {
   const { token } = useAuth();
+  // F46 — the email-verification magic-link must resolve even before sign-in (it's clicked from an email in a fresh
+  // browser): the token is the capability, so /verify is public.
+  const onVerify = typeof window !== "undefined" && window.location.pathname === "/verify";
   return (
     <>
-      {token ? <BrowserRouter><Shell /></BrowserRouter> : <DevLogin />}
+      {onVerify ? <BrowserRouter><Verify /></BrowserRouter>
+        : token ? <BrowserRouter><Shell /></BrowserRouter>
+        : <DevLogin />}
       <BootSplash />
     </>
   );

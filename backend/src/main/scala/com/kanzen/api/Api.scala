@@ -25,9 +25,10 @@ object Api {
       wsb: WebSocketBuilder2[IO]
   ): HttpRoutes[IO] = {
     val interp = Http4sServerInterpreter[IO]()
-    val devEps = dev.map(Dev.serverEndpoint).toList
+    val mailer = new com.kanzen.mail.StubMailer(xa) // SES swaps in here (operator-gated)
+    val devEps = dev.map(Dev.serverEndpoint).toList ++ dev.map(_ => Dev.outboxServerEndpoint(xa)).toList
     val public = interp.toRoutes(
-      Blobs.serverEndpoints(store, blobSecret) ++ Tenants.publicServerEndpoints(xa)
+      Blobs.serverEndpoints(store, blobSecret) ++ Tenants.publicServerEndpoints(xa, mailer, blobSecret)
         ++ Calendar.publicServerEndpoints(xa, blobSecret)
     )
     val secured = interp.toRoutes(

@@ -4,7 +4,9 @@ import cats.effect.IO
 import com.kanzen.api.Tenants.{CreateTenantReq, PrincipalReq}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
+import com.kanzen.mail.StubMailer
 import com.kanzen.s3.ObjectStore
+import doobie.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -19,6 +21,8 @@ object TenantsApiIT extends IOSuite {
   override def sharedResource = TestDb.transactor
 
   private def uniqueSlug = "acme-" + UUID.randomUUID().toString.take(8)
+  private val secret = "test-verify-secret"
+  private def mailer(xa: Transactor[IO]) = new StubMailer(xa)
 
   test("signup creates a tenant + principal, seeds onboarding at verify_email, and is fully isolated") { xa =>
     val slug = uniqueSlug
@@ -27,6 +31,8 @@ object TenantsApiIT extends IOSuite {
       resp <- Tenants
         .create(
           xa,
+          mailer(xa),
+          secret,
           CreateTenantReq("The Acme Household", slug, PrincipalReq("Ada", s"ada-${UUID.randomUUID()}@acme.test"))
         )
         .map(_.toOption.get)
@@ -43,8 +49,8 @@ object TenantsApiIT extends IOSuite {
       )
       tobyAssets <- Assets.list(xa, tobyDefault, store, None, None).map(_.toOption.get)
       // duplicate slug is rejected
-      dup <- Tenants.create(xa, CreateTenantReq("Dup", slug, PrincipalReq("X", s"x-${UUID.randomUUID()}@acme.test")))
-      badSlug <- Tenants.create(xa, CreateTenantReq("Bad", "No Spaces!", PrincipalReq("Y", "y@acme.test")))
+      dup <- Tenants.create(xa, mailer(xa), secret, CreateTenantReq("Dup", slug, PrincipalReq("X", s"x-${UUID.randomUUID()}@acme.test")))
+      badSlug <- Tenants.create(xa, mailer(xa), secret, CreateTenantReq("Bad", "No Spaces!", PrincipalReq("Y", "y@acme.test")))
       // F46 §4 — the onboarding state behind the Dashboard banner
       newSetup <- Tenants.setup(xa, resp.tenantId)
       defaultSetup <- Tenants.setup(xa, com.kanzen.tenant.Tenant.DefaultId)
@@ -62,6 +68,8 @@ object TenantsApiIT extends IOSuite {
       resp <- Tenants
         .create(
           xa,
+          mailer(xa),
+          secret,
           CreateTenantReq("Beta House", uniqueSlug, PrincipalReq("Bea", s"bea-${UUID.randomUUID()}@beta.test"))
         )
         .map(_.toOption.get)
@@ -80,5 +88,33 @@ object TenantsApiIT extends IOSuite {
       expect(s2.currentStep.contains("first_property")) and
       expect(done.completed && done.currentStep.isEmpty) and // the tour is the last step → onboarding complete
       expect(bad.left.exists(_._1.code == 400)) // unknown step rejected
+  }
+
+  // F46 — signup sends a verification magic-link (recorded by StubMailer); clicking it advances verify_email→workspace.
+  test("signup emails a verification link; verifying it advances the step; a bad token is rejected") { xa =>
+    val email = s"cleo-${UUID.randomUUID()}@gamma.test"
+    for {
+      resp <- Tenants
+        .create(xa, mailer(xa), secret, CreateTenantReq("Gamma House", uniqueSlug, PrincipalReq("Cleo", email)))
+        .map(_.toOption.get)
+      // the Mailer recorded a verify_email message to the principal, carrying the magic-link token
+      outbox <- com.kanzen.mail.OutboundEmailRepo.recent(Some(email), 10).transact(xa)
+      mail = outbox.headOption
+      token = mail.flatMap(_.body.linesIterator.find(_.contains("token=")).map(_.split("token=")(1).trim))
+      // verifying with the emailed token advances verify_email → workspace
+      verified <- token.fold(IO.pure(Option.empty[Tenants.VerifyResp]))(t =>
+        Tenants.verify(xa, secret, t).map(_.toOption)
+      )
+      // before verification the step is verify_email; after, it's workspace
+      stepAfter <- Tenants.setup(xa, resp.tenantId)
+      // a tampered token is rejected (the link is dead)
+      badVerify <- Tenants.verify(xa, secret, "not-a-real-token")
+    } yield expect(mail.exists(_.kind == "verify_email")) and
+      expect(mail.exists(_.toEmail == email)) and
+      expect(token.isDefined) and
+      expect(verified.exists(_.verified)) and
+      expect(verified.exists(_.nextStep.contains("workspace"))) and
+      expect(stepAfter.currentStep.contains("workspace")) and
+      expect(badVerify.left.exists(_._1.code == 400))
   }
 }

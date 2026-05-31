@@ -21,6 +21,12 @@ export function createTenant(req: CreateTenantReq): Promise<CreateTenantResp> {
   return api("/api/tenants", CreateTenantResp, { method: "POST", body: req });
 }
 
+/** F46 — consume an email-verification magic-link (public; the token is the capability). Advances verify_email. */
+export const VerifyResp = z.object({ verified: z.boolean(), nextStep: z.string().nullable() });
+export type VerifyResp = z.infer<typeof VerifyResp>;
+export const verifyEmail = (token: string) =>
+  api("/api/tenant/verify", VerifyResp, { method: "POST", body: { token } });
+
 /** F46 §4 — the caller's tenant onboarding state (drives the Dashboard "finish setup" banner). */
 export const SetupState = z.object({ currentStep: z.string().nullable(), completed: z.boolean() });
 export type SetupState = z.infer<typeof SetupState>;
