@@ -124,7 +124,16 @@ object Defects {
         case Left(e) => (Left(e): Out[DefectView]).pure[ConnectionIO]
         case Right(_) =>
           DefectRepo
-            .raise(p.userId, req.propertyId, req.locationId, req.title, req.description, req.severity, p.userId)
+            .raise(
+              p.userId,
+              p.tenantId,
+              req.propertyId,
+              req.locationId,
+              req.title,
+              req.description,
+              req.severity,
+              p.userId
+            )
             .flatMap(d =>
               emitDefect(
                 p,

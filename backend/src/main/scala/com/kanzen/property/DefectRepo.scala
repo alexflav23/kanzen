@@ -32,6 +32,7 @@ object DefectRepo {
 
   def raise(
       ownerId: UUID,
+      tenantId: UUID,
       propertyId: UUID,
       locationId: Option[UUID],
       title: String,
@@ -39,8 +40,8 @@ object DefectRepo {
       severity: String,
       reportedBy: UUID
   ): ConnectionIO[Defect] =
-    (fr"""insert into defects (owner_id, property_id, location_id, title, description, severity, reported_by)
-          values ($ownerId, $propertyId, $locationId, $title, $description, $severity, $reportedBy)
+    (fr"""insert into defects (owner_id, tenant_id, property_id, location_id, title, description, severity, reported_by)
+          values ($ownerId, $tenantId, $propertyId, $locationId, $title, $description, $severity, $reportedBy)
           returning""" ++ cols).query[Defect].unique
 
   def list(propertyId: UUID, status: Option[String]): ConnectionIO[List[Defect]] = {

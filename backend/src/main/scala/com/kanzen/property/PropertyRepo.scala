@@ -155,14 +155,21 @@ object PropertyRepo {
     fr"id, property_id, parent_id, kind, name, floor, area, notes, sort_order"
 
   /** Convenience insert (no detail) — used by tests/seed. */
-  def addLocation(propertyId: UUID, parentId: Option[UUID], kind: String, name: String): ConnectionIO[Location] =
-    (fr"""insert into locations (property_id, parent_id, kind, name)
-          values ($propertyId, $parentId, $kind, $name)
+  def addLocation(
+      propertyId: UUID,
+      parentId: Option[UUID],
+      kind: String,
+      name: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Location] =
+    (fr"""insert into locations (tenant_id, property_id, parent_id, kind, name)
+          values ($tenantId, $propertyId, $parentId, $kind, $name)
           returning""" ++ locCols).query[Location].unique
 
   /** Full insert with detail + owner (the API path; owner_id per the house rule). */
   def insertLocation(
       ownerId: UUID,
+      tenantId: UUID,
       propertyId: UUID,
       parentId: Option[UUID],
       kind: String,
@@ -171,8 +178,8 @@ object PropertyRepo {
       area: Option[String],
       notes: Option[String]
   ): ConnectionIO[Location] =
-    (fr"""insert into locations (owner_id, property_id, parent_id, kind, name, floor, area, notes)
-          values ($ownerId, $propertyId, $parentId, $kind, $name, $floor, $area, $notes)
+    (fr"""insert into locations (owner_id, tenant_id, property_id, parent_id, kind, name, floor, area, notes)
+          values ($ownerId, $tenantId, $propertyId, $parentId, $kind, $name, $floor, $area, $notes)
           returning""" ++ locCols).query[Location].unique
 
   def locations(propertyId: UUID): ConnectionIO[List[Location]] =

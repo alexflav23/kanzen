@@ -40,6 +40,7 @@ object MaintenanceRepo {
 
   def insert(
       ownerId: UUID,
+      tenantId: UUID,
       title: String,
       propertyId: Option[UUID],
       vendor: Option[String],
@@ -47,8 +48,8 @@ object MaintenanceRepo {
       firstDue: LocalDate,
       leadDays: Int
   ): ConnectionIO[PlanRow] =
-    sql"""insert into maintenance_plans (owner_id, title, property_id, vendor, frequency, next_due, lead_days)
-          values ($ownerId, $title, $propertyId, $vendor, $frequency, $firstDue, $leadDays)
+    sql"""insert into maintenance_plans (owner_id, tenant_id, title, property_id, vendor, frequency, next_due, lead_days)
+          values ($ownerId, $tenantId, $title, $propertyId, $vendor, $frequency, $firstDue, $leadDays)
           returning id, title, frequency, next_due, lead_days, vendor, property_id""".query[PlanRow].unique
 
   def list: ConnectionIO[List[PlanRow]] =

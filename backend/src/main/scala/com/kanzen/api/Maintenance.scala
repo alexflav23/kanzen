@@ -83,7 +83,16 @@ object Maintenance {
       if (!authz.can(Actions.byKey("maintenance:create"))) (Left(forbidden): Out[PlanView]).pure[ConnectionIO]
       else
         MaintenanceRepo
-          .insert(p.userId, r.title, r.propertyId, r.vendor, r.frequency, r.firstDue, r.leadDays.getOrElse(5))
+          .insert(
+            p.userId,
+            p.tenantId,
+            r.title,
+            r.propertyId,
+            r.vendor,
+            r.frequency,
+            r.firstDue,
+            r.leadDays.getOrElse(5)
+          )
           .flatMap(pl =>
             EventRepo
               .emit(

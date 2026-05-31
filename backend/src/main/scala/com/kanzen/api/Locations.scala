@@ -115,6 +115,7 @@ object Locations {
             PropertyRepo
               .insertLocation(
                 p.userId,
+                p.tenantId,
                 req.propertyId,
                 req.parentId,
                 req.kind,
