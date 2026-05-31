@@ -20,6 +20,7 @@ vi.mock("../services/collabInbox", () => ({
   assignThread: vi.fn(), setThreadStatus: vi.fn(), addThreadComment: vi.fn(), saveDraft: vi.fn(), sendReply: vi.fn(),
   confirmProposal: vi.fn(async () => ({ created: "expense", recordType: "expense", label: "Ocado — logged for approval" })),
   rejectProposal: vi.fn(),
+  syncInbox: vi.fn(async () => ({ fetched: 3, created: 3 })),
   proposalDetail: vi.fn(async () => ({
     id: "p1", threadId: "t1", actionType: "create_receipt", kind: "receipt", status: "proposed",
     title: "Log the Ocado receipt + expense", summary: null, confidence: 0.93,
@@ -43,6 +44,15 @@ const renderInbox = () =>
 beforeEach(() => localStorage.setItem("kanzen.token", "t"));
 
 describe("Inbox (collaborative)", () => {
+  it("W9.1/F25 — selecting a mailbox reveals Sync, which pulls new mail from the source", async () => {
+    const { syncInbox } = await import("../services/collabInbox");
+    renderInbox();
+    // the Sync button only appears once a specific mailbox is selected (not 'All')
+    fireEvent.click((await screen.findAllByTestId("mailbox-tab"))[0]);
+    fireEvent.click(screen.getByTestId("inbox-sync"));
+    await waitFor(() => expect(syncInbox).toHaveBeenCalledWith("t", "i1"));
+  });
+
   it("lists inboxes + threads, and a thread shows the agent's auto-suggested proposal", async () => {
     renderInbox();
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();

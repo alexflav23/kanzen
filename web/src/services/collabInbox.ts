@@ -43,6 +43,11 @@ export type CProposal = z.infer<typeof CProposalSchema>;
 export type CThreadDetail = z.infer<typeof CThreadDetailSchema>;
 
 export const listInboxes = (token: string | null) => api("/api/inbox/inboxes", z.array(CInboxSchema), { token });
+
+/** W9.1/F25 — pull new mail into a mailbox from the connected source (idempotent). Returns fetched/created counts. */
+export const syncInbox = (token: string | null, inboxId: string) =>
+  api(`/api/inbox/inboxes/${inboxId}/sync`, z.object({ fetched: z.number(), created: z.number() }), { method: "POST", token });
+
 export const listThreads = (token: string | null, q: { inbox?: string; folder?: string; assignee?: string } = {}) => {
   const qs = new URLSearchParams();
   if (q.inbox) qs.set("inbox", q.inbox);

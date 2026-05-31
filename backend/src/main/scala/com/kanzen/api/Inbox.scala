@@ -218,6 +218,25 @@ object Inbox {
   def inboxes(xa: Transactor[IO], p: Principal): IO[Out[List[InboxView]]] =
     read(p, staffScope(p).flatMap(s => CollabInboxRepo.inboxes(p.tenantId, s, p.role)).map(_.map(iv))).transact(xa)
 
+  // W9.1/F25 — pull new mail into a mailbox through the EmailSource seam (StubEmailSource now; GmailWatcher later).
+  // Gated on the mailbox being visible to the caller (no syncing a hidden mailbox) + inbox:view.
+  final case class SyncInboxResult(fetched: Int, created: Int)
+  def syncInbox(xa: Transactor[IO], p: Principal, inboxId: UUID, source: com.kanzen.inbox.EmailSource): IO[Out[SyncInboxResult]] = {
+    val precheck: ConnectionIO[Boolean] = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      scope <- staffScope(p)
+      visible <- CollabInboxRepo.inboxes(p.tenantId, scope, p.role)
+    } yield authz.can(viewA) && visible.exists(_.id == inboxId)
+    precheck.transact(xa).flatMap {
+      case false => IO.pure(Left(forbidden): Out[SyncInboxResult])
+      case true =>
+        for {
+          emails <- source.fetch(inboxId, "")
+          created <- emails.traverse(e => com.kanzen.inbox.InboxIngestRepo.ingestThread(inboxId, e).transact(xa)).map(_.flatten.size)
+        } yield Right(SyncInboxResult(emails.size, created))
+    }
+  }
+
   private val validFolder = Set("inbox", "sent", "spam", "archive")
   def threads(
       xa: Transactor[IO],
@@ -614,6 +633,12 @@ object Inbox {
     .errorOut(err)
     .out(jsonBody[List[InboxView]])
     .summary("Inboxes + open counts")
+  val syncInboxEndpoint = endpoint.post
+    .securityIn(bearer)
+    .in("api" / "inbox" / "inboxes" / path[UUID]("id") / "sync")
+    .errorOut(err)
+    .out(jsonBody[SyncInboxResult])
+    .summary("Pull new mail into a mailbox from the connected source (idempotent; W9.1/F25)")
   val threadsEndpoint = endpoint.get
     .securityIn(bearer)
     .in("api" / "inbox" / "threads")
@@ -712,6 +737,9 @@ object Inbox {
     confirmEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => confirmProposal(xa, p, id)),
     rejectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => rejectProposal(xa, p, id)),
     inboxesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => inboxes(xa, p)),
+    syncInboxEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => (id: UUID) => syncInbox(xa, p, id, com.kanzen.inbox.StubEmailSource)),
     threadsEndpoint
       .serverSecurityLogic(a.securityLogic)
       .serverLogic(p => { case (i, s, asg) => threads(xa, p, i, s, asg) }),
@@ -732,6 +760,7 @@ object Inbox {
 
   val endpoints: List[AnyEndpoint] = List(
     inboxesEndpoint,
+    syncInboxEndpoint,
     threadsEndpoint,
     detailEndpoint,
     linkedEndpoint,

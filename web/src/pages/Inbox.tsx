@@ -17,7 +17,7 @@ import { useRealtime } from "../realtime/RealtimeProvider";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { listPeople } from "../services/people";
 import {
-  assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, threadDetail, threadToTask,
+  assignThread, confirmProposal, listInboxes, listThreads, rejectProposal, saveDraft, sendReply, setThreadStatus, syncInbox, threadDetail, threadToTask,
   type CInbox, type CThread,
 } from "../services/collabInbox";
 
@@ -42,6 +42,7 @@ const styles = stylex.create({
   title: { fontSize: "30px", fontWeight: 600, letterSpacing: "-0.02em", color: colors.ink },
   desc: { color: colors.ink3, marginTop: "6px", fontSize: "14px", maxWidth: "560px" },
   mailboxTabs: { display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" },
+  syncBtn: { display: "inline-flex", alignItems: "center", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bg, color: colors.ink3, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", marginLeft: "auto", ":hover": { color: colors.ink } },
   mbTab: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 13px", borderRadius: radius.pill, border: `1px solid ${colors.line}`, backgroundColor: colors.bgElev, color: colors.ink2, cursor: "pointer", fontSize: "12.5px", fontFamily: "inherit", ":hover": { backgroundColor: colors.bgSunken } },
   // selected state must outrank :hover (which has higher specificity than a plain class), so repeat the colour here
   mbTabOn: { backgroundColor: colors.accent, color: colors.accentInk, borderColor: colors.accent, ":hover": { backgroundColor: colors.accent } },
@@ -145,6 +146,8 @@ export function Inbox() {
     onSuccess: (r) => { setReviewing(null); setToast(r.label ?? "Done"); setTimeout(() => setToast(null), 3500); invalidate(); },
   });
   const reject = useMutation({ mutationFn: (id: string) => rejectProposal(id, token), onSuccess: () => { setReviewing(null); invalidate(); } });
+  // W9.1/F25 — pull new mail into the selected mailbox from the connected source.
+  const sync = useMutation({ mutationFn: (id: string) => syncInbox(token, id), onSuccess: invalidate });
   const send = useMutation({
     mutationFn: ({ id, html }: { id: string; html: string }) => sendReply(id, html, token),
     onSuccess: () => { setReplying(false); setToast("Reply sent"); setTimeout(() => setToast(null), 3500); invalidate(); },
@@ -184,6 +187,11 @@ export function Inbox() {
               {i.label}{i.openCount > 0 && <span {...stylex.props(styles.mbCount)}>{i.openCount}</span>}
             </button>
           ))}
+          {mailbox !== "all" && (
+            <button type="button" {...stylex.props(styles.syncBtn)} data-testid="inbox-sync" disabled={sync.isPending} onClick={() => sync.mutate(mailbox)}>
+              {sync.isPending ? "Syncing…" : "Sync"}
+            </button>
+          )}
         </div>
 
         <div {...stylex.props(styles.pane)} data-testid="inbox-pane">
