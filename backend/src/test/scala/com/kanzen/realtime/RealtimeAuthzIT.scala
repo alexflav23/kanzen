@@ -75,4 +75,18 @@ object RealtimeAuthzIT extends IOSuite {
       tobySees <- RealtimeFilter.visible(expenseEv, toby, t._1, t._2, xa)
     } yield expect(!marciaSees) and expect(tobySees)
   }
+
+  // F48 — the calendar's maintenance overlay rides the socket; the push is gated on `maintenance` read (not unmapped,
+  // so a future role without maintenance access never receives it). The result must track canRead for each viewer.
+  test("a maintenance event is gated on maintenance-read (filter result tracks canRead)") { xa =>
+    val maintEv = RtEvent("maintenance.scheduled", "maintenance", Some(UUID.randomUUID()), None, None, Json.obj())
+    for {
+      m <- ctx(marcia, xa)
+      t <- ctx(toby, xa)
+      marciaSees <- RealtimeFilter.visible(maintEv, marcia, m._1, m._2, xa)
+      tobySees <- RealtimeFilter.visible(maintEv, toby, t._1, t._2, xa)
+    } yield expect(marciaSees == m._1.canRead("maintenance")) and
+      expect(tobySees == t._1.canRead("maintenance")) and
+      expect(tobySees) // the principal always sees it
+  }
 }

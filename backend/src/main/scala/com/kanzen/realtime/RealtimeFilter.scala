@@ -29,6 +29,7 @@ object RealtimeFilter {
     "payment" -> "bill",
     "calendar_event" -> "calendar",
     "task" -> "task",
+    "maintenance" -> "maintenance",
     "email_thread" -> "inbox",
     "property" -> "property",
     "wealth_account" -> "wealth",

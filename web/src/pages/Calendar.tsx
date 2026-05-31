@@ -9,6 +9,7 @@ import { Plus } from "../components/icons";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { createEvent, deleteEvent, listEvents, updateEvent, type CalEvent } from "../services/calendar";
+import { useRealtime } from "../realtime/RealtimeProvider";
 
 const styles = stylex.create({
   errorText: { color: colors.danger, fontSize: "12.5px" },
@@ -363,6 +364,7 @@ function TimeGrid({ days, byDay, onSlot, onEvent }: { days: Date[]; byDay: Map<s
   * new-event form pre-filled. Times are property-local wall-clock (no cross-zone conversion). */
 export function Calendar() {
   const { token } = useAuth();
+  const qc = useQueryClient();
   const [cat, setCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [detail, setDetail] = useState<CalEvent | null>(null);
@@ -386,6 +388,15 @@ export function Calendar() {
   const events = useQuery({
     queryKey: ["calendar", token, win.from, win.to, cat],
     queryFn: () => listEvents(token, win.from, win.to, cat),
+  });
+
+  // F48 — the calendar is a live surface: an event created/moved/cancelled, a maintenance visit scheduled, or a task's
+  // due date changing (the read-only overlays) all reflect without a refresh. Server-side authz-filtered, so a Staff
+  // socket only sees what they could read here anyway.
+  useRealtime((ev) => {
+    if (["calendar_event", "task", "maintenance"].includes(ev.subject.type)) {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+    }
   });
 
   const byDay = useMemo(() => {
