@@ -1,36 +1,39 @@
 import * as stylex from "@stylexjs/stylex";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
-import type { ComponentType } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { colors, radius } from "./styles/tokens.stylex";
-import { Dashboard } from "./pages/Dashboard";
-import { Inventory } from "./pages/Inventory";
-import { Collections } from "./pages/Collections";
-import { AssetDetail } from "./pages/AssetDetail";
-import { Finance } from "./pages/Finance";
-import { Properties } from "./pages/Properties";
-import { PropertyBible } from "./pages/PropertyBible";
-import { People } from "./pages/People";
-import { PersonDetail } from "./pages/PersonDetail";
-import { Documents } from "./pages/Documents";
-import { Vendors } from "./pages/Vendors";
-import { Tasks } from "./pages/Tasks";
-import { Lists } from "./pages/Lists";
-import { Maintenance } from "./pages/Maintenance";
-import { Products } from "./pages/Products";
-import { Wealth } from "./pages/Wealth";
-import { Entities } from "./pages/Entities";
-import { Ledger } from "./pages/Ledger";
-import { Inbox } from "./pages/Inbox";
-import { Calendar } from "./pages/Calendar";
-import { Insights } from "./pages/Insights";
-import { Backup } from "./pages/Backup";
-import { Notifications } from "./pages/Notifications";
-import { Settings } from "./pages/Settings";
-import { Customization } from "./pages/Customization";
-import { Directory } from "./pages/Directory";
-import { Onboard } from "./pages/Onboard";
-import { Verify } from "./pages/Verify";
-import { Chat } from "./pages/Chat";
+// Route-level code-splitting (perf): each page is its own chunk, so the initial bundle is small and first paint is
+// fast — the build's >500kB single-chunk warning is resolved. A named export becomes the chunk's default.
+const named = <T extends Record<string, ComponentType<object>>>(p: Promise<T>, k: keyof T) => p.then((m) => ({ default: m[k] }));
+const Dashboard = lazy(() => named(import("./pages/Dashboard"), "Dashboard"));
+const Inventory = lazy(() => named(import("./pages/Inventory"), "Inventory"));
+const Collections = lazy(() => named(import("./pages/Collections"), "Collections"));
+const AssetDetail = lazy(() => named(import("./pages/AssetDetail"), "AssetDetail"));
+const Finance = lazy(() => named(import("./pages/Finance"), "Finance"));
+const Properties = lazy(() => named(import("./pages/Properties"), "Properties"));
+const PropertyBible = lazy(() => named(import("./pages/PropertyBible"), "PropertyBible"));
+const People = lazy(() => named(import("./pages/People"), "People"));
+const PersonDetail = lazy(() => named(import("./pages/PersonDetail"), "PersonDetail"));
+const Documents = lazy(() => named(import("./pages/Documents"), "Documents"));
+const Vendors = lazy(() => named(import("./pages/Vendors"), "Vendors"));
+const Tasks = lazy(() => named(import("./pages/Tasks"), "Tasks"));
+const Lists = lazy(() => named(import("./pages/Lists"), "Lists"));
+const Maintenance = lazy(() => named(import("./pages/Maintenance"), "Maintenance"));
+const Products = lazy(() => named(import("./pages/Products"), "Products"));
+const Wealth = lazy(() => named(import("./pages/Wealth"), "Wealth"));
+const Entities = lazy(() => named(import("./pages/Entities"), "Entities"));
+const Ledger = lazy(() => named(import("./pages/Ledger"), "Ledger"));
+const Inbox = lazy(() => named(import("./pages/Inbox"), "Inbox"));
+const Calendar = lazy(() => named(import("./pages/Calendar"), "Calendar"));
+const Insights = lazy(() => named(import("./pages/Insights"), "Insights"));
+const Backup = lazy(() => named(import("./pages/Backup"), "Backup"));
+const Notifications = lazy(() => named(import("./pages/Notifications"), "Notifications"));
+const Settings = lazy(() => named(import("./pages/Settings"), "Settings"));
+const Customization = lazy(() => named(import("./pages/Customization"), "Customization"));
+const Directory = lazy(() => named(import("./pages/Directory"), "Directory"));
+const Onboard = lazy(() => named(import("./pages/Onboard"), "Onboard"));
+const Verify = lazy(() => named(import("./pages/Verify"), "Verify"));
+const Chat = lazy(() => named(import("./pages/Chat"), "Chat"));
 import { CommandPalette } from "./components/CommandPalette";
 import { NotificationsBell } from "./components/NotificationsBell";
 import { BootSplash } from "./components/BootSplash";
@@ -120,6 +123,7 @@ const styles = stylex.create({
   page: { maxWidth: "1280px", margin: "0 auto", padding: "40px 40px 80px" },
   // impersonation banner
   banner: { display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", backgroundColor: colors.warnSoft, color: colors.warn, fontSize: "13px", borderRadius: radius.sm, marginBottom: "20px", fontWeight: 500 },
+  routeFallback: { minHeight: "60vh" }, // a quiet placeholder while a route chunk loads (no flash of spinner)
   bannerGrow: { flex: 1 },
   bannerBtn: { padding: "5px 12px", borderRadius: "7px", border: `1px solid ${colors.warn}`, backgroundColor: "transparent", color: colors.warn, cursor: "pointer", fontSize: "12.5px", fontWeight: 600 },
 });
@@ -134,7 +138,7 @@ export function App() {
   const onVerify = typeof window !== "undefined" && window.location.pathname === "/verify";
   return (
     <>
-      {onVerify ? <BrowserRouter><Verify /></BrowserRouter>
+      {onVerify ? <BrowserRouter><Suspense fallback={<div {...stylex.props(styles.routeFallback)} aria-busy="true" />}><Verify /></Suspense></BrowserRouter>
         : token ? <BrowserRouter><Shell /></BrowserRouter>
         : <DevLogin />}
       <BootSplash />
@@ -228,6 +232,7 @@ function Shell() {
                   <button type="button" onClick={stopImpersonating} {...stylex.props(styles.bannerBtn)} data-testid="stop-impersonating">Stop</button>
                 </div>
               )}
+              <Suspense fallback={<div {...stylex.props(styles.routeFallback)} aria-busy="true" />}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/onboard" element={<Onboard />} />
@@ -260,6 +265,7 @@ function Shell() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<p>Coming soon.</p>} />
               </Routes>
+              </Suspense>
             </div>
           </div>
         </main>
