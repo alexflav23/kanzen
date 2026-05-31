@@ -28,6 +28,10 @@ export const listAccounts = (token: string | null) => api("/api/bank/accounts", 
 export const listTransactions = (token: string | null, accountId: string) =>
   api(`/api/bank/accounts/${accountId}/transactions`, z.array(TxSchema), { token });
 
+/** F12 — pull transactions from the connected bank feed (AIS read-only; idempotent). Returns parsed/inserted counts. */
+export const syncAccount = (token: string | null, accountId: string) =>
+  api(`/api/bank/accounts/${accountId}/sync`, z.object({ parsed: z.number(), inserted: z.number() }), { method: "POST", token });
+
 /** F14 — auto-suggested reconciliations: per unmatched txn, ranked candidate receipts. */
 export const MatchableTxSchema = z.object({
   id: z.string(),

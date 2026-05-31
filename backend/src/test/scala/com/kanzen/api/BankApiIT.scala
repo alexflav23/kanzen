@@ -50,6 +50,19 @@ object BankApiIT extends IOSuite {
     } yield expect(first.parsed == 2 && first.inserted == 2) and expect(second.inserted == 0)
   }
 
+  // F12 — the bank-feed sync (AIS read-only) pulls deterministic transactions through the seam, idempotently.
+  test("bank-feed sync ingests the feed's transactions and is idempotent; Staff is denied (403)") { xa =>
+    for {
+      first <- Bank.sync(xa, toby, coutts, com.kanzen.bank.StubBankFeed).map(_.toOption.get)
+      second <- Bank.sync(xa, toby, coutts, com.kanzen.bank.StubBankFeed).map(_.toOption.get)
+      denied <- Bank.sync(xa, marcia, coutts, com.kanzen.bank.StubBankFeed)
+      txs <- Bank.transactions(xa, toby, coutts).map(_.toOption.get)
+    } yield expect(first.parsed == 5 && first.inserted == 5) and // the stub yields 5 transactions
+      expect(second.inserted == 0) and // re-sync is a no-op (idempotent on providerTxId)
+      expect(denied.left.exists(_._1.code == 403)) and // AIS sync is Manager+ (Staff denied)
+      expect(txs.exists(_.providerTxId.exists(_.startsWith("stub:")))) // a synced transaction is now on the account
+  }
+
   test("Staff cannot import (403); a malformed CSV is 400") { xa =>
     for {
       denied <- Bank.importCsv(

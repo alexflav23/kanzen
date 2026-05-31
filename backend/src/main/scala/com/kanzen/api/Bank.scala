@@ -107,6 +107,22 @@ object Bank {
         tx.transact(xa)
     }
 
+  // F12 — pull transactions from the connected bank feed (AIS, read-only) and ingest them (idempotent on providerTxId).
+  def sync(xa: Transactor[IO], p: Principal, accountId: UUID, feed: com.kanzen.bank.BankFeed): IO[Out[ImportResult]] = {
+    val precheck = for {
+      authz <- Authz.forUser(p.userId, p.role)
+      exists <- BankRepo.accountExists(accountId)
+    } yield (authz.can(Actions.byKey("bank_account:sync")), exists)
+    precheck.transact(xa).flatMap {
+      case (false, _) => IO.pure(Left(forbidden): Out[ImportResult])
+      case (_, false) => IO.pure(Left(notFound): Out[ImportResult])
+      case (true, true) =>
+        feed.fetch(accountId, java.time.LocalDate.now().minusDays(60)).flatMap { txs =>
+          BankRepo.ingest(accountId, txs).transact(xa).map(n => Right(ImportResult(txs.size, n)): Out[ImportResult])
+        }
+    }
+  }
+
   private val err = statusCode.and(jsonBody[ApiError])
 
   val accountsEndpoint: Endpoint[String, Unit, (StatusCode, ApiError), List[AccountView], Any] =
@@ -134,13 +150,24 @@ object Bank {
       .out(jsonBody[ImportResult])
       .summary("Import transactions from CSV (idempotent; Manager+)")
 
+  val syncEndpoint: Endpoint[String, UUID, (StatusCode, ApiError), ImportResult, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "bank" / "accounts" / path[UUID]("id") / "sync")
+      .errorOut(err)
+      .out(jsonBody[ImportResult])
+      .summary("Pull transactions from the connected bank feed (AIS read-only; idempotent; Manager+)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     accountsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => accounts(xa, p)),
     transactionsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (id: UUID) => transactions(xa, p, id)),
     importEndpoint
       .serverSecurityLogic(a.securityLogic)
-      .serverLogic(p => { case (id, csv) => importCsv(xa, p, id, csv) })
+      .serverLogic(p => { case (id, csv) => importCsv(xa, p, id, csv) }),
+    syncEndpoint
+      .serverSecurityLogic(a.securityLogic)
+      .serverLogic(p => (id: UUID) => sync(xa, p, id, com.kanzen.bank.StubBankFeed))
   )
 
-  val endpoints: List[AnyEndpoint] = List(accountsEndpoint, transactionsEndpoint, importEndpoint)
+  val endpoints: List[AnyEndpoint] = List(accountsEndpoint, transactionsEndpoint, importEndpoint, syncEndpoint)
 }

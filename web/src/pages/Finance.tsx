@@ -11,7 +11,7 @@ import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import { approveExpense, createBill, submitExpense, EXPENSE_THRESHOLDS, getDeductibleReport, getIncomeEstimate, listBills, listBudgets, createBudget, deleteBudget, listExpenses, listMethods, createMethod, schedulePayment, listPayments, markPaid, rejectExpense } from "../services/finance";
 import { listProperties } from "../services/properties";
-import { getSuggestions, listAccounts, listTransactions, matchTxn } from "../services/bank";
+import { getSuggestions, listAccounts, listTransactions, matchTxn, syncAccount } from "../services/bank";
 import { getReceipt, listReceipts } from "../services/receipts";
 
 type Tab = "bills" | "pay" | "transactions" | "reconcile" | "receipts" | "expenses" | "budgets" | "tax";
@@ -327,6 +327,11 @@ export function Finance() {
   const acctId = acct ?? accounts.data?.[0]?.id ?? null;
   const txns = useQuery({ queryKey: ["bank", "txns", token, acctId], queryFn: () => listTransactions(token, acctId as string), enabled: !!acctId });
   const suggestions = useQuery({ queryKey: ["bank", "suggest", token, acctId], queryFn: () => getSuggestions(token, acctId as string), enabled: !!acctId });
+  // F12 — pull new transactions from the connected bank feed (AIS read-only), then refresh the list + reconcile suggestions.
+  const syncMut = useMutation({
+    mutationFn: () => syncAccount(token, acctId as string),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bank", "txns"] }); qc.invalidateQueries({ queryKey: ["bank", "suggest"] }); },
+  });
   const confirmMatch = useMutation({
     mutationFn: ({ txnId, receiptId }: { txnId: string; receiptId: string }) => matchTxn(token, txnId, receiptId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["bank", "suggest"] }); qc.invalidateQueries({ queryKey: ["bank", "txns"] }); },
@@ -481,7 +486,12 @@ export function Finance() {
                   ))}
                 </div>
                 <Card>
-                  <CardHeader><CardTitle>Transactions · {txns.data?.length ?? 0}</CardTitle></CardHeader>
+                  <CardHeader>
+                    <CardTitle>Transactions · {txns.data?.length ?? 0}</CardTitle>
+                    <button type="button" {...stylex.props(styles.headBtn)} data-testid="sync-feed" disabled={!acctId || syncMut.isPending} onClick={() => syncMut.mutate()}>
+                      {syncMut.isPending ? "Syncing…" : "Sync feed"}
+                    </button>
+                  </CardHeader>
                   {txns.isPending ? <Loading /> : txns.isError ? <ErrorState error={txns.error} />
                     : txns.data.length === 0 ? <EmptyState title="No transactions" />
                     : (

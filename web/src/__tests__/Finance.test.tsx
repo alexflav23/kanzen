@@ -49,6 +49,7 @@ vi.mock("../services/bank", () => ({
     },
   ],
   matchTxn: vi.fn(async () => ({ matchId: "m1", state: "matched" })),
+  syncAccount: vi.fn(async () => ({ parsed: 5, inserted: 5 })),
 }));
 
 vi.mock("../services/properties", () => ({
@@ -175,6 +176,10 @@ describe("Finance", () => {
     expect(await screen.findByTestId("txn-row")).toBeInTheDocument();
     expect(screen.getByText("Waitrose")).toBeInTheDocument();
     expect(screen.getByText("unmatched")).toBeInTheDocument();
+    // F12 — "Sync feed" pulls from the AIS bank feed
+    const { syncAccount } = await import("../services/bank");
+    fireEvent.click(screen.getByTestId("sync-feed"));
+    await waitFor(() => expect(syncAccount).toHaveBeenCalledWith("t", "acc1"));
   });
 
   it("the Reconcile tab shows auto-suggested matches with a score (F14)", async () => {
