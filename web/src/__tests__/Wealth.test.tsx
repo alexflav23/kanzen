@@ -19,6 +19,7 @@ vi.mock("../services/wealth", () => ({
   recordBuy: vi.fn(async () => ({ id: "lot1" })),
   recordSell,
   createSecurity: vi.fn(),
+  refreshQuotes: vi.fn(async () => ({ updated: 3 })),
 }));
 
 import { Wealth } from "../pages/Wealth";
@@ -43,6 +44,14 @@ describe("Wealth", () => {
     expect(await screen.findByText("VWRL")).toBeInTheDocument();
     expect(screen.getByText("+£80")).toBeInTheDocument();
     expect(screen.getByText("balanced")).toBeInTheDocument();
+  });
+
+  it("F40 — Refresh quotes re-quotes securities from market data", async () => {
+    const { refreshQuotes } = await import("../services/wealth");
+    renderWealth();
+    await screen.findByText("VWRL");
+    fireEvent.click(screen.getByTestId("refresh-quotes"));
+    await waitFor(() => expect(refreshQuotes).toHaveBeenCalledWith("t"));
   });
 
   it("shows the income statement for the period and offers a CSV export", async () => {

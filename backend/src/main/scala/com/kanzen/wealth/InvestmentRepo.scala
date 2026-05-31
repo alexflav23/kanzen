@@ -52,9 +52,9 @@ object InvestmentRepo {
   def securityExists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from securities where id = $id)".query[Boolean].unique
 
-  def setPrice(securityId: UUID, priceMinor: Long, asOf: LocalDate): ConnectionIO[Int] =
-    sql"""insert into security_prices (security_id, price_minor, as_of, source) values ($securityId, $priceMinor, $asOf, 'manual')
-          on conflict (security_id, as_of) do update set price_minor = excluded.price_minor""".update.run
+  def setPrice(securityId: UUID, priceMinor: Long, asOf: LocalDate, source: String = "manual"): ConnectionIO[Int] =
+    sql"""insert into security_prices (security_id, price_minor, as_of, source) values ($securityId, $priceMinor, $asOf, $source)
+          on conflict (security_id, as_of) do update set price_minor = excluded.price_minor, source = excluded.source""".update.run
 
   def latestPrice(securityId: UUID): ConnectionIO[Option[Long]] =
     sql"select price_minor from security_prices where security_id = $securityId order by as_of desc limit 1"

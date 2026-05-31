@@ -95,6 +95,10 @@ export const SellResultSchema = z.object({ quantitySold: z.number(), proceedsMin
 export type SellResult = z.infer<typeof SellResultSchema>;
 
 export const listSecurities = (token: string | null) => api("/api/investments/securities", z.array(SecuritySchema), { token });
+
+/** F40 — refresh every security's quote from market data (Principal-only). Returns how many were updated. */
+export const refreshQuotes = (token: string | null) =>
+  api("/api/investments/refresh-quotes", z.object({ updated: z.number() }), { method: "POST", token });
 export const createSecurity = (req: { symbol: string; name: string; currency: string | null; assetClass: string | null }, token: string | null) =>
   api("/api/investments/securities", SecuritySchema, { method: "POST", body: req, token });
 export const recordBuy = (req: { entityId: string; securityId: string; quantity: number; costBasisMinor: number; acquiredOn: string | null }, token: string | null) =>

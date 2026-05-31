@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
 import com.kanzen.authz.{Action, Actions, Authz}
-import com.kanzen.wealth.{Holding, InvestmentRepo, InvestmentService, Security}
+import com.kanzen.wealth.{Holding, InvestmentRepo, InvestmentService, QuoteRefresher, Security, StubQuoteSource}
 import doobie.ConnectionIO
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -196,6 +196,20 @@ object Investments {
     .out(jsonBody[List[HoldingView]])
     .summary("Holdings (market value + unrealised gain)")
 
+  // F40 — refresh every security's quote through the market-data seam (StubQuoteSource now; a real quotes API later).
+  final case class RefreshResult(updated: Int)
+  def refreshQuotes(xa: Transactor[IO], p: Principal): IO[Out[RefreshResult]] =
+    Authz.forUser(p.userId, p.role).transact(xa).flatMap { a =>
+      if (!a.can(editA)) IO.pure(Left(forbidden): Out[RefreshResult])
+      else QuoteRefresher.refreshAll(xa, StubQuoteSource).map(n => Right(RefreshResult(n)))
+    }
+  val refreshEndpoint = sttp.tapir.endpoint.post
+    .securityIn(bearer)
+    .in("api" / "investments" / "refresh-quotes")
+    .errorOut(err)
+    .out(jsonBody[RefreshResult])
+    .summary("Refresh all security quotes from market data (Principal-only)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO]): List[ServerEndpoint[Any, IO]] = List(
     securitiesEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => securities(xa, p)),
     createSecEndpoint
@@ -204,9 +218,10 @@ object Investments {
     priceEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => { case (id, r) => setPrice(xa, p, id, r) }),
     buyEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: BuyReq) => buy(xa, p, r)),
     sellEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: SellReq) => sell(xa, p, r)),
-    holdingsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (e: Option[UUID]) => holdings(xa, p, e))
+    holdingsEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (e: Option[UUID]) => holdings(xa, p, e)),
+    refreshEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => refreshQuotes(xa, p))
   )
 
   val endpoints: List[AnyEndpoint] =
-    List(securitiesEndpoint, createSecEndpoint, priceEndpoint, buyEndpoint, sellEndpoint, holdingsEndpoint)
+    List(securitiesEndpoint, createSecEndpoint, priceEndpoint, buyEndpoint, sellEndpoint, holdingsEndpoint, refreshEndpoint)
 }

@@ -10,7 +10,7 @@ import { fmtMoney } from "../data/money";
 import { useAuth } from "../state/AuthContext";
 import { Loading, EmptyState, ErrorState } from "../components/states";
 import {
-  createSecurity, getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, listSecurities,
+  createSecurity, getBalanceSheet, getIncomeStatement, getNetWorth, listEntities, listHoldings, listSecurities, refreshQuotes,
   recordBuy, recordSell, type BalanceSheet, type Entity, type IncomeStatement, type Security,
 } from "../services/wealth";
 
@@ -219,6 +219,7 @@ function AddSecurityModal({ token, onClose }: { token: string | null; onClose: (
   * per entity (F42) or consolidated. Principal-private (the API hard-403s anyone else). */
 export function Wealth() {
   const { token } = useAuth();
+  const qc = useQueryClient();
   const [entity, setEntity] = useState<string | null>(null); // null = consolidated
   const [period, setPeriod] = useState<Period>("year");
   const { from, to } = periodRange(period);
@@ -233,6 +234,11 @@ export function Wealth() {
   const [trading, setTrading] = useState(false);
   const [addingSec, setAddingSec] = useState(false);
   const canTrade = (entities.data?.length ?? 0) > 0 && (securities.data?.length ?? 0) > 0;
+  // F40 — re-quote every security from market data, then revalue holdings + net worth + balance sheet.
+  const refreshMut = useMutation({
+    mutationFn: () => refreshQuotes(token),
+    onSuccess: () => { for (const k of ["holdings", "net", "bs"]) qc.invalidateQueries({ queryKey: ["wealth", k] }); },
+  });
 
   return (
     <div>
@@ -293,6 +299,9 @@ export function Wealth() {
         <CardHeader>
           <CardTitle>Investments</CardTitle>
           <div {...stylex.props(styles.cardActions)}>
+            <button type="button" {...stylex.props(styles.smallBtn)} data-testid="refresh-quotes" disabled={refreshMut.isPending} onClick={() => refreshMut.mutate()}>
+              {refreshMut.isPending ? "Refreshing…" : "Refresh quotes"}
+            </button>
             <button type="button" {...stylex.props(styles.smallBtn)} onClick={() => setAddingSec(true)}>Add security</button>
             <button type="button" {...stylex.props(styles.smallBtn, styles.accentBtn)} disabled={!canTrade} onClick={() => setTrading(true)}><Plus size={13} /> Record trade</button>
           </div>
