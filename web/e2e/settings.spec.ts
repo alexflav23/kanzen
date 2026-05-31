@@ -90,6 +90,27 @@ test("Settings has Integrations + Preferences tabs", async ({ page }) => {
   await expect(page.getByText("Approval threshold · UK")).toBeVisible();
 });
 
+// F44 — the Google Workspace connect card: the principal pastes a service-account key and the tenant connects.
+// We store only the Secrets-Manager reference; the validation probe runs through the WorkspaceAuth seam.
+test("Workspace card connects with a pasted service-account key (only the ref is stored)", async ({ page }) => {
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Integrations" }).click();
+  await expect(page.getByText("Google Workspace")).toBeVisible();
+
+  // the connect button is disabled until a plausible key is pasted
+  const connect = page.getByRole("button", { name: /Connect Workspace|Reconnect/ });
+  await page.getByLabel("Workspace domain").fill("kanzen.local");
+  await page.getByLabel("Service-account email").fill("kanzen@proj.iam.gserviceaccount.com");
+  await page
+    .getByLabel("Service-account JSON key")
+    .fill('{"type":"service_account","client_email":"kanzen@proj.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\\nMII\\n-----END PRIVATE KEY-----"}');
+  await connect.click();
+
+  // the seam validates the (stub) connection → the card flips to connected/validated
+  await expect(page.getByText("Connected · kanzen.local")).toBeVisible();
+  await expect(page.getByText("Service account validated")).toBeVisible();
+});
+
 // Settings is admin-gated — it appears in the nav for the admin (Flavian) principal.
 test("Settings appears in the nav for an admin", async ({ page }) => {
   await page.goto("/");

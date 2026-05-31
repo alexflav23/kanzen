@@ -31,15 +31,18 @@ object RelayIT extends IOSuite {
   test("a domain write and its outbox row commit atomically; relay drains then leaves none unpublished") { xa =>
     val subj = UUID.randomUUID()
     for {
-      _ <- (EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", subj), owner, None, Json.obj())) *>
+      ids <- (EventRepo.emit(Envelope("task.completed", Actor.system, Subject("task", subj), owner, None, Json.obj())),
         EventRepo.emit(
           Envelope("product.low", Actor.system, Subject("product", UUID.randomUUID()), owner, None, Json.obj())
-        ))
+        )).tupled
         .transact(xa)
-      before <- EventRepo.unpublishedRows.transact(xa)
+      (id1, id2) = ids
+      before <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
       drained <- Relay.drainOnce(xa, Nil) // no consumers: still marks published
-      after <- EventRepo.unpublishedRows.transact(xa)
-    } yield expect(before.size >= 2) and expect(drained >= 2) and expect(after.isEmpty)
+      after <- EventRepo.unpublishedRows.map(_.map(_.id).toSet).transact(xa)
+      // assert against OUR ids, not a global empty set — the suite shares the DB with other suites running in parallel.
+    } yield expect(before(id1)) and expect(before(id2)) and expect(drained >= 2) and
+      expect(!after(id1)) and expect(!after(id2))
   }
 
   test("relay resumes from unpublished and publishes once it succeeds (at-least-once)") { xa =>

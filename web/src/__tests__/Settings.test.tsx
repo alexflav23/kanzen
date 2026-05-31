@@ -25,6 +25,11 @@ vi.mock("../services/rbac", () => ({
   listTeams: vi.fn().mockResolvedValue([]),
   listUsers: vi.fn().mockResolvedValue([]),
 }));
+// The Integrations tab mounts the Workspace card (F44) → stub its status call so it doesn't hit the network.
+vi.mock("../services/workspace", () => ({
+  getWorkspaceStatus: vi.fn().mockResolvedValue({ connected: false, domain: null, validated: false, validationError: null }),
+  connectWorkspace: vi.fn(),
+}));
 
 import { Settings } from "../pages/Settings";
 import { getRoles, getPermissions, setPermission, deletePermission, createRole, deleteRole } from "../services/roles";

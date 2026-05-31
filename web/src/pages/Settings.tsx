@@ -13,6 +13,7 @@ import { createRole, deletePermission, deleteRole, getPermissions, getRoles, set
 import { ApiError } from "../services/http";
 import { RbacBuilder } from "../features/rbac/RbacBuilder";
 import { AuditLog } from "../features/audit/AuditLog";
+import { WorkspaceCard } from "../features/integrations/WorkspaceCard";
 
 // "" = no explicit rule (the role falls back to default-deny / the '*' wildcard).
 const LEVELS = ["", "none", "read", "write", "admin"] as const;
@@ -58,6 +59,7 @@ const styles = stylex.create({
   subHead: { marginBottom: "16px" },
   subTitle: { fontSize: "18px", fontWeight: 600, color: colors.ink },
   grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", alignItems: "start" },
+  integrationsStack: { display: "flex", flexDirection: "column", gap: "16px" },
   pad: { padding: "22px 24px" },
   cardLabel: { fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.ink3, fontWeight: 600, marginBottom: "16px" },
   sysRow: { display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", backgroundColor: colors.bgSunken, borderRadius: radius.md, marginBottom: "8px" },
@@ -173,7 +175,10 @@ export function Settings() {
       </div>
 
       {tab === "integrations" && (
-        <div {...stylex.props(styles.grid2)}>
+        <div {...stylex.props(styles.integrationsStack)}>
+          {/* F44 — the live, tenant-scoped Workspace connection (principal manages the service-account ref). */}
+          <WorkspaceCard />
+          <div {...stylex.props(styles.grid2)}>
           <Card style={styles.pad}>
             <div {...stylex.props(styles.cardLabel)}>Connected systems</div>
             {CONNECTED.map((c) => { const Ico = c.icon; return (
@@ -193,6 +198,7 @@ export function Settings() {
               {SYSTEM.map(([k, v]) => <Fragment key={k}><dt {...stylex.props(styles.dt)}>{k}</dt><dd {...stylex.props(styles.dd)}>{v}</dd></Fragment>)}
             </dl>
           </Card>
+          </div>
         </div>
       )}
 

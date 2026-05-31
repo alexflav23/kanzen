@@ -54,7 +54,8 @@ object Api {
         ++ Roles.serverEndpoints(auth, xa) ++ RbacAdmin.serverEndpoints(auth, xa) ++ Audit.serverEndpoints(auth, xa)
         ++ Collections.serverEndpoints(auth, xa)
         ++ Groups.serverEndpoints(auth, xa) ++ Brands.serverEndpoints(auth, xa)
-        ++ Tenants.securedServerEndpoints(auth, xa) ++ Chat.serverEndpoints(auth, xa) ++ devEps
+        ++ Tenants.securedServerEndpoints(auth, xa) ++ Chat.serverEndpoints(auth, xa)
+        ++ Workspace.serverEndpoints(auth, xa, new com.kanzen.workspace.StubWorkspaceAuth(xa)) ++ devEps
     )
     val swagger = List(
       Health.endpoint,
