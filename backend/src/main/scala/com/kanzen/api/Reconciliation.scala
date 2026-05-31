@@ -126,7 +126,23 @@ object Reconciliation {
               else
                 ReconciliationRepo
                   .matchTxnToReceipt(t.id, req.receiptId, t.amountMinor)
-                  .map(m => Right(MatchResult(m, "matched")): Out[MatchResult])
+                  .flatMap(m =>
+                    com.kanzen.events.EventRepo
+                      .emit(
+                        com.kanzen.events.Envelope(
+                          com.kanzen.events.Events.Reconciliation.Confirmed,
+                          com.kanzen.events.Actor.user(p.userId),
+                          com.kanzen.events.Subject("reconciliation", m),
+                          p.userId,
+                          None,
+                          io.circe.Json.obj(
+                            "txnId" -> io.circe.Json.fromString(t.id.toString),
+                            "receiptId" -> io.circe.Json.fromString(req.receiptId.toString)
+                          )
+                        )
+                      )
+                      .as(Right(MatchResult(m, "matched")): Out[MatchResult])
+                  )
           }
     } yield res
     tx.transact(xa)

@@ -89,6 +89,19 @@ object Receipts {
             val bn = l.description.map(ReceiptService.brandNorm).filter(_.nonEmpty)
             ReceiptRepo.addLine(r.id, Some(i + 1), l.description, l.totalMinor, l.currency, bn, l.suggestedCategory)
           }
+          _ <- com.kanzen.events.EventRepo.emit(
+            com.kanzen.events.Envelope(
+              com.kanzen.events.Events.Receipt.Created,
+              com.kanzen.events.Actor.user(p.userId),
+              com.kanzen.events.Subject("receipt", r.id),
+              p.userId,
+              None,
+              io.circe.Json.obj(
+                "merchant" -> io.circe.Json.fromString(req.merchant.getOrElse("")),
+                "totalMinor" -> io.circe.Json.fromLong(req.totalMinor.getOrElse(0L))
+              )
+            )
+          )
         } yield Right(ReceiptDetail(rv(r), ls.map(lv))): Out[ReceiptDetail]
     }
     tx.transact(xa)

@@ -7,6 +7,7 @@ import com.kanzen.bank.{BankRepo, TxIn}
 import com.kanzen.db.TestDb
 import com.kanzen.receipt.ReceiptRepo
 import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -100,5 +101,15 @@ object ReconciliationApiIT extends IOSuite {
       noTxn <- Reconciliation.matchTxn(xa, lorna, MatchReq(UUID.randomUUID(), UUID.randomUUID()))
       noRcpt <- Reconciliation.matchTxn(xa, lorna, MatchReq(f.txnId, UUID.randomUUID()))
     } yield expect(noTxn.left.exists(_._1.code == 404)) and expect(noRcpt.left.exists(_._1.code == 404))
+  }
+  test("F34 — a confirmed reconciliation emits reconciliation.confirmed") { xa =>
+    for {
+      f <- setup(xa)
+      _ <- Reconciliation.matchTxn(xa, lorna, MatchReq(f.txnId, f.receiptId)).map(_.toOption.get)
+      n <-
+        sql"""select count(*) from event_outbox
+              where event_type = 'reconciliation.confirmed'
+                and payload->'payload'->>'txnId' = ${f.txnId.toString}""".query[Int].unique.transact(xa)
+    } yield expect(n >= 1)
   }
 }

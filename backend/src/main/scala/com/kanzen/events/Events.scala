@@ -92,6 +92,12 @@ object Events {
     val Approved = "expense.approved"
     val Rejected = "expense.rejected"
   }
+  object Reconciliation {
+    val Confirmed = "reconciliation.confirmed"
+  }
+  object Receipt {
+    val Created = "receipt.created"
+  }
 
   // ── System ─────────────────────────────────────────────────────────────────
   object Document {

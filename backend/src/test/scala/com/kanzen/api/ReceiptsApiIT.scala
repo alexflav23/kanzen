@@ -5,6 +5,8 @@ import com.kanzen.api.Receipts.{CreateReq, LineIn}
 import com.kanzen.auth.Principal
 import com.kanzen.db.TestDb
 import com.kanzen.receipt.ReceiptService
+import doobie.implicits._
+import doobie.postgres.implicits._
 import doobie.util.transactor.Transactor
 import weaver.IOSuite
 
@@ -81,5 +83,22 @@ object ReceiptsApiIT extends IOSuite {
       ok <- Receipts.confirmLine(xa, lorna, r.receipt.id, line.id, "household")
       bad <- Receipts.confirmLine(xa, lorna, r.receipt.id, UUID.randomUUID(), "household")
     } yield expect(ok.isRight) and expect(bad.left.exists(_._1.code == 404))
+  }
+  test("F34 — creating a receipt emits receipt.created") { xa =>
+    val req = CreateReq(
+      Some("receipt"),
+      Some("Tesco"),
+      Some(1500L),
+      Some("GBP"),
+      List(LineIn(Some("Milk"), Some(150L), Some("GBP"), None))
+    )
+    for {
+      created <- Receipts.create(xa, lorna, req).map(_.toOption.get)
+      events <-
+        sql"select event_type from event_outbox where aggregate_id = ${created.receipt.id}"
+          .query[String]
+          .to[List]
+          .transact(xa)
+    } yield expect(events.contains("receipt.created"))
   }
 }
