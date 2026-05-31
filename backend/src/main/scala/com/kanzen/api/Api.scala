@@ -54,13 +54,13 @@ object Api {
         ++ Roles.serverEndpoints(auth, xa) ++ RbacAdmin.serverEndpoints(auth, xa) ++ Audit.serverEndpoints(auth, xa)
         ++ Collections.serverEndpoints(auth, xa)
         ++ Groups.serverEndpoints(auth, xa) ++ Brands.serverEndpoints(auth, xa)
-        ++ Tenants.securedServerEndpoints(auth, xa) ++ devEps
+        ++ Tenants.securedServerEndpoints(auth, xa) ++ Chat.serverEndpoints(auth, xa) ++ devEps
     )
     val swagger = List(
       Health.endpoint,
       Me.endpoint,
       Me.colourEndpoint
-    ) ++ Tenants.endpoints ++ Blobs.endpoints ++ Properties.endpoints ++
+    ) ++ Tenants.endpoints ++ Chat.endpoints ++ Blobs.endpoints ++ Properties.endpoints ++
       Locations.endpoints ++ Defects.endpoints ++ Assets.endpoints ++ Valuations.endpoints ++
       AssetEvents.endpoints ++ Provenance.endpoints ++ Templates.endpoints ++ Documents.endpoints ++
       People.endpoints ++ Vendors.endpoints ++ Bank.endpoints ++ Receipts.endpoints ++ Reconciliation.endpoints ++

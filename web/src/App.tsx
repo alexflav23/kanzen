@@ -29,6 +29,7 @@ import { Settings } from "./pages/Settings";
 import { Customization } from "./pages/Customization";
 import { Directory } from "./pages/Directory";
 import { Onboard } from "./pages/Onboard";
+import { Chat } from "./pages/Chat";
 import { CommandPalette } from "./components/CommandPalette";
 import { NotificationsBell } from "./components/NotificationsBell";
 import { BootSplash } from "./components/BootSplash";
@@ -44,6 +45,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
   { group: null, items: [
     { label: "Dashboard", route: "/", icon: I.Grid },
     { label: "Inbox", route: "/inbox", icon: I.Inbox },
+    { label: "Chat", route: "/chat", icon: I.Mail },
     { label: "Notifications", route: "/notifications", icon: I.Bell },
   ] },
   { group: "INVENTORY", items: [
@@ -224,6 +226,7 @@ function Shell() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/onboard" element={<Onboard />} />
                 <Route path="/inbox" element={<Inbox />} />
+                <Route path="/chat" element={<Chat />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/collections" element={<Collections />} />

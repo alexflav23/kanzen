@@ -92,6 +92,8 @@ object Collab {
     * generic API can't be used as a back door into a thread the user can't see in the inbox.
     */
   private def canRead(p: Principal, entityType: String, entityId: UUID): ConnectionIO[Boolean] = {
+    // F48 RT.4 — a chat is readable/writable iff you're a member (membership IS the authorization).
+    if (entityType == "chat") return com.kanzen.chat.ChatRepo.isMember(p.tenantId, entityId, p.userId)
     val keyOpt = readAction.get(entityType)
     keyOpt match {
       case None => false.pure[ConnectionIO]
@@ -107,6 +109,7 @@ object Collab {
   }
 
   private def canWrite(p: Principal, entityType: String, entityId: UUID): ConnectionIO[Boolean] = {
+    if (entityType == "chat") return com.kanzen.chat.ChatRepo.isMember(p.tenantId, entityId, p.userId)
     val keyOpt = writeAction.get(entityType)
     keyOpt match {
       case None => false.pure[ConnectionIO]
