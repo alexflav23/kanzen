@@ -7,6 +7,18 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # custom:role — a hint carried in the ID token so the web UI can gate roles synchronously with the bearer. The
+  # backend treats it as a hint only: the DB role (users.role) is authoritative (Principals.resolver).
+  schema {
+    name                = "role"
+    attribute_data_type = "String"
+    mutable             = true
+    string_attribute_constraints {
+      min_length = 0
+      max_length = 32
+    }
+  }
+
   password_policy {
     minimum_length    = 12
     require_lowercase = true

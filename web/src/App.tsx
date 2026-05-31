@@ -58,6 +58,8 @@ import { useTheme } from "./theme/ThemeContext";
 import * as I from "./components/icons";
 import { useAuth } from "./state/AuthContext";
 import { DevLogin } from "./auth/DevLogin";
+import { CognitoLogin } from "./auth/CognitoLogin";
+import { cognitoEnabled } from "./services/cognito";
 import { PERSONAS } from "./services/auth";
 
 // F00 app shell — grouped left navigation (SPEC §5; design: input/app.jsx) + routed content.
@@ -157,7 +159,7 @@ export function App() {
     <>
       {onVerify ? <BrowserRouter><Suspense fallback={<div {...stylex.props(styles.routeFallback)} aria-busy="true" />}><Verify /></Suspense></BrowserRouter>
         : token ? <BrowserRouter><Shell /></BrowserRouter>
-        : <DevLogin />}
+        : cognitoEnabled ? <CognitoLogin /> : <DevLogin />}
       <BootSplash />
     </>
   );

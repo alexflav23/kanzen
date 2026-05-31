@@ -63,28 +63,42 @@ Terraform auto-writes the SSM config (cognito issuer/jwks-uri from the new pool,
 Terraform already created the `web`/`www`/`api` A-ALIAS records in the zone during `apply`. Run `terraform output web_url`
 + `api_url` to see the live hostnames.
 
-## 7. Ship the app (the CI `deploy` job, or manually)
-The web build must point at the API subdomain:
+## 7. Ship the app (the CI `deploy` job, or manually — run *after* `apply`, the build needs the outputs)
 ```sh
+TF="terraform -chdir=terraform/kanzen"
 # backend release → S3 pkgs (NixOS pulls it on the next ASG instance refresh)
-cd backend && sbt Universal/packageXzTarball
-aws s3 cp target/universal/kanzen-backend-*.txz s3://kanzen-staging-pkgs/
-# web SPA → web bucket → invalidate CloudFront
-cd ../web && VITE_API_URL="https://api.kanzen.family" npm ci && npm run build
-aws s3 sync dist "s3://$(terraform -chdir=../terraform/kanzen output -raw web_bucket)" --delete
-aws cloudfront create-invalidation \
-  --distribution-id "$(terraform -chdir=../terraform/kanzen output -raw cloudfront_distribution_id)" --paths '/*'
+( cd backend && sbt Universal/packageXzTarball )
+aws s3 cp backend/target/universal/kanzen-backend-*.txz s3://kanzen-staging-pkgs/
+# web SPA — embeds the API URL + the Cognito pool so the SPA shows the REAL sign-in (not the dev persona switcher)
+export VITE_API_URL="$($TF output -raw api_url)"
+export VITE_COGNITO_USER_POOL_ID="$($TF output -raw cognito_user_pool_id)"
+export VITE_COGNITO_CLIENT_ID="$($TF output -raw cognito_web_client_id)"
+( cd web && npm ci && npm run build )
+aws s3 sync web/dist "s3://$($TF output -raw web_bucket)" --delete
+aws cloudfront create-invalidation --distribution-id "$($TF output -raw cloudfront_distribution_id)" --paths '/*'
 ```
+> Set the same three `VITE_COGNITO_*` (+ `VITE_API_URL`) for the local web if you want to test the real Cognito login
+> on `localhost` against the live pool — otherwise localhost keeps the dev persona switcher.
 > For the GitLab `deploy` job instead: set protected CI vars `ENV=staging`, `VITE_API_URL=https://api.kanzen.family`, `CLOUDFRONT_DISTRIBUTION_ID=<output>`, and the AWS creds — then click ▶ on `deploy` (it's `when: manual`, main only).
 
 ## 8. First sign-in (Cognito is invite-only — no self-signup)
+Create the Cognito user with `custom:role=principal` (the UI role hint; the DB role is authoritative):
 ```sh
 POOL=$(terraform -chdir=terraform/kanzen output -raw cognito_user_pool_id)
-aws cognito-idp admin-create-user --user-pool-id "$POOL" \
-  --username flavian@kanzen.family --user-attributes Name=email,Value=flavian@kanzen.family Name=email_verified,Value=true
-# you'll be prompted to set a password + TOTP MFA on first login
+aws cognito-idp admin-create-user --user-pool-id "$POOL" --username flv@kanzen.family \
+  --user-attributes Name=email,Value=flv@kanzen.family Name=email_verified,Value=true Name=custom:role,Value=principal
+# first sign-in: you set a password + register TOTP MFA in the app's login screen
 ```
-The matching **Kanzen user row** (role=principal, the household) is seeded by the migrations / created on first resolve — confirm it exists for your email so the principal carve-outs apply.
+Then make sure a **Kanzen `users` row** matches `flv@kanzen.family` with `role=principal`, so the principal carve-outs
+apply and you own the registry. The backend resolves the token's email → that row (DB role authoritative). The simplest
+for a single household is to point the seeded principal at your real email (one statement, against the RDS):
+```sql
+UPDATE users SET email = 'flv@kanzen.family'
+WHERE role = 'principal' AND tenant_id = '7e000000-0000-0000-0000-000000000001';
+```
+> **Two prod decisions worth making first — see the chat:** (a) do you want the demo-seed household data in prod, or a
+> clean slate? (b) keep the seeded principal (point it at your email, above) or start an empty household. I can wire
+> either cleanly (e.g. a prod-only "no demo seed + create your principal" path) — ask before you apply.
 
 ## 9. Smoke test
 - `https://api.kanzen.family/api/health` → `{"status":"ok"}` (via the ALB → backend; `HttpJwks` is now validating real Cognito tokens).

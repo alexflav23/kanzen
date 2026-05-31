@@ -20,6 +20,7 @@
     "@lexical/utils": "^0.45.0",
     "@stylexjs/stylex": "^0.10.1",
     "@tanstack/react-query": "^5.100.14",
+    "amazon-cognito-identity-js": "^6.3.16",
     "dompurify": "^3.4.7",
     "lexical": "^0.45.0",
     "react": "^19.0.0",
