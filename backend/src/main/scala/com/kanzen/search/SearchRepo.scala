@@ -8,9 +8,15 @@ import java.util.UUID
 
 /** F28 — full-text search over a denormalised, permission-filterable projection. */
 object SearchRepo {
-  def index(entityType: String, entityId: UUID, title: String, subtitle: Option[String]): ConnectionIO[Int] =
-    sql"""insert into search_index (entity_type, entity_id, title, subtitle, fts)
-          values ($entityType, $entityId, $title, $subtitle,
+  def index(
+      entityType: String,
+      entityId: UUID,
+      title: String,
+      subtitle: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Int] =
+    sql"""insert into search_index (tenant_id, entity_type, entity_id, title, subtitle, fts)
+          values ($tenantId, $entityType, $entityId, $title, $subtitle,
                   to_tsvector('english', $title || ' ' || coalesce($subtitle, '')))
           on conflict (entity_type, entity_id)
           do update set title = excluded.title, subtitle = excluded.subtitle, fts = excluded.fts""".update.run

@@ -145,7 +145,7 @@ object RolesApiIT extends IOSuite {
       // a custom role with a user assigned can't be deleted (would lock them out)
       _ <- Roles.createRole(xa, admin, CreateRoleReq("Temp Valet", None))
       _ <-
-        sql"insert into users (id, display_name, email, role, status) values ($tempUser, 'Valet', 'valet@kanzen.local', 'Temp Valet', 'active')".update.run
+        sql"insert into users (tenant_id, id, display_name, email, role, status) values ('7e000000-0000-0000-0000-000000000001'::uuid, $tempUser, 'Valet', 'valet@kanzen.local', 'Temp Valet', 'active')".update.run
           .transact(xa)
       inUse <- Roles.deleteRole(xa, admin, "Temp Valet")
       _ <- sql"delete from users where id = $tempUser".update.run.transact(xa) // cleanup

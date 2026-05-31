@@ -41,8 +41,8 @@ object BrandRepo {
       b <- sql"""select id, name, category, status from brands
                  where category = $category and normalized = $n and deleted_at is null""".query[Brand].unique
       _ <- sql"update brands set usage_count = usage_count + 1 where id = ${b.id}".update.run
-      _ <- sql"""insert into brand_usage (brand_id, owner_id, count, last_used_at)
-                 values (${b.id}, $ownerId, 1, now())
+      _ <- sql"""insert into brand_usage (tenant_id, brand_id, owner_id, count, last_used_at)
+                 values ('7e000000-0000-0000-0000-000000000001'::uuid, ${b.id}, $ownerId, 1, now())
                  on conflict (brand_id, owner_id)
                  do update set count = brand_usage.count + 1, last_used_at = now()""".update.run
     } yield b

@@ -43,9 +43,15 @@ object SubscriptionRepo {
           from notification_subscriptions s join users u on u.id = s.user_id
           where s.user_id = $userId order by s.event_type_pattern""".query[Subscription].to[List]
 
-  def create(ownerId: UUID, userId: UUID, pattern: String, channels: Json): ConnectionIO[UUID] =
-    sql"""insert into notification_subscriptions (owner_id, user_id, event_type_pattern, channels)
-          values ($ownerId, $userId, $pattern, $channels) returning id""".query[UUID].unique
+  def create(
+      ownerId: UUID,
+      userId: UUID,
+      pattern: String,
+      channels: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"""insert into notification_subscriptions (tenant_id, owner_id, user_id, event_type_pattern, channels)
+          values ($tenantId, $ownerId, $userId, $pattern, $channels) returning id""".query[UUID].unique
 
   /** Self-scoped delete (returns rows affected). */
   def delete(userId: UUID, id: UUID): ConnectionIO[Int] =

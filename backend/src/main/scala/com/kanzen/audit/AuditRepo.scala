@@ -72,8 +72,9 @@ object AuditRepo {
       targetType: Option[String],
       targetId: Option[UUID],
       detail: Json,
-      ownerId: Option[UUID]
+      ownerId: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Int] =
-    sql"""insert into audit_log_entries (actor_type, actor_id, action, target_type, target_id, detail, owner_id)
-          values ($actorType, $actorId, $action, $targetType, $targetId, $detail, $ownerId)""".update.run
+    sql"""insert into audit_log_entries (tenant_id, actor_type, actor_id, action, target_type, target_id, detail, owner_id)
+          values ($tenantId, $actorType, $actorId, $action, $targetType, $targetId, $detail, $ownerId)""".update.run
 }

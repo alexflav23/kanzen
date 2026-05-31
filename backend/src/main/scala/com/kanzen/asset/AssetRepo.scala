@@ -60,8 +60,14 @@ object AssetRepo {
          acquisition_cost_minor, acquisition_currency, acquisition_date, ownership_status, location_id, attributes,
          custody_status, hero_document_id"""
 
-  def createCategory(name: String, parentId: Option[UUID]): ConnectionIO[UUID] =
-    sql"insert into categories (name, parent_id) values ($name, $parentId) returning id".query[UUID].unique
+  def createCategory(
+      name: String,
+      parentId: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into categories (tenant_id, name, parent_id) values ($tenantId, $name, $parentId) returning id"
+      .query[UUID]
+      .unique
 
   def listCategories: ConnectionIO[List[Category]] =
     sql"select id, name, parent_id from categories where deleted_at is null order by sort_order, name"
@@ -87,10 +93,11 @@ object AssetRepo {
       categoryId: UUID,
       trackingMode: String,
       quantity: Int,
-      attributes: Json
+      attributes: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Asset] =
-    (fr"""insert into assets (title, maker, category_id, tracking_mode, quantity, attributes)
-          values ($title, $maker, $categoryId, $trackingMode, $quantity, $attributes)
+    (fr"""insert into assets (tenant_id, title, maker, category_id, tracking_mode, quantity, attributes)
+          values ($tenantId, $title, $maker, $categoryId, $trackingMode, $quantity, $attributes)
           returning""" ++ cols).query[Asset].unique
 
   /** Full create with owner (house rule) + tracking/parent/acquisition/location — the API path. */

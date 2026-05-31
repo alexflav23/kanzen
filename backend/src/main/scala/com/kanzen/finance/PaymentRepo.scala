@@ -21,10 +21,11 @@ object PaymentRepo {
       displayName: String,
       last4: Option[String],
       currency: Option[String],
-      vaultRef: Option[String]
+      vaultRef: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[PaymentMethod] =
-    sql"""insert into payment_methods (type, display_name, last4, currency, vault_ref)
-          values (${`type`}, $displayName, $last4, $currency, $vaultRef)
+    sql"""insert into payment_methods (tenant_id, type, display_name, last4, currency, vault_ref)
+          values ($tenantId, ${`type`}, $displayName, $last4, $currency, $vaultRef)
           returning id, display_name, last4""".query[PaymentMethod].unique
 
   def schedule(

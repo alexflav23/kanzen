@@ -29,10 +29,11 @@ object AssetEventRepo {
       currency: Option[String],
       note: Option[String],
       party: Option[String] = None,
-      occurredAt: Option[String] = None // ISO date/timestamp; None = now() (so backdated events re-sort, F19 AC5)
+      occurredAt: Option[String] = None, // ISO date/timestamp; None = now() (so backdated events re-sort, F19 AC5)
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[AssetEvent] =
-    (fr"""insert into asset_events (asset_id, type, cost_minor, currency, note, party, occurred_at)
-          values ($assetId, $eventType, $costMinor, $currency, $note, $party,
+    (fr"""insert into asset_events (tenant_id, asset_id, type, cost_minor, currency, note, party, occurred_at)
+          values ($tenantId, $assetId, $eventType, $costMinor, $currency, $note, $party,
                   coalesce($occurredAt::timestamptz, now()))
           returning""" ++ cols).query[AssetEvent].unique
 

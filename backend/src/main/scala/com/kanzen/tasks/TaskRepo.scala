@@ -39,8 +39,14 @@ final case class TaskRow(
 )
 
 object TaskRepo {
-  def createProject(name: String, propertyId: Option[UUID]): ConnectionIO[UUID] =
-    sql"insert into task_projects (name, property_id) values ($name, $propertyId) returning id".query[UUID].unique
+  def createProject(
+      name: String,
+      propertyId: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into task_projects (tenant_id, name, property_id) values ($tenantId, $name, $propertyId) returning id"
+      .query[UUID]
+      .unique
 
   def listProjects: ConnectionIO[List[TaskProject]] =
     sql"select id, name, property_id from task_projects order by name".query[TaskProject].to[List]

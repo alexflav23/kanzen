@@ -42,10 +42,11 @@ object PropertyRepo {
       name: String,
       address: Option[String],
       jurisdiction: Option[String],
-      currency: String
+      currency: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Property] =
-    sql"""insert into properties (name, address, jurisdiction, default_currency)
-          values ($name, $address, $jurisdiction, $currency)
+    sql"""insert into properties (tenant_id, name, address, jurisdiction, default_currency)
+          values ($tenantId, $name, $address, $jurisdiction, $currency)
           returning id, name, jurisdiction, default_currency, status""".query[Property].unique
 
   /** Full create with owner (house rule) + type/ownership — the API path. */

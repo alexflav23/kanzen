@@ -21,8 +21,14 @@ object GroupRepo {
       .to[List]
       .map(_.map { case (i, n, k, nt, ct) => AssetGroup(i, n, k, nt, ct) })
 
-  def create(ownerId: UUID, name: String, kind: String, notes: Option[String]): ConnectionIO[UUID] =
-    sql"insert into asset_groups (owner_id, name, kind, notes) values ($ownerId, $name, $kind, $notes) returning id"
+  def create(
+      ownerId: UUID,
+      name: String,
+      kind: String,
+      notes: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into asset_groups (tenant_id, owner_id, name, kind, notes) values ($tenantId, $ownerId, $name, $kind, $notes) returning id"
       .query[UUID]
       .unique
 

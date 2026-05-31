@@ -38,8 +38,13 @@ object CollectionRepo {
   def exists(id: UUID): ConnectionIO[Boolean] =
     sql"select exists(select 1 from collections where id = $id and deleted_at is null)".query[Boolean].unique
 
-  def create(ownerId: UUID, name: String, description: Option[String]): ConnectionIO[UUID] =
-    sql"insert into collections (owner_id, name, description) values ($ownerId, $name, $description) returning id"
+  def create(
+      ownerId: UUID,
+      name: String,
+      description: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into collections (tenant_id, owner_id, name, description) values ($tenantId, $ownerId, $name, $description) returning id"
       .query[UUID]
       .unique
 

@@ -12,9 +12,14 @@ final case class User(id: UUID, displayName: String, email: String, role: String
   * user, or link by email.
   */
 object UserRepo {
-  def create(displayName: String, email: String, role: String): ConnectionIO[User] =
-    sql"""insert into users (display_name, email, role, status)
-          values ($displayName, $email, $role, 'active')
+  def create(
+      displayName: String,
+      email: String,
+      role: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[User] =
+    sql"""insert into users (display_name, email, role, status, tenant_id)
+          values ($displayName, $email, $role, 'active', $tenantId)
           returning id, display_name, email, role, status, tenant_id""".query[User].unique
 
   /** F45/F46 — create a user explicitly in a tenant (the onboarding signup path; the principal of a brand-new tenant).

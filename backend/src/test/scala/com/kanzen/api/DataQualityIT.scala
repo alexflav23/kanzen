@@ -26,7 +26,10 @@ object DataQualityIT extends IOSuite {
 
   private val owner = UUID.fromString("10000000-0000-0000-0000-000000000001")
   private def insertBare(xa: Transactor[IO], title: String): IO[UUID] =
-    sql"insert into assets (owner_id, title) values ($owner, $title) returning id".query[UUID].unique.transact(xa)
+    sql"insert into assets (tenant_id, owner_id, title) values ('7e000000-0000-0000-0000-000000000001'::uuid, $owner, $title) returning id"
+      .query[UUID]
+      .unique
+      .transact(xa)
 
   test("AC1 — a bare asset scores 0 with all checks missing; adding a category recomputes upward") { xa =>
     for {

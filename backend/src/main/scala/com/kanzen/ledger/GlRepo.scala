@@ -31,10 +31,11 @@ object GlRepo {
       code: String,
       name: String,
       accountType: String,
-      currency: String
+      currency: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[GlAccount] =
-    sql"""insert into gl_accounts (owner_id, code, name, type, currency)
-          values ($ownerId, $code, $name, $accountType, $currency)
+    sql"""insert into gl_accounts (tenant_id, owner_id, code, name, type, currency)
+          values ($tenantId, $ownerId, $code, $name, $accountType, $currency)
           returning id, code, name, type, currency""".query[GlAccount].unique
 
   def accountExists(id: UUID): ConnectionIO[Boolean] =
@@ -45,10 +46,11 @@ object GlRepo {
       kind: String,
       description: Option[String],
       occurredOn: LocalDate,
-      reverses: Option[UUID]
+      reverses: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into gl_transactions (owner_id, kind, description, occurred_on, reverses_transaction_id)
-          values ($ownerId, $kind, $description, $occurredOn, $reverses) returning id""".query[UUID].unique
+    sql"""insert into gl_transactions (tenant_id, owner_id, kind, description, occurred_on, reverses_transaction_id)
+          values ($tenantId, $ownerId, $kind, $description, $occurredOn, $reverses) returning id""".query[UUID].unique
 
   def insertSplit(txnId: UUID, accountId: UUID, amountMinor: Long, memo: Option[String]): ConnectionIO[Int] =
     sql"insert into gl_splits (transaction_id, account_id, amount_minor, memo) values ($txnId, $accountId, $amountMinor, $memo)".update.run

@@ -246,8 +246,9 @@ object CollabInboxRepo {
 
   /** Upsert the single shared draft on a thread (last writer wins). */
   def upsertDraft(ownerId: UUID, threadId: UUID, authorId: UUID, html: String): ConnectionIO[Int] =
-    sql"""insert into email_drafts (owner_id, thread_id, author_id, body_html)
-          values ($ownerId, $threadId, $authorId, $html)
+    sql"""insert into email_drafts (tenant_id, owner_id, thread_id, author_id, body_html)
+          values (coalesce((select tenant_id from email_threads where id = $threadId), '7e000000-0000-0000-0000-000000000001'::uuid),
+                  $ownerId, $threadId, $authorId, $html)
           on conflict (thread_id) do update set body_html = excluded.body_html,
             author_id = excluded.author_id, updated_at = now()""".update.run
 
@@ -269,8 +270,9 @@ object CollabInboxRepo {
   ): ConnectionIO[UUID] =
     for {
       id <-
-        sql"""insert into email_messages (owner_id, thread_id, direction, from_addr, to_addrs, subject, body_text, body_html, sent_by)
-                  values ($ownerId, $threadId, 'outbound', $fromAddr, $toAddr, $subject, $text, $html, $sentBy)
+        sql"""insert into email_messages (tenant_id, owner_id, thread_id, direction, from_addr, to_addrs, subject, body_text, body_html, sent_by)
+                  values (coalesce((select tenant_id from email_threads where id = $threadId), '7e000000-0000-0000-0000-000000000001'::uuid),
+                          $ownerId, $threadId, 'outbound', $fromAddr, $toAddr, $subject, $text, $html, $sentBy)
                   returning id""".query[UUID].unique
       _ <- sql"update email_threads set last_message_at = now(), unread = false where id = $threadId".update.run
       _ <- deleteDraft(threadId)

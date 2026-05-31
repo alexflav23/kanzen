@@ -22,8 +22,12 @@ final case class CustomFieldDef(
 
 /** F33 — polymorphic tags across any entity. */
 object TagRepo {
-  def createTag(name: String, slug: Option[String]): ConnectionIO[UUID] =
-    sql"insert into tags (name, slug) values ($name, $slug) returning id".query[UUID].unique
+  def createTag(
+      name: String,
+      slug: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into tags (tenant_id, name, slug) values ($tenantId, $name, $slug) returning id".query[UUID].unique
 
   def list: ConnectionIO[List[Tag]] =
     sql"select id, name from tags order by name".query[Tag].to[List]
@@ -52,8 +56,14 @@ object TagRepo {
 
 /** F33 — user-defined infinite taxonomies (multiple category trees). */
 object TaxonomyRepo {
-  def create(name: String, appliesTo: String): ConnectionIO[UUID] =
-    sql"insert into taxonomies (name, applies_to) values ($name, $appliesTo) returning id".query[UUID].unique
+  def create(
+      name: String,
+      appliesTo: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into taxonomies (tenant_id, name, applies_to) values ($tenantId, $name, $appliesTo) returning id"
+      .query[UUID]
+      .unique
 
   def list: ConnectionIO[List[Taxonomy]] =
     sql"select id, name, applies_to, is_system from taxonomies order by name".query[Taxonomy].to[List]
@@ -89,10 +99,11 @@ object CustomFieldRepo {
       label: String,
       typ: String,
       enumValues: Option[Json],
-      sensitive: Boolean
+      sensitive: Boolean,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[CustomFieldDef] =
-    sql"""insert into custom_field_definitions (owner_id, entity_type, key, label, type, enum_values, sensitive)
-          values ($ownerId, $entityType, $key, $label, $typ, $enumValues, $sensitive)
+    sql"""insert into custom_field_definitions (tenant_id, owner_id, entity_type, key, label, type, enum_values, sensitive)
+          values ($tenantId, $ownerId, $entityType, $key, $label, $typ, $enumValues, $sensitive)
           returning id, entity_type, key, label, type, enum_values, sensitive""".query[CustomFieldDef].unique
 
   def listFor(entityType: String): ConnectionIO[List[CustomFieldDef]] =

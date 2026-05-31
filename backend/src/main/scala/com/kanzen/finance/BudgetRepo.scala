@@ -53,10 +53,11 @@ object BudgetRepo {
       categoryId: Option[UUID],
       period: String,
       amountMinor: Long,
-      currency: String
+      currency: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into budgets (owner_id, property_id, category_id, period, amount_minor, currency)
-          values ($ownerId, $propertyId, $categoryId, $period, $amountMinor, $currency)
+    sql"""insert into budgets (tenant_id, owner_id, property_id, category_id, period, amount_minor, currency)
+          values ($tenantId, $ownerId, $propertyId, $categoryId, $period, $amountMinor, $currency)
           returning id""".query[UUID].unique
 
   def find(id: UUID): ConnectionIO[Option[BudgetRow]] = list.map(_.find(_.id == id))

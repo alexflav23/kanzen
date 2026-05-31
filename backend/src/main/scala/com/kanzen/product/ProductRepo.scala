@@ -26,17 +26,22 @@ final case class ProductListRow(
 
 /** F35 — consumables/products with stock status + preferred vendors (buy links). */
 object ProductRepo {
-  def create(name: String, preferredSpec: Option[String]): ConnectionIO[Product] =
-    sql"""insert into products (name, preferred_spec) values ($name, $preferredSpec)
+  def create(
+      name: String,
+      preferredSpec: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Product] =
+    sql"""insert into products (tenant_id, name, preferred_spec) values ($tenantId, $name, $preferredSpec)
           returning id, name, stock_status, preferred_spec""".query[Product].unique
 
   def insertOwned(
       ownerId: UUID,
       name: String,
       preferredSpec: Option[String],
-      unit: Option[String]
+      unit: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Product] =
-    sql"""insert into products (owner_id, name, preferred_spec, unit) values ($ownerId, $name, $preferredSpec, $unit)
+    sql"""insert into products (tenant_id, owner_id, name, preferred_spec, unit) values ($tenantId, $ownerId, $name, $preferredSpec, $unit)
           returning id, name, stock_status, preferred_spec""".query[Product].unique
 
   def list: ConnectionIO[List[Product]] =

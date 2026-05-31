@@ -67,10 +67,11 @@ object InvestmentRepo {
       securityId: UUID,
       quantity: Double,
       costBasisMinor: Long,
-      acquiredOn: LocalDate
+      acquiredOn: LocalDate,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into investment_lots (owner_id, entity_id, security_id, quantity, cost_basis_minor, acquired_on)
-          values ($ownerId, $entityId, $securityId, $quantity, $costBasisMinor, $acquiredOn) returning id"""
+    sql"""insert into investment_lots (tenant_id, owner_id, entity_id, security_id, quantity, cost_basis_minor, acquired_on)
+          values ($tenantId, $ownerId, $entityId, $securityId, $quantity, $costBasisMinor, $acquiredOn) returning id"""
       .query[UUID]
       .unique
 

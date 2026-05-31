@@ -37,10 +37,13 @@ object WealthRepo {
       kind: String,
       jurisdiction: Option[String],
       baseCurrency: String,
-      parent: Option[UUID]
+      parent: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into wealth_entities (owner_id, name, kind, jurisdiction, base_currency, parent_entity_id)
-          values ($ownerId, $name, $kind, $jurisdiction, $baseCurrency, $parent) returning id""".query[UUID].unique
+    sql"""insert into wealth_entities (tenant_id, owner_id, name, kind, jurisdiction, base_currency, parent_entity_id)
+          values ($tenantId, $ownerId, $name, $kind, $jurisdiction, $baseCurrency, $parent) returning id"""
+      .query[UUID]
+      .unique
 
   def entities(ownerId: UUID): ConnectionIO[List[Entity]] =
     sql"""select id, name, kind, jurisdiction, base_currency, parent_entity_id from wealth_entities
@@ -73,10 +76,11 @@ object WealthRepo {
       name: String,
       accountType: String,
       currency: String,
-      subkind: Option[String]
+      subkind: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into gl_accounts (owner_id, entity_id, code, name, type, currency, subkind)
-          values ($ownerId, $entityId, $code, $name, $accountType, $currency, $subkind) returning id"""
+    sql"""insert into gl_accounts (tenant_id, owner_id, entity_id, code, name, type, currency, subkind)
+          values ($tenantId, $ownerId, $entityId, $code, $name, $accountType, $currency, $subkind) returning id"""
       .query[UUID]
       .unique
 
@@ -116,8 +120,11 @@ object WealthRepo {
       assets: Long,
       liabilities: Long,
       net: Long,
-      currency: String
+      currency: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into net_worth_snapshots (owner_id, entity_id, assets_minor, liabilities_minor, net_minor, currency)
-          values ($ownerId, $entity, $assets, $liabilities, $net, $currency) returning id""".query[UUID].unique
+    sql"""insert into net_worth_snapshots (tenant_id, owner_id, entity_id, assets_minor, liabilities_minor, net_minor, currency)
+          values ($tenantId, $ownerId, $entity, $assets, $liabilities, $net, $currency) returning id"""
+      .query[UUID]
+      .unique
 }

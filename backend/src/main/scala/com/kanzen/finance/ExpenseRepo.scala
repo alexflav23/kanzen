@@ -24,11 +24,14 @@ object ExpenseRepo {
       payee: Option[String],
       amountMinor: Long,
       currency: String,
-      requestedBy: Option[UUID]
+      requestedBy: Option[UUID],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Expense] = {
     val status = ExpenseService.initialStatus(amountMinor, currency)
-    (fr"""insert into expenses (payee, amount_minor, currency, status, requested_by)
-          values ($payee, $amountMinor, $currency, $status, $requestedBy) returning""" ++ cols).query[Expense].unique
+    (fr"""insert into expenses (tenant_id, payee, amount_minor, currency, status, requested_by)
+          values ($tenantId, $payee, $amountMinor, $currency, $status, $requestedBy) returning""" ++ cols)
+      .query[Expense]
+      .unique
   }
 
   /** API path: full submit with property/category/deductibility. */

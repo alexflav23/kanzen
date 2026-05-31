@@ -15,7 +15,8 @@ object MigrationsIT extends IOSuite {
   // suite's tests in parallel, so the insert below could race ahead of an emptiness count.
   test("baseline migration creates an empty audit_log_entries table that can be written and read back") { xa =>
     val empty = sql"select count(*) from audit_log_entries".query[Long].unique
-    val insert = sql"insert into audit_log_entries (actor_type, action) values ('system', 'boot')".update.run
+    val insert =
+      sql"insert into audit_log_entries (tenant_id, actor_type, action) values ('7e000000-0000-0000-0000-000000000001'::uuid, 'system', 'boot')".update.run
     val count = sql"select count(*) from audit_log_entries".query[Long].unique
     (for {
       before <- empty

@@ -17,9 +17,16 @@ object AssetPartyRepo {
       .query[AssetParty]
       .to[List]
 
-  def add(assetId: UUID, role: String, name: String, note: Option[String], owner: UUID): ConnectionIO[AssetParty] =
-    (fr"""insert into asset_parties (asset_id, role, name, note, owner_id, created_by)
-          values ($assetId, $role, $name, $note, $owner, $owner)
+  def add(
+      assetId: UUID,
+      role: String,
+      name: String,
+      note: Option[String],
+      owner: UUID,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[AssetParty] =
+    (fr"""insert into asset_parties (tenant_id, asset_id, role, name, note, owner_id, created_by)
+          values ($tenantId, $assetId, $role, $name, $note, $owner, $owner)
           returning""" ++ cols).query[AssetParty].unique
 
   def delete(id: UUID, assetId: UUID): ConnectionIO[Int] =

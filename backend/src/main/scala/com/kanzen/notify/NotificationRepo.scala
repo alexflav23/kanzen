@@ -33,10 +33,11 @@ object NotificationRepo {
       body: Option[String],
       subjectType: Option[String],
       subjectId: Option[UUID],
-      channels: Json
+      channels: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Int] =
-    sql"""insert into notifications (user_id, owner_id, event_id, type, title, body, subject_type, subject_id, channels_sent)
-          values ($userId, $ownerId, $eventId, $typ, $title, $body, $subjectType, $subjectId, $channels)
+    sql"""insert into notifications (tenant_id, user_id, owner_id, event_id, type, title, body, subject_type, subject_id, channels_sent)
+          values ($tenantId, $userId, $ownerId, $eventId, $typ, $title, $body, $subjectType, $subjectId, $channels)
           on conflict (event_id, user_id) do nothing""".update.run
 
   def forUser(userId: UUID): ConnectionIO[List[Notification]] =

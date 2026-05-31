@@ -63,7 +63,9 @@ object DataQualityRepo {
     sql"update asset_quality_flags set status = $status, resolved_at = case when $status = 'open' then null else now() end where id = $flagId".update.run
 
   private def raise(assetId: UUID, ownerId: Option[UUID], kind: String, severity: String): ConnectionIO[Int] =
-    sql"""insert into asset_quality_flags (owner_id, asset_id, kind, severity) values ($ownerId, $assetId, $kind, $severity)
+    sql"""insert into asset_quality_flags (tenant_id, owner_id, asset_id, kind, severity)
+          values (coalesce((select tenant_id from assets where id = $assetId), '7e000000-0000-0000-0000-000000000001'::uuid),
+                  $ownerId, $assetId, $kind, $severity)
           on conflict (asset_id, kind) where status = 'open' do nothing""".update.run
 
   /** Scan all assets and raise open flags for unmet checks (idempotent). Returns flags raised. */

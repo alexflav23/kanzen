@@ -22,8 +22,8 @@ final case class DocHit(entityType: String, entityId: UUID, title: String, body:
 
 object EntityDocRepo {
   def upsert(d: RenderedDoc): ConnectionIO[Int] =
-    sql"""insert into entity_documents (entity_type, entity_id, owner_id, property_id, visibility, title, body, indexed_at)
-          values (${d.entityType}, ${d.entityId}, ${d.owner}, ${d.property}, ${d.visibility}, ${d.title}, ${d.body}, now())
+    sql"""insert into entity_documents (tenant_id, entity_type, entity_id, owner_id, property_id, visibility, title, body, indexed_at)
+          values ('7e000000-0000-0000-0000-000000000001'::uuid, ${d.entityType}, ${d.entityId}, ${d.owner}, ${d.property}, ${d.visibility}, ${d.title}, ${d.body}, now())
           on conflict (entity_type, entity_id) do update set
             owner_id = excluded.owner_id, property_id = excluded.property_id, visibility = excluded.visibility,
             title = excluded.title, body = excluded.body, indexed_at = now()""".update.run

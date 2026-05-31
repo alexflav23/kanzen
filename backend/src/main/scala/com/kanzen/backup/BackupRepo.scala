@@ -41,14 +41,25 @@ object BackupRepo {
       table
     ) ++ fr", $rows) on conflict (id) do nothing").update.run
 
-  def recordExportJob(ownerId: UUID, counts: Json, manifest: Json, sizeBytes: Long): ConnectionIO[UUID] =
-    sql"""insert into export_jobs (owner_id, mode, status, object_counts, manifest, size_bytes, finished_at)
-          values ($ownerId, 'full', 'completed', $counts, $manifest, $sizeBytes, now()) returning id"""
+  def recordExportJob(
+      ownerId: UUID,
+      counts: Json,
+      manifest: Json,
+      sizeBytes: Long,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"""insert into export_jobs (tenant_id, owner_id, mode, status, object_counts, manifest, size_bytes, finished_at)
+          values ($tenantId, $ownerId, 'full', 'completed', $counts, $manifest, $sizeBytes, now()) returning id"""
       .query[UUID]
       .unique
 
-  def recordRestoreJob(ownerId: UUID, mode: String, applied: Json): ConnectionIO[UUID] =
-    sql"""insert into restore_jobs (owner_id, mode, status, applied) values ($ownerId, $mode, 'completed', $applied) returning id"""
+  def recordRestoreJob(
+      ownerId: UUID,
+      mode: String,
+      applied: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"""insert into restore_jobs (tenant_id, owner_id, mode, status, applied) values ($tenantId, $ownerId, $mode, 'completed', $applied) returning id"""
       .query[UUID]
       .unique
 }

@@ -22,8 +22,13 @@ final case class Vendor(
 object VendorRepo {
   private val cols = fr"id, name, type, trade, nda_until, insurance_until, rating"
 
-  def create(name: String, trade: Option[String], insuranceUntil: Option[LocalDate]): ConnectionIO[Vendor] =
-    (fr"""insert into vendors (name, trade, insurance_until) values ($name, $trade, $insuranceUntil)
+  def create(
+      name: String,
+      trade: Option[String],
+      insuranceUntil: Option[LocalDate],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Vendor] =
+    (fr"""insert into vendors (tenant_id, name, trade, insurance_until) values ($tenantId, $name, $trade, $insuranceUntil)
           returning""" ++ cols).query[Vendor].unique
 
   def insert(

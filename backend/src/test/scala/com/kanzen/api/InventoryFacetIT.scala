@@ -65,10 +65,11 @@ object InventoryFacetIT extends IOSuite {
         )
         .transact(xa)
       _ <- AssetRepo.setHero(asset.id, docId).transact(xa)
-      tagId <- sql"insert into tags (name, slug) values (${"t-" + s}, ${"t-" + s}) returning id"
-        .query[UUID]
-        .unique
-        .transact(xa)
+      tagId <-
+        sql"insert into tags (tenant_id, name, slug) values ('7e000000-0000-0000-0000-000000000001'::uuid, ${"t-" + s}, ${"t-" + s}) returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
       _ <-
         sql"insert into entity_tags (tag_id, entity_type, entity_id) values ($tagId, 'asset', ${asset.id})".update.run
           .transact(xa)

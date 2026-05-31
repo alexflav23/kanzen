@@ -22,9 +22,15 @@ final case class CalEvent(
 
 /** F07 — calendar event refs synced with Google; idempotent by google_event_id. */
 object CalendarRepo {
-  def upsert(googleEventId: String, title: String, startOn: LocalDate, source: String): ConnectionIO[Int] =
-    sql"""insert into calendar_event_refs (google_event_id, title, start_on, source)
-          values ($googleEventId, $title, $startOn, $source)
+  def upsert(
+      googleEventId: String,
+      title: String,
+      startOn: LocalDate,
+      source: String,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Int] =
+    sql"""insert into calendar_event_refs (tenant_id, google_event_id, title, start_on, source)
+          values ($tenantId, $googleEventId, $title, $startOn, $source)
           on conflict (google_event_id) do update set title = excluded.title, start_on = excluded.start_on""".update.run
 
   def list: ConnectionIO[List[(String, String)]] =

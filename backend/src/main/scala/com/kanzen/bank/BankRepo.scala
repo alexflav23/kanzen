@@ -37,8 +37,13 @@ object BankRepo {
   private val txCols =
     fr"id, provider_tx_id, booked_on, amount_minor, currency, direction, description, merchant, reconciliation_state"
 
-  def createAccount(name: String, currency: String, kind: Option[String]): ConnectionIO[BankAccount] =
-    sql"insert into financial_accounts (name, currency, kind) values ($name, $currency, $kind) returning id, name, currency, kind"
+  def createAccount(
+      name: String,
+      currency: String,
+      kind: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[BankAccount] =
+    sql"insert into financial_accounts (tenant_id, name, currency, kind) values ($tenantId, $name, $currency, $kind) returning id, name, currency, kind"
       .query[BankAccount]
       .unique
 
@@ -58,8 +63,9 @@ object BankRepo {
       .traverse { t =>
         FxRepo.toBaseOn(t.currency, t.bookedOn).flatMap { fxRate =>
           val fxAsOf = fxRate.map(_ => t.bookedOn)
-          sql"""insert into bank_transactions (account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description, fx_rate_to_base, fx_as_of)
-              values ($accountId, ${t.providerTxId}, ${t.bookedOn}, ${t.amountMinor}, ${t.currency}, ${t.direction}, ${t.description}, $fxRate, $fxAsOf)
+          sql"""insert into bank_transactions (tenant_id, account_id, provider_tx_id, booked_on, amount_minor, currency, direction, description, fx_rate_to_base, fx_as_of)
+              values (coalesce((select tenant_id from financial_accounts where id = $accountId), '7e000000-0000-0000-0000-000000000001'::uuid),
+                      $accountId, ${t.providerTxId}, ${t.bookedOn}, ${t.amountMinor}, ${t.currency}, ${t.direction}, ${t.description}, $fxRate, $fxAsOf)
               on conflict (account_id, provider_tx_id) do nothing""".update.run
         }
       }

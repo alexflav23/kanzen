@@ -17,10 +17,11 @@ object ValuationRepo {
       kind: String,
       amountMinor: Long,
       currency: String,
-      source: Option[String]
+      source: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Valuation] =
-    (fr"""insert into asset_valuation_snapshots (asset_id, kind, amount_minor, currency, source)
-          values ($assetId, $kind, $amountMinor, $currency, $source)
+    (fr"""insert into asset_valuation_snapshots (tenant_id, asset_id, kind, amount_minor, currency, source)
+          values ($tenantId, $assetId, $kind, $amountMinor, $currency, $source)
           returning""" ++ cols).query[Valuation].unique
 
   def latest(assetId: UUID, kind: String): ConnectionIO[Option[Valuation]] =

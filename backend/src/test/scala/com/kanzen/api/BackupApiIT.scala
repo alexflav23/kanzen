@@ -52,10 +52,11 @@ object BackupApiIT extends IOSuite {
 
   test("AC4 — delete→restore round-trips faithfully (the asset reappears, id + title intact)") { xa =>
     for {
-      id <- sql"insert into assets (owner_id, title) values ($owner, 'Round-trip widget') returning id"
-        .query[UUID]
-        .unique
-        .transact(xa)
+      id <-
+        sql"insert into assets (tenant_id, owner_id, title) values ('7e000000-0000-0000-0000-000000000001'::uuid, $owner, 'Round-trip widget') returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
       exp <- Backup.export(xa, toby).map(_.toOption.get)
       _ <- sql"delete from assets where id = $id".update.run.transact(xa)
       gone <- sql"select exists(select 1 from assets where id = $id)".query[Boolean].unique.transact(xa)

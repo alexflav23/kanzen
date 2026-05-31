@@ -45,7 +45,7 @@ object CalendarApiIT extends IOSuite {
   test("merged view overlays read-only task due-dates (F06)") { xa =>
     for {
       _ <-
-        sql"insert into tasks (owner_id, title, status, due_on) values ($owner, 'Overlay task', 'todo', $today)".update.run
+        sql"insert into tasks (tenant_id, owner_id, title, status, due_on) values ('7e000000-0000-0000-0000-000000000001'::uuid, $owner, 'Overlay task', 'todo', $today)".update.run
           .transact(xa)
       view <- Calendar.events(xa, lorna, today.minusDays(1), today.plusDays(1), None).map(_.toOption.get)
       task = view.find(e => e.source == "task" && e.title == "Overlay task")

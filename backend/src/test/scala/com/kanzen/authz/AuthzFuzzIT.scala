@@ -59,10 +59,11 @@ object AuthzFuzzIT extends IOSuite {
 
   test("endpoint wiring enforces it: non-Principal hits Principal-private surfaces → 403") { xa =>
     for {
-      assetId <- sql"insert into assets (owner_id, title) values (${toby.userId}, 'authz probe') returning id"
-        .query[UUID]
-        .unique
-        .transact(xa)
+      assetId <-
+        sql"insert into assets (tenant_id, owner_id, title) values ('7e000000-0000-0000-0000-000000000001'::uuid, ${toby.userId}, 'authz probe') returning id"
+          .query[UUID]
+          .unique
+          .transact(xa)
       // Private Wealth (F39–F43) + investments (F40) + backup (F30) — Principal-only
       wEnt <- Wealth.entities(xa, lorna)
       wNet <- Wealth.netWorth(xa, marcia, None)

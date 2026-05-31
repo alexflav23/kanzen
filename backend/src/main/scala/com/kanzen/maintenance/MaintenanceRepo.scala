@@ -34,8 +34,14 @@ final case class PlanRow(
 )
 
 object MaintenanceRepo {
-  def createPlan(frequency: String, firstDue: LocalDate, leadDays: Int): ConnectionIO[Plan] =
-    sql"""insert into maintenance_plans (frequency, next_due, lead_days) values ($frequency, $firstDue, $leadDays)
+  def createPlan(
+      frequency: String,
+      firstDue: LocalDate,
+      leadDays: Int,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Plan] =
+    sql"""insert into maintenance_plans (tenant_id, frequency, next_due, lead_days)
+          values ($tenantId, $frequency, $firstDue, $leadDays)
           returning id, frequency, next_due""".query[Plan].unique
 
   def insert(

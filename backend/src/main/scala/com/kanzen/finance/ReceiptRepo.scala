@@ -11,8 +11,13 @@ final case class LineItem(id: UUID, description: Option[String], confirmedCatego
 
 /** F13 — receipts + line items (the parse pipeline confirms suggested categories). */
 object ReceiptRepo {
-  def create(merchant: Option[String], totalMinor: Option[Long], currency: Option[String]): ConnectionIO[Receipt] =
-    sql"""insert into receipts (merchant, total_minor, currency) values ($merchant, $totalMinor, $currency)
+  def create(
+      merchant: Option[String],
+      totalMinor: Option[Long],
+      currency: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[Receipt] =
+    sql"""insert into receipts (tenant_id, merchant, total_minor, currency) values ($tenantId, $merchant, $totalMinor, $currency)
           returning id, total_minor, currency, status""".query[Receipt].unique
 
   def addLineItem(

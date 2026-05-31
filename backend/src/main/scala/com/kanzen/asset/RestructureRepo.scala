@@ -21,15 +21,27 @@ object RestructureService {
 
 /** F24 — auditable restructure operations (no silent destructive mutation). */
 object RestructureRepo {
-  def record(kind: String, inputs: Json, outputs: Json): ConnectionIO[UUID] =
-    sql"insert into restructure_operations (kind, inputs, outputs) values ($kind, $inputs, $outputs) returning id"
+  def record(
+      kind: String,
+      inputs: Json,
+      outputs: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"insert into restructure_operations (tenant_id, kind, inputs, outputs) values ($tenantId, $kind, $inputs, $outputs) returning id"
       .query[UUID]
       .unique
 
   /** Record with the explicit cost-basis before/after (explainability + reversal). */
-  def recordFull(kind: String, inputs: Json, outputs: Json, before: Json, after: Json): ConnectionIO[UUID] =
-    sql"""insert into restructure_operations (kind, inputs, outputs, cost_basis_before, cost_basis_after)
-          values ($kind, $inputs, $outputs, $before, $after) returning id""".query[UUID].unique
+  def recordFull(
+      kind: String,
+      inputs: Json,
+      outputs: Json,
+      before: Json,
+      after: Json,
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
+  ): ConnectionIO[UUID] =
+    sql"""insert into restructure_operations (tenant_id, kind, inputs, outputs, cost_basis_before, cost_basis_after)
+          values ($tenantId, $kind, $inputs, $outputs, $before, $after) returning id""".query[UUID].unique
 
   def get(id: UUID): ConnectionIO[Option[(String, Json, Json)]] =
     sql"select kind, inputs, outputs from restructure_operations where id = $id".query[(String, Json, Json)].option
@@ -79,10 +91,11 @@ object RestructureRepo {
       costMinor: Option[Long],
       currency: Option[String],
       acquisitionDate: Option[LocalDate],
-      uncertaintyNote: Option[String]
+      uncertaintyNote: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[UUID] =
-    sql"""insert into assets (owner_id, title, category_id, parent_asset_id, acquisition_cost_minor,
+    sql"""insert into assets (tenant_id, owner_id, title, category_id, parent_asset_id, acquisition_cost_minor,
             acquisition_currency, acquisition_date, uncertainty_note)
-          values ($ownerId, $title, $categoryId, $parentId, $costMinor, $currency, $acquisitionDate, $uncertaintyNote)
+          values ($tenantId, $ownerId, $title, $categoryId, $parentId, $costMinor, $currency, $acquisitionDate, $uncertaintyNote)
           returning id""".query[UUID].unique
 }

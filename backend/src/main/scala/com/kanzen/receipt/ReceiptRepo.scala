@@ -49,10 +49,13 @@ object ReceiptRepo {
       kind: String,
       merchant: Option[String],
       totalMinor: Option[Long],
-      currency: Option[String]
+      currency: Option[String],
+      tenantId: UUID = com.kanzen.tenant.Tenant.DefaultId
   ): ConnectionIO[Receipt] =
-    (fr"""insert into receipts (owner_id, kind, merchant, total_minor, currency)
-          values ($ownerId, $kind, $merchant, $totalMinor, $currency) returning""" ++ rCols).query[Receipt].unique
+    (fr"""insert into receipts (tenant_id, owner_id, kind, merchant, total_minor, currency)
+          values ($tenantId, $ownerId, $kind, $merchant, $totalMinor, $currency) returning""" ++ rCols)
+      .query[Receipt]
+      .unique
 
   def addLine(
       receiptId: UUID,

@@ -50,7 +50,10 @@ object ReconciliationRepo {
   /** Match a bank transaction to a receipt; marks the transaction reconciled. */
   def matchTxnToReceipt(txnId: UUID, receiptId: UUID, amountMinor: Long): ConnectionIO[UUID] =
     for {
-      m <- sql"insert into reconciliation_matches (state) values ('matched') returning id".query[UUID].unique
+      m <-
+        sql"""insert into reconciliation_matches (tenant_id, state)
+              values (coalesce((select tenant_id from bank_transactions where id = $txnId), '7e000000-0000-0000-0000-000000000001'::uuid), 'matched')
+              returning id""".query[UUID].unique
       _ <-
         sql"insert into match_members (match_id, member_type, member_id, amount_minor) values ($m, 'transaction', $txnId, $amountMinor)".update.run
       _ <-
