@@ -4,7 +4,24 @@ import { lazy, Suspense, type ComponentType } from "react";
 import { colors, radius } from "./styles/tokens.stylex";
 // Route-level code-splitting (perf): each page is its own chunk, so the initial bundle is small and first paint is
 // fast — the build's >500kB single-chunk warning is resolved. A named export becomes the chunk's default.
-const named = <T extends Record<string, ComponentType<object>>>(p: Promise<T>, k: keyof T) => p.then((m) => ({ default: m[k] }));
+//
+// Self-healing across redeploys: a new build content-hashes the chunk filenames, so a tab that was open *before* a
+// deploy holds references to chunks that no longer exist → the dynamic import 404s. We catch that once and reload the
+// page (which fetches the fresh index.html + chunks). A sessionStorage guard prevents a reload loop if it's a genuine
+// network failure rather than a stale reference.
+const CHUNK_GUARD = "kanzen.chunk-reloaded";
+const reloadOnStaleChunk = (err: unknown): never => {
+  // A failed dynamic import after a redeploy = a stale chunk reference; reload once to fetch the fresh build.
+  if (typeof window !== "undefined" && !sessionStorage.getItem(CHUNK_GUARD)) {
+    sessionStorage.setItem(CHUNK_GUARD, "1");
+    window.location.reload();
+  }
+  throw err; // returns `never`, so the lazy type stays the specific page component (no widening)
+};
+const named = <T extends Record<string, ComponentType<object>>>(p: Promise<T>, k: keyof T) =>
+  p.then((m) => ({ default: m[k] })).catch(reloadOnStaleChunk);
+// Clear the one-shot guard once the app has successfully loaded (so the next real deploy can self-heal again).
+if (typeof window !== "undefined") window.addEventListener("load", () => sessionStorage.removeItem(CHUNK_GUARD));
 const Dashboard = lazy(() => named(import("./pages/Dashboard"), "Dashboard"));
 const Inventory = lazy(() => named(import("./pages/Inventory"), "Inventory"));
 const Collections = lazy(() => named(import("./pages/Collections"), "Collections"));
