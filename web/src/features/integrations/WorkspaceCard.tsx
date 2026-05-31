@@ -6,7 +6,7 @@ import { Card } from "../../components/Card";
 import { Pill } from "../../components/Pill";
 import { Loading } from "../../components/states";
 import { useAuth } from "../../state/AuthContext";
-import { connectWorkspace, getWorkspaceStatus } from "../../services/workspace";
+import { connectWorkspace, getWorkspaceStatus, setWorkspaceCalendar } from "../../services/workspace";
 import { ApiError } from "../../services/http";
 
 const styles = stylex.create({
@@ -26,6 +26,8 @@ const styles = stylex.create({
   btn: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "9px 16px", borderRadius: radius.sm, border: 0, backgroundColor: colors.accent, color: colors.accentInk, cursor: "pointer", fontSize: "13px", alignSelf: "flex-start" },
   btnDisabled: { opacity: 0.5, cursor: "not-allowed" },
   err: { fontSize: "12.5px", color: colors.danger, marginTop: "4px" },
+  calBlock: { marginTop: "20px", paddingTop: "18px", borderTop: `1px solid ${colors.line}` },
+  calRow: { display: "flex", gap: "8px", alignItems: "stretch" },
 });
 
 /** F44 — Settings → Integrations → Google Workspace. The principal pastes a service-account key; only its Secrets-Manager
@@ -39,6 +41,7 @@ export function WorkspaceCard() {
   const [domain, setDomain] = useState("");
   const [email, setEmail] = useState("");
   const [json, setJson] = useState("");
+  const [calendarId, setCalendarId] = useState("");
 
   const connectMut = useMutation({
     mutationFn: () => connectWorkspace({ domain: domain.trim(), serviceAccountEmail: email.trim(), serviceAccountJson: json }, token),
@@ -46,6 +49,11 @@ export function WorkspaceCard() {
       setJson(""); // never keep the pasted key in component state once it's been handed off
       qc.invalidateQueries({ queryKey: ["workspace"] });
     },
+  });
+
+  const calendarMut = useMutation({
+    mutationFn: () => setWorkspaceCalendar(calendarId.trim(), token),
+    onSuccess: () => { setCalendarId(""); qc.invalidateQueries({ queryKey: ["workspace"] }); },
   });
 
   const s = statusQ.data;
@@ -111,6 +119,42 @@ export function WorkspaceCard() {
           </div>
         )}
       </div>
+
+      {/* F07 Path B — once Workspace is connected, map a Google calendar to push household events to. */}
+      {s?.connected && (
+        <div {...stylex.props(styles.calBlock)} data-testid="calendar-map">
+          <div {...stylex.props(styles.fieldGroup)}>
+            <label {...stylex.props(styles.fieldLabel)} htmlFor="ws-cal">Google Calendar sync</label>
+            <div {...stylex.props(styles.calRow)}>
+              <input
+                id="ws-cal"
+                {...stylex.props(styles.input)}
+                placeholder={s.calendarId ?? "household@group.calendar.google.com"}
+                value={calendarId}
+                onChange={(e) => setCalendarId(e.target.value)}
+              />
+              <button
+                type="button"
+                {...stylex.props(styles.btn, (calendarId.trim() === "" || calendarMut.isPending) && styles.btnDisabled)}
+                disabled={calendarId.trim() === "" || calendarMut.isPending}
+                onClick={() => calendarMut.mutate()}
+              >
+                {calendarMut.isPending ? "Saving…" : s.calendarId ? "Update" : "Connect calendar"}
+              </button>
+            </div>
+            <span {...stylex.props(styles.hint)}>
+              {s.calendarId
+                ? `Pushing household events to ${s.calendarId}.`
+                : "Household calendar events will push to this Google calendar."}
+            </span>
+            {calendarMut.isError && (
+              <div {...stylex.props(styles.err)} role="alert">
+                {calendarMut.error instanceof ApiError ? calendarMut.error.detail : "Couldn't map the calendar."}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

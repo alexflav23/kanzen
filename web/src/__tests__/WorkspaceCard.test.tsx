@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AuthProvider } from "../state/AuthContext";
@@ -6,10 +6,11 @@ import { AuthProvider } from "../state/AuthContext";
 vi.mock("../services/workspace", () => ({
   getWorkspaceStatus: vi.fn(),
   connectWorkspace: vi.fn(),
+  setWorkspaceCalendar: vi.fn(),
 }));
 
 import { WorkspaceCard } from "../features/integrations/WorkspaceCard";
-import { getWorkspaceStatus, connectWorkspace } from "../services/workspace";
+import { getWorkspaceStatus, connectWorkspace, setWorkspaceCalendar } from "../services/workspace";
 
 const KEY = '{"type":"service_account","client_email":"k@p.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\\nx\\n-----END PRIVATE KEY-----"}';
 
@@ -23,6 +24,7 @@ const renderCard = () =>
 beforeEach(() => {
   localStorage.setItem("kanzen.token", "t");
   (connectWorkspace as Mock).mockReset();
+  (setWorkspaceCalendar as Mock).mockReset();
 });
 
 describe("F44 — WorkspaceCard", () => {
@@ -65,6 +67,23 @@ describe("F44 — WorkspaceCard", () => {
     expect(await screen.findByText("Connected · carter.com")).toBeInTheDocument();
     expect(screen.getByText("Service account validated")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeInTheDocument();
+  });
+
+  it("F07 Path B — when connected, maps a Google calendar (and hides the mapping when not connected)", async () => {
+    (getWorkspaceStatus as Mock).mockResolvedValue({ connected: true, domain: "carter.com", validated: true, validationError: null, calendarId: null });
+    (setWorkspaceCalendar as Mock).mockResolvedValue({ connected: true, domain: "carter.com", validated: true, validationError: null, calendarId: "house@group.calendar.google.com" });
+    renderCard();
+    const map = await screen.findByTestId("calendar-map");
+    fireEvent.change(within(map).getByLabelText("Google Calendar sync"), { target: { value: "house@group.calendar.google.com" } });
+    fireEvent.click(within(map).getByRole("button", { name: "Connect calendar" }));
+    await waitFor(() => expect(setWorkspaceCalendar).toHaveBeenCalledWith("house@group.calendar.google.com", "t"));
+  });
+
+  it("hides the calendar mapping until Workspace is connected", async () => {
+    (getWorkspaceStatus as Mock).mockResolvedValue({ connected: false, domain: null, validated: false, validationError: null, calendarId: null });
+    renderCard();
+    await screen.findByText("Not connected");
+    expect(screen.queryByTestId("calendar-map")).toBeNull();
   });
 
   it("surfaces a pending validation error from the seam", async () => {

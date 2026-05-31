@@ -3,6 +3,7 @@ package com.kanzen.api
 import cats.effect.IO
 import cats.syntax.all._
 import com.kanzen.auth.{Auth, Principal}
+import com.kanzen.calendar.WorkspaceCalendarMapRepo
 import com.kanzen.workspace.{WorkspaceAuth, WorkspaceRepo}
 import doobie.implicits._
 import doobie.util.transactor.Transactor
@@ -22,17 +23,39 @@ object Workspace {
   private type Out[A] = Either[(StatusCode, ApiError), A]
 
   final case class ConnectReq(domain: String, serviceAccountEmail: String, serviceAccountJson: String)
-  final case class StatusView(connected: Boolean, domain: Option[String], validated: Boolean, validationError: Option[String])
+  final case class StatusView(
+      connected: Boolean,
+      domain: Option[String],
+      validated: Boolean,
+      validationError: Option[String],
+      calendarId: Option[String] = None // F07 Path B — the mapped Google calendar, if any
+  )
+  final case class CalendarReq(googleCalendarId: String)
 
   private def forbidden: (StatusCode, ApiError) =
     (StatusCode.Forbidden, ApiError(403, "forbidden", "Only the principal can manage integrations."))
   private def bad(m: String): (StatusCode, ApiError) = (StatusCode.BadRequest, ApiError(400, "bad_request", m))
 
   def status(xa: Transactor[IO], p: Principal): IO[Out[StatusView]] =
-    WorkspaceRepo.find(p.tenantId).transact(xa).map {
-      case None => Right(StatusView(connected = false, None, validated = false, None))
-      case Some(w) => Right(StatusView(connected = true, Some(w.domain), w.validatedAt.isDefined, w.validationError))
+    (WorkspaceRepo.find(p.tenantId), WorkspaceCalendarMapRepo.find(p.tenantId)).tupled.transact(xa).map {
+      case (None, _) => Right(StatusView(connected = false, None, validated = false, None))
+      case (Some(w), cal) =>
+        Right(StatusView(connected = true, Some(w.domain), w.validatedAt.isDefined, w.validationError, cal.map(_.googleCalendarId)))
     }
+
+  // F07 Path B — map a Google calendar for this tenant (principal-only; requires Workspace to be connected first).
+  def setCalendar(xa: Transactor[IO], p: Principal, req: CalendarReq): IO[Out[StatusView]] =
+    if (p.role != "principal") IO.pure(Left(forbidden))
+    else if (req.googleCalendarId.trim.isEmpty) IO.pure(Left(bad("a Google calendar id is required")))
+    else
+      WorkspaceRepo.find(p.tenantId).transact(xa).flatMap {
+        case None =>
+          IO.pure(Left(bad("connect Google Workspace before mapping a calendar")))
+        case Some(_) =>
+          WorkspaceCalendarMapRepo
+            .connect(p.tenantId, "all", req.googleCalendarId.trim, "push", p.userId)
+            .transact(xa) *> status(xa, p)
+      }
 
   def connect(xa: Transactor[IO], wsAuth: WorkspaceAuth, p: Principal, req: ConnectReq): IO[Out[StatusView]] =
     if (p.role != "principal") IO.pure(Left(forbidden))
@@ -79,10 +102,20 @@ object Workspace {
       .out(jsonBody[StatusView])
       .summary("Connect a Google Workspace service account (principal-only; stores only the secret ref)")
 
+  val calendarEndpoint: Endpoint[String, CalendarReq, (StatusCode, ApiError), StatusView, Any] =
+    sttp.tapir.endpoint.post
+      .securityIn(auth.bearer[String]())
+      .in("api" / "workspace" / "calendar")
+      .in(jsonBody[CalendarReq])
+      .errorOut(err)
+      .out(jsonBody[StatusView])
+      .summary("Map a Google calendar for this tenant (F07 Path B; principal-only, requires Workspace connected)")
+
   def serverEndpoints(a: Auth, xa: Transactor[IO], wsAuth: WorkspaceAuth): List[ServerEndpoint[Any, IO]] = List(
     statusEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (_: Unit) => status(xa, p)),
-    connectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: ConnectReq) => connect(xa, wsAuth, p, r))
+    connectEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: ConnectReq) => connect(xa, wsAuth, p, r)),
+    calendarEndpoint.serverSecurityLogic(a.securityLogic).serverLogic(p => (r: CalendarReq) => setCalendar(xa, p, r))
   )
 
-  val endpoints: List[AnyEndpoint] = List(statusEndpoint, connectEndpoint)
+  val endpoints: List[AnyEndpoint] = List(statusEndpoint, connectEndpoint, calendarEndpoint)
 }

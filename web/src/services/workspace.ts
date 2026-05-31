@@ -9,11 +9,16 @@ export const WorkspaceStatus = z.object({
   domain: z.string().nullable(),
   validated: z.boolean(),
   validationError: z.string().nullable(),
+  calendarId: z.string().nullable().optional(),
 });
 export type WorkspaceStatus = z.infer<typeof WorkspaceStatus>;
 
 export const getWorkspaceStatus = (token: string | null) =>
   api("/api/workspace", WorkspaceStatus, { token });
+
+/** F07 Path B — map a Google calendar for this tenant (push sync target). Requires Workspace connected. */
+export const setWorkspaceCalendar = (googleCalendarId: string, token: string | null) =>
+  api("/api/workspace/calendar", WorkspaceStatus, { method: "POST", body: { googleCalendarId }, token });
 
 export type ConnectWorkspaceReq = {
   domain: string;
