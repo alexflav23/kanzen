@@ -18,9 +18,11 @@ class Pill extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(label,
-          style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w500)),
+          style:
+              TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w500)),
     );
   }
 }

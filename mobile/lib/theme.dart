@@ -34,7 +34,9 @@ String _group(int n) =>
 String money(int minor, String currency) {
   final whole = (minor / 100).round();
   if (currency == 'GBP') return '£${_group(whole)}';
-  if (currency == 'SGD') return 'S\$${_group(whole)}'; // design style, matches web
+  if (currency == 'SGD') {
+    return 'S\$${_group(whole)}'; // design style, matches web
+  }
   return '$currency ${_group(whole)}';
 }
 

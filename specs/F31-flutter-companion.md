@@ -5,7 +5,7 @@
 | **Feature ID** | F31 |
 | **Milestone** | M9 |
 | **Domain** | Mobile |
-| **Status** | ✅ spec complete |
+| **Status** | ✔️ Done (sandbox) — real backend client: dev/Cognito auth + persona login, all 6 screens wired to the live `/api` (mock deleted) with all states, role-trimmed tabs (AC1/AC7), Money approve/reject + Triage confirm/reject writes (F27-safe); 17 widget/unit tests (MockClient) + `flutter analyze` clean in CI. Operator/device-gated remainder: real Cognito hosted-UI, camera/OCR capture (behind the `CaptureSource` seam), offline queue, APNs/FCM push deep-links |
 | **Depends on** | F00 (shell/design), F01 (auth), and the read/confirm APIs of the domains it surfaces |
 | **Spec references** | SPEC §14 (one API, two clients), §16.8; `input/views/mobile.jsx`, App. E.18 |
 

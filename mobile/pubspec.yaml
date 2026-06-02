@@ -9,6 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Real backend client (F31): the companion talks to the same /api as the web app.
+  http: ^1.2.0
+  # Local persistence of the Cognito/dev JWT across launches.
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:
