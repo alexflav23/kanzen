@@ -30,7 +30,7 @@ SPEC.md  CLAUDE.md  SETUP.md  docker-compose.yml  shell.nix  .gitlab-ci.yml  .en
 ```
 
 ## Backend conventions
-- **Boot order** (mirror athena): load+validate config (report *all* missing keys) → Flyway migrate → Doobie transactor (Resource) → http client → S3 → admin server `:9990 /health` → metrics `:9464` → primary `:8080` (`/api`) → `IO.never`.
+- **Boot order** (mirror athena): load+validate config (report *all* missing keys) → Flyway migrate → Doobie transactor (Resource) → http client → S3 → admin server `:9990 /health` → metrics `:9464` → primary `:8080` (`/api`) → `IO.never`. (Ports shown are the conventional/prod bind values — the ALB targets them; **local dev defaults to the +20000 ports** `28080`/`29990`/`29464`, see Common commands.)
 - **Endpoints**: define with Tapir, group by domain, serve OpenAPI at `/docs`. **Auth** = Tapir security partial validating the Cognito JWT (cached JWKS) → `Principal`.
 - **AuthZ once, centrally**: a shared `Authorizer` (resource/field level none/read/write/admin + property scope, F02); **agent actions take the same path**; **default deny**; **field-level response filtering** (e.g. strip valuations for Manager).
 - **DB**: PKs `uuid default gen_random_uuid()`; timestamps `timestamptz`; **money = integer minor units + ISO currency** (never float); **`owner_id` on every domain row**; **soft delete** `deleted_at`; Doobie `sql"…"` + `Meta` instances in a shared `db` module.
@@ -66,9 +66,11 @@ Warm-paper light + dark (⌘D), single indigo accent, 完 mark, tabular money, g
 
 ## Common commands (fill in exact targets during F00)
 ```
-docker compose up                           # FULL runner: web :3020 · api :8080 · pg :5432 · s3 (internal)
+docker compose up                           # FULL runner: web :23020 · api :28080 · pg :25432 · s3 (internal)
 docker compose up -d postgres localstack    # just the deps, for host-side sbt run / npm run dev
-cd backend && sbt run                       # backend (:8080 api, :9990 health, :9464 metrics)
+cd backend && sbt run                       # backend (:28080 api, :29990 health, :29464 metrics)
+# Non-standard host ports = the Hypervolt +20000 convention (don't clash with other local Docker stacks).
+# Container-internal + prod ports stay conventional (8080/9990); prod pins them via the NixOS EnvironmentFile.
 cd backend && sbt scalafmtAll test          # format + test (weaver + testcontainers)
 cd web && npm run dev | build | test        # Vite + StyleX web
 cd mobile && flutter run                     # Flutter companion

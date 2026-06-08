@@ -1,8 +1,14 @@
 # Kanzen full local stack. `docker compose up` brings up the whole app:
-#   web  → http://localhost:3020   (React SPA, nginx)
-#   api  → http://localhost:8080   (/api + /docs) · health :9990 · metrics :9464
-#   db   → localhost:5432          (Postgres 16, seeded via Flyway on backend boot)
-#   s3   → localhost:4566          (LocalStack; the blob store is in-memory until S3 lands)
+#   web  → http://localhost:23020  (React SPA — Vite dev server in Docker, hot reload, runtime-configured)
+#   api  → http://localhost:28080  (/api + /docs)
+#   db   → localhost:25432         (Postgres 16, seeded via Flyway on backend boot)
+# Only web + api + db are published to the host; everything else is network-internal:
+#   health :29990 · metrics :29464 (ops-only — the container healthcheck hits them internally)
+#   s3 → localstack:4566 (LocalStack; the blob store is in-memory until S3 lands)
+#
+# Non-standard host ports (Hypervolt convention: a +20000 offset so Kanzen never clashes with the
+# other local Docker stacks). Container-internal ports stay conventional; prod/Terraform keeps the
+# backend on 8080/9990 (the ALB target group + health check) — pinned via the NixOS EnvironmentFile.
 #
 # The general ledger lives in Postgres (ADR-001, specs/02-accounting-ledger-architecture.md) —
 # TigerBeetle was dropped: a family-office GL is Postgres-shaped, not exchange-grade infra.
@@ -19,7 +25,7 @@ services:
       POSTGRES_PASSWORD: kanzen
       POSTGRES_DB: kanzen
     ports:
-      - "5432:5432"
+      - "25432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -45,12 +51,18 @@ services:
       context: ./backend
     environment:
       KANZEN_ENV: local
-      PORT: "8080"
-      ADMIN_PORT: "9990"
-      METRICS_PORT: "9464"
+      PORT: "28080"
+      ADMIN_PORT: "29990"
+      METRICS_PORT: "29464"
       # The base URL the browser uses to reach the API — used to build signed blob/download URLs
       # (the local presigned-URL equivalent served at /api/blobs). Matches VITE_API_URL below.
-      PUBLIC_BASE_URL: http://localhost:8080
+      PUBLIC_BASE_URL: http://localhost:28080
+      # F01 — point local at a real Cognito pool to validate real ID tokens. Empty ⇒ dev-JWKS +
+      # /api/dev/token (the persona switcher). `export COGNITO_ISSUER/AUDIENCE/JWKS_URI` (from the
+      # pool's outputs) then `docker compose up -d backend` to switch on real auth.
+      COGNITO_ISSUER: ${COGNITO_ISSUER:-}
+      COGNITO_AUDIENCE: ${COGNITO_AUDIENCE:-}
+      COGNITO_JWKS_URI: ${COGNITO_JWKS_URI:-}
       # F05 persistent object store — LocalStack S3 in dev (bytes survive backend restarts).
       S3_ENDPOINT: http://localstack:4566
       S3_BUCKET: kanzen-documents
@@ -62,31 +74,47 @@ services:
       DB_USER: kanzen
       DB_PASSWORD: kanzen
     ports:
-      - "8080:8080"
-      - "9990:9990"
-      - "9464:9464"
+      - "28080:28080"
+    # Admin/health (29990) + metrics (29464) are ops-only: the container healthcheck hits them
+    # internally and nothing on the host needs them — so they're network-internal, not published.
+    expose:
+      - "29990"
+      - "29464"
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9990/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:29990/health"]
       interval: 10s
       timeout: 5s
       retries: 12
 
+  # Frontend = the Vite dev server in Docker (hot reload), configured at RUNTIME from .env — so the
+  # whole stack runs against real Cognito auth + permissions with no rebuild. Mirrors the Hypervolt
+  # kinetic pattern. (The prod SPA is the static nginx build in web/Dockerfile, shipped to CloudFront.)
   web:
-    build:
-      context: ./web
-      # The browser hits the backend's host-mapped port; CORS is allow-all.
-      args:
-        VITE_API_URL: http://localhost:8080
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 23020"
+    environment:
+      # The browser hits the backend's host-mapped port directly (CORS allow-all). Cognito ids (from
+      # .env, sourced from `terraform -chdir=terraform/cognito output`) flip the SPA to the real
+      # CognitoLogin; empty ⇒ the dev persona switcher.
+      VITE_API_URL: http://localhost:28080
+      VITE_COGNITO_USER_POOL_ID: ${VITE_COGNITO_USER_POOL_ID:-}
+      VITE_COGNITO_CLIENT_ID: ${VITE_COGNITO_CLIENT_ID:-}
+    volumes:
+      - ./web:/app
+      # Named volume so the container's (linux) node_modules never clobbers the host's, and survives restarts.
+      - web-node-modules:/app/node_modules
     ports:
-      - "3020:3020"
+      - "23020:23020"
     depends_on:
       - backend
 
 volumes:
   pgdata:
   localstack-data:
+  web-node-modules:

@@ -25,6 +25,6 @@ COPY --from=builder /app/target/scala-2.13/kanzen-backend.jar app.jar
 RUN useradd -m -u 1000 kanzen
 USER kanzen
 
-# api · admin/health · metrics
-EXPOSE 8080 9990 9464
+# api · admin/health · metrics (local Docker uses the +20000 host ports via docker-compose env)
+EXPOSE 28080 29990 29464
 CMD ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]

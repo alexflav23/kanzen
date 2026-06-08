@@ -3,11 +3,11 @@ import fs from "node:fs";
 
 // Sign in for real: mint a Principal token from the backend's dev endpoint and persist
 // it as Playwright storageState, so the authenticated shell renders in every test.
-// Requires the backend (:8080, env=local) + seeded Postgres to be running.
+// Requires the backend (:28080, env=local) + seeded Postgres to be running.
 const authFile = "e2e/.auth/principal.json";
 
 setup("authenticate as Flavian (Principal)", async ({ request }) => {
-  const res = await request.post("http://localhost:8080/api/dev/token", {
+  const res = await request.post("http://localhost:28080/api/dev/token", {
     data: { email: "flavian@kanzen.local", role: "principal" },
   });
   if (!res.ok()) throw new Error(`dev token mint failed (${res.status()}) — is the backend running?`);
@@ -17,7 +17,7 @@ setup("authenticate as Flavian (Principal)", async ({ request }) => {
     cookies: [],
     origins: [
       {
-        origin: "http://localhost:3020",
+        origin: "http://localhost:23020",
         localStorage: [
           { name: "kanzen.token", value: token },
           { name: "kanzen.persona", value: JSON.stringify({ name: "Flavian", email: "flavian@kanzen.local", role: "principal" }) },

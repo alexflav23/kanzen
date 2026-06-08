@@ -29,7 +29,7 @@ Full **web UI** (all states, light/dark, a11y) · **mobile** surface (or N/A) ·
 5. **UI** — design parity with `input/`; render **all states** (loading/empty/error/forbidden); **ThemeContext only** (one token contract + dark `createTheme`; no inline `style={{}}`, no stacked conditional theming); idiomatic, accessible React.
 6. **Tests** — Vitest unit + Playwright e2e vs the **real backend**; a11y beyond axe (keyboard · focus-trap + Escape on modals · focus return); assertions **pollution-robust + idempotent**.
 7. **Regression gate** — full web unit suite + `tsc` + scalafmt + backend tests green; **a11y (axe AA) + full-route audit clean in light & dark** (the cross-slice safety net).
-8. **Verify live at :3020** against the real backend — round-trip the flow; **screenshot in both themes**; leave the **dev DB pristine** (clean any test/demo pollution).
+8. **Verify live at :23020** against the real backend — round-trip the flow; **screenshot in both themes**; leave the **dev DB pristine** (clean any test/demo pollution).
 9. **Close out** — wire the UI to the real API (delete the mock); keep `SETUP.md` + data-model docs current; one focused commit on the build branch; **flip status in this plan** (record deferrals).
 
 ## Decisions (locked; override any)

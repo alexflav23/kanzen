@@ -60,6 +60,12 @@ in
         sec() { aws secretsmanager get-secret-value --secret-id "kanzen/${cfg.env}/$1" --query 'SecretString' --output text; }
         {
           echo "KANZEN_ENV=${cfg.env}"
+          # Pin the conventional bind ports in prod — the reference.conf defaults are the local
+          # +20000 Docker ports. The ALB target group forwards to :8080 and health-checks :9990
+          # (terraform/kanzen/compute.tf), so the service must bind those here.
+          echo "PORT=8080"
+          echo "ADMIN_PORT=9990"
+          echo "METRICS_PORT=9464"
           echo "PUBLIC_BASE_URL=$(ssm public-base-url)"
           echo "COGNITO_ISSUER=$(ssm cognito/issuer)"
           echo "COGNITO_AUDIENCE=$(ssm cognito/audience)"

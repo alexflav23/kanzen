@@ -11,11 +11,11 @@ import 'screens/properties.dart';
 import 'screens/people.dart';
 import 'screens/triage.dart';
 
-/// Backend base URL. Defaults to the local docker stack; override at build time
-/// with `--dart-define=API_BASE=...` (e.g. `http://10.0.2.2:8080` on the Android
-/// emulator, or the prod ALB host).
+/// Backend base URL. Defaults to the local docker stack (the non-standard +20000
+/// host port); override at build time with `--dart-define=API_BASE=...`
+/// (e.g. `http://10.0.2.2:28080` on the Android emulator, or the prod ALB host).
 const apiBaseUrl =
-    String.fromEnvironment('API_BASE', defaultValue: 'http://localhost:8080');
+    String.fromEnvironment('API_BASE', defaultValue: 'http://localhost:28080');
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

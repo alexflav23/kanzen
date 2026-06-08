@@ -11,9 +11,9 @@ class ConfigSpec extends AnyFreeSpec with Matchers {
       AppConfig.load() match {
         case Right(c) =>
           c.env shouldBe "local"
-          c.port shouldBe 8080
-          c.adminPort shouldBe 9990
-          c.metricsPort shouldBe 9464
+          c.port shouldBe 28080
+          c.adminPort shouldBe 29990
+          c.metricsPort shouldBe 29464
         case Left(errs) => fail(s"unexpected errors: $errs")
       }
     }

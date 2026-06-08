@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
 const OCADO = "49100000-0000-0000-0000-000000000001";
 
 async function devToken(request: import("@playwright/test").APIRequestContext): Promise<string> {
-  const res = await request.post("http://localhost:8080/api/dev/token", {
+  const res = await request.post("http://localhost:28080/api/dev/token", {
     data: { email: "flavian@kanzen.local", role: "principal" },
   });
   expect(res.ok()).toBeTruthy();
@@ -32,7 +32,7 @@ test("a comment from another client lands in the open panel without a refresh", 
   const marker = `rt-e2e ${Date.now()}`;
   const token = await devToken(request);
   // post as a separate client (REST), the way a teammate's browser would have
-  const res = await request.post("http://localhost:8080/api/comments", {
+  const res = await request.post("http://localhost:28080/api/comments", {
     headers: { Authorization: `Bearer ${token}` },
     data: { entityType: "email_thread", entityId: OCADO, body: marker },
   });

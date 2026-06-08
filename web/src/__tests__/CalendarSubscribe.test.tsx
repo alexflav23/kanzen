@@ -9,8 +9,8 @@ vi.mock("../services/calendar", () => ({
   listEvents: vi.fn(async () => []),
   createEvent: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(),
   getCalendarFeed: vi.fn(async () => ({
-    httpUrl: "http://localhost:8080/api/calendar/feed/tok.tok.ics",
-    webcalUrl: "webcal://localhost:8080/api/calendar/feed/tok.tok.ics",
+    httpUrl: "http://localhost:28080/api/calendar/feed/tok.tok.ics",
+    webcalUrl: "webcal://localhost:28080/api/calendar/feed/tok.tok.ics",
   })),
 }));
 
@@ -44,7 +44,7 @@ describe("F07 iCal — Calendar subscribe", () => {
     fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
     await screen.findByTestId("feed-url");
     fireEvent.click(screen.getByTestId("feed-copy"));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("http://localhost:8080/api/calendar/feed/tok.tok.ics"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("http://localhost:28080/api/calendar/feed/tok.tok.ics"));
     expect(await screen.findByText("Copied ✓")).toBeInTheDocument();
   });
 });

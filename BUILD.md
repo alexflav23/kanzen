@@ -53,7 +53,7 @@ F33 extensibility · F34 events · F35 products · F36 replenishment · F37 FX.
 ```bash
 # Backend (needs Docker running for the integration test)
 cd backend && sbt test            # FreeSpec + weaver + Testcontainers IT
-cd backend && sbt run             # serve :8080 (/api/health, /docs)
+cd backend && sbt run             # serve :28080 (/api/health, /docs) — local +20000 port
 
 # Web
 cd web && npm install

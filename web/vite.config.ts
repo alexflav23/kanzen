@@ -24,9 +24,14 @@ export default defineConfig(({ command }) => {
   const allowedHosts = ["kanzen.local", "localhost"];
 
   return {
+    // amazon-cognito-identity-js (via its `buffer` dep) references the Node global `global`, which
+    // doesn't exist in the browser. Alias it to `globalThis` — both for app code (`define`) and for
+    // the pre-bundled dependency where the reference actually lives (`optimizeDeps.esbuildOptions`).
+    define: { global: "globalThis" },
+    optimizeDeps: { esbuildOptions: { define: { global: "globalThis" } } },
     plugins: [react({ babel: { plugins: [stylexBabel] } })],
-    server: { port: 3020, allowedHosts },
-    preview: { port: 3020, allowedHosts },
+    server: { port: 23020, allowedHosts },
+    preview: { port: 23020, allowedHosts },
     test: {
       environment: "jsdom",
       globals: true,

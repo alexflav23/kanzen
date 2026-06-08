@@ -78,7 +78,9 @@ web-package:
   stage: package
   image: node:23
   script:
-    - cd web && npm ci --no-audit --no-fund && VITE_API_URL="$VITE_API_URL" npm run build
+    # VITE_COGNITO_* (protected CI vars, from `terraform output cognito_user_pool_id` /
+    # `cognito_web_client_id`) flip the SPA to the real Cognito sign-in. Unset ⇒ the dev persona switcher.
+    - cd web && npm ci --no-audit --no-fund && VITE_API_URL="$VITE_API_URL" VITE_COGNITO_USER_POOL_ID="$VITE_COGNITO_USER_POOL_ID" VITE_COGNITO_CLIENT_ID="$VITE_COGNITO_CLIENT_ID" npm run build
   artifacts:
     paths: [web/dist]
     expire_in: 1 week

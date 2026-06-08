@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 /** Base URL of the Kanzen API. Overridable via VITE_API_URL; defaults to the local backend. */
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080";
+export const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:28080";
 
 /** A typed API failure. `status` 0 = the network/server was unreachable. */
 export class ApiError extends Error {

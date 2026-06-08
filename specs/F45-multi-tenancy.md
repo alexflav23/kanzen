@@ -122,7 +122,7 @@ Tenant identified by subdomain: `<slug>.kanzen.app`. Front door:
 
 ### 5.2 Path-based — fallback for local dev
 
-Local dev can't easily provision subdomains. Use `localhost:3020/t/<slug>/...` as a fallback; the router strips the prefix before resolution.
+Local dev can't easily provision subdomains. Use `localhost:23020/t/<slug>/...` as a fallback; the router strips the prefix before resolution.
 
 ### 5.3 Mail addresses
 
